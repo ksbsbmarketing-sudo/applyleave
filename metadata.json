@@ -1,0 +1,5 @@
+{
+  "name": "NeuHR - Smart Leave Tracker",
+  "description": "A Neumorphism-styled HR dashboard for tracking employee leave balances with Gemini-powered insights and Firebase persistence.",
+  "requestFramePermissions": []
+}
