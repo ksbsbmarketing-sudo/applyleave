@@ -4,7 +4,7 @@ import {
     Search, Shield, Activity, Save, ArrowLeft, Printer, Download, FileText
 } from 'lucide-react';
 import { NeuCard, NeuButton, NeuInput, NeuBadge, NeuTextArea } from './NeuElements';
-import { Staff, LeaveLog, BRANCHES } from '../types';
+import { Staff, LeaveLog, BRANCHES, BRANCH_GROUPS } from '../types';
 import { approveLeave, rejectLeave, updateStaffData, deleteLeaveLog, updateLeaveLog, deleteStaff } from '../services/firebase';
 
 interface ManagementViewProps {
@@ -16,7 +16,7 @@ interface ManagementViewProps {
 
 export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList, logs, sessions }) => {
     const [activeSubTab, setActiveSubTab] = useState<'approvals' | 'staff' | 'logs' | 'reports' | 'sessions'>(
-        user.role === 'hr' ? 'reports' : user.role === 'admin' ? 'staff' : 'approvals'
+        user.role === 'hr' ? 'reports' : (user.role === 'admin' || user.role === 'super_admin') ? 'staff' : 'approvals'
     );
     const [searchTerm, setSearchTerm] = useState('');
     const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
@@ -29,7 +29,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
     const pendingLogs = logs.filter(log => {
         if (user.role === 'hod') return log.status === 'pending';
         if (user.role === 'gm') return log.status === 'hod_approved' || log.status === 'pending';
-        if (user.role === 'admin') return log.status === 'pending' || log.status === 'hod_approved';
+        if (user.role === 'admin' || user.role === 'super_admin') return log.status === 'pending' || log.status === 'hod_approved';
         return false;
     });
 
@@ -62,7 +62,8 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
                 balanceML: editingStaff.balanceML,
                 role: editingStaff.role,
                 branch: editingStaff.branch,
-                name: editingStaff.name
+                name: editingStaff.name,
+                joinDate: editingStaff.joinDate
             });
             setEditingStaff(null);
         } catch (e: any) {
@@ -129,7 +130,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
         <div className="space-y-8 animate-fade-in">
             {/* Sub-Navigation */}
             <div className="flex gap-4 p-2 bg-neu-base rounded-2xl shadow-neu-pressed max-w-fit overflow-x-auto">
-                {(user.role === 'hod' || user.role === 'gm' || user.role === 'admin') && (
+                {(user.role === 'hod' || user.role === 'gm' || user.role === 'admin' || user.role === 'super_admin') && (
                     <NeuButton
                         onClick={() => setActiveSubTab('approvals')}
                         active={activeSubTab === 'approvals'}
@@ -138,7 +139,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
                         Pending Approvals ({pendingLogs.length})
                     </NeuButton>
                 )}
-                {(user.role === 'admin' || user.role === 'hr') && (
+                {(user.role === 'admin' || user.role === 'super_admin' || user.role === 'hr') && (
                     <NeuButton
                         onClick={() => setActiveSubTab('staff')}
                         active={activeSubTab === 'staff'}
@@ -147,7 +148,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
                         Staff Management
                     </NeuButton>
                 )}
-                {user.role === 'admin' && (
+                {(user.role === 'admin' || user.role === 'super_admin') && (
                     <>
                         <NeuButton
                             onClick={() => setActiveSubTab('logs')}
@@ -166,7 +167,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
                         </NeuButton>
                     </>
                 )}
-                {(user.role === 'admin' || user.role === 'hr') && (
+                {(user.role === 'admin' || user.role === 'super_admin' || user.role === 'hr') && (
                     <NeuButton
                         onClick={() => setActiveSubTab('reports')}
                         active={activeSubTab === 'reports'}
@@ -262,7 +263,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
 
 
             {/* --- Staff Management Tab --- */}
-            {activeSubTab === 'staff' && (user.role === 'admin' || user.role === 'hr') && (
+            {activeSubTab === 'staff' && (user.role === 'admin' || user.role === 'super_admin' || user.role === 'hr') && (
                 <div className="space-y-6">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
@@ -328,7 +329,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
                                             </button>
                                         </td>
                                         <td className="p-6">
-                                            <NeuBadge variant={s.role === 'admin' ? 'purple' : s.role === 'gm' ? 'blue' : 'yellow'}>
+                                            <NeuBadge variant={s.role === 'super_admin' ? 'purple' : s.role === 'admin' ? 'purple' : s.role === 'gm' ? 'blue' : 'yellow'}>
                                                 {s.role || 'Staff'}
                                             </NeuBadge>
                                         </td>
@@ -354,7 +355,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
             )}
 
             {/* --- Logs Management Tab --- */}
-            {activeSubTab === 'logs' && user.role === 'admin' && (
+            {activeSubTab === 'logs' && (user.role === 'admin' || user.role === 'super_admin') && (
                 <div className="space-y-6">
                     <div className="flex items-center gap-3 mb-2">
                         <Activity className="w-5 h-5 text-purple-500" />
@@ -514,7 +515,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
 
 
             {/* --- Login Sessions Tab --- */}
-            {activeSubTab === 'sessions' && user.role === 'admin' && (
+            {activeSubTab === 'sessions' && (user.role === 'admin' || user.role === 'super_admin') && (
                 <div className="space-y-6 animate-fade-in">
                     <div className="flex items-center gap-3 mb-2">
                         <Shield className="w-5 h-5 text-gray-500" />
@@ -607,6 +608,16 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
                                 </div>
 
                                 <div>
+                                    <NeuInput
+                                        label="Service Start Date"
+                                        type="date"
+                                        value={editingStaff.joinDate || ''}
+                                        onChange={e => setEditingStaff({ ...editingStaff, joinDate: e.target.value })}
+                                        placeholder="YYYY-MM-DD"
+                                    />
+                                </div>
+
+                                <div>
                                     <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Assigned Branch</label>
                                     <select
                                         value={editingStaff.branch || ''}
@@ -616,8 +627,12 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
                                         title="Assigned Branch"
                                     >
                                         <option value="">-- No Branch Assigned --</option>
-                                        {BRANCHES.map(b => (
-                                            <option key={b} value={b}>{b}</option>
+                                        {Object.entries(BRANCH_GROUPS).map(([site, branches]) => (
+                                            <optgroup key={site} label={site}>
+                                                {branches.map(b => (
+                                                    <option key={b} value={b}>{b}</option>
+                                                ))}
+                                            </optgroup>
                                         ))}
                                     </select>
                                 </div>
@@ -634,6 +649,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
                                         <option value="hod">HOD</option>
                                         <option value="gm">General Manager</option>
                                         <option value="admin">Admin</option>
+                                        <option value="super_admin">Super Admin</option>
                                     </select>
                                 </div>
 

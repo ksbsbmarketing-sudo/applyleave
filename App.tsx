@@ -15,6 +15,7 @@ import {
   updateStaffData,
   deleteLeaveLog,
   calculateProRatedAL,
+  calculateYearsOfService,
   subscribeToSessions
 } from './services/firebase';
 import { generateLeaveSummary } from './services/gemini';
@@ -292,6 +293,28 @@ const App: React.FC = () => {
         ) : (
           /* Main Dashboard Tab */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 animate-fade-in">
+            {currentUser.prevYearBalance && currentUser.prevYearBalance > 3 && (
+              <div className="lg:col-span-12">
+                <div className="bg-orange-100 border-l-8 border-orange-500 text-orange-800 p-6 rounded-2xl shadow-neu-flat flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                  <div className="flex items-start gap-4">
+                    <AlertCircle className="w-8 h-8 text-orange-500 mt-1" />
+                    <div>
+                      <h3 className="font-black text-lg uppercase tracking-tight">Carry-Forward Limit Reached</h3>
+                      <p className="text-sm font-medium opacity-90 mt-1">
+                        You had <strong className="text-black">{currentUser.prevYearBalance} days</strong> remaining from last year.
+                        However, the maximum carry-forward limit is 3 days.
+                        <span className="block mt-1 bg-white/50 px-2 py-0.5 rounded text-orange-900 border border-orange-200 inline-block">
+                          {currentUser.prevYearBalance - 3} days have been forfeited.
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="hidden md:block text-right">
+                    <span className="text-4xl font-black text-orange-400/30">MAX:3</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* LEFT COLUMN: Application Form (4 cols) */}
             <div className="lg:col-span-4 space-y-10">
@@ -306,7 +329,7 @@ const App: React.FC = () => {
                   {/* Staff Select (Visible only for Admins, Staff are locked to their own) */}
                   <div className="space-y-3">
                     <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-2">Request Origin</label>
-                    {currentUser.role === 'admin' ? (
+                    {currentUser.role === 'admin' || currentUser.role === 'super_admin' ? (
                       <div className="relative group">
                         <select
                           aria-label="Request Origin"

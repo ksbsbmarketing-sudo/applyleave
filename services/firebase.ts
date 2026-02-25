@@ -102,8 +102,15 @@ class MockStore {
   }
 
   getProRatedAL(staff: Staff) {
+    const entitlement = calculateEntitlement(staff.joinDate || new Date().toISOString());
     const currentMonth = new Date().getMonth() + 1;
-    const earned = currentMonth * 1; // 1 day per month
+    const carryForward = Math.min(staff.prevYearBalance || 0, 3);
+
+    // Pro-rate based on entitlement: (Entitlement / 12) * currentMonth
+    // We use Math.floor or round based on policy. Let's precise it to 1 decimal or floor? 
+    // Usually companies do: (Entitlement / 12 * MonthsWorked).
+    const earnedThisYear = (entitlement / 12) * currentMonth;
+    const totalAvailable = earnedThisYear + carryForward;
 
     const currentYear = new Date().getFullYear();
     const usedThisYear = this.logs
@@ -113,12 +120,29 @@ class MockStore {
         new Date(l.startDate).getFullYear() === currentYear)
       .reduce((sum, l) => sum + l.duration, 0);
 
-    return Math.max(0, earned - usedThisYear);
+    return Math.max(0, parseFloat((totalAvailable - usedThisYear).toFixed(1)));
   }
 
   async seed(initialStaff: Staff[]) {
-    if (this.staff.length === 0) {
-      this.staff = initialStaff;
+    let changed = false;
+
+    // Remove legacy dummy data if present
+    const dummyIdsToRemove = ['admin-001', 'gm-001', 'hod-001', 'hr-001', '880101-10-1234'];
+    const initialLength = this.staff.length;
+    this.staff = this.staff.filter(s => !dummyIdsToRemove.includes(s.id));
+    if (this.staff.length !== initialLength) changed = true;
+
+    for (const newItem of initialStaff) {
+      const exists = this.staff.find(s => s.id === newItem.id);
+      if (!exists) {
+        this.staff.push(newItem);
+        changed = true;
+      } else {
+        // Optional: Update existing seed data if needed (e.g. role changes)
+        // For now, we'll assume we only want to ensure they exist
+      }
+    }
+    if (changed) {
       this.save();
     }
   }
@@ -198,7 +222,7 @@ class MockStore {
       log.status = 'hod_approved';
       log.hodApprovedBy = approverId;
       log.hodApprovedTime = Date.now();
-    } else if (role === 'gm' || role === 'admin') {
+    } else if (role === 'gm' || role === 'admin' || role === 'super_admin') {
       // Allow Admin/GM to override/approve any status visible to them
       log.status = 'approved';
       log.gmApprovedBy = approverId;
@@ -301,11 +325,16 @@ export const initAuth = async () => {
 
 export const seedInitialData = async () => {
   const dummyStaff: Staff[] = [
-    { id: 'admin-001', name: 'Dr. Syed Badaruddin', ic: 'admin-001', balanceAL: 14, balanceML: 14, password: 'adminpassword', role: 'admin', address: 'Klinik Syed Badaruddin HQ', phone: '012-1111111', joinDate: '1991-01-01', entitlementAL: 14, entitlementML: 14, branch: 'Klinik Syed Badaruddin Balok (HQ)', active: true },
-    { id: 'gm-001', name: 'Sarah Connor', ic: 'gm-001', balanceAL: 14, balanceML: 14, password: 'gmpassword', role: 'gm', address: 'Management Office', phone: '012-2222222', joinDate: '2015-05-12', entitlementAL: 14, entitlementML: 14, branch: 'Klinik Syed Badaruddin Balok (HQ)', active: true },
-    { id: 'hod-001', name: 'John Doe', ic: 'hod-001', balanceAL: 14, balanceML: 14, password: 'hodpassword', role: 'hod', address: 'Medical Dept', phone: '012-3333333', joinDate: '2018-10-20', entitlementAL: 14, entitlementML: 14, branch: 'Klinik Syed Badaruddin Beserah', active: true },
-    { id: 'hr-001', name: 'Zoe Wong', ic: 'hr-001', balanceAL: 14, balanceML: 14, password: 'hrpassword', role: 'hr', address: 'HR Dept', phone: '012-4444444', joinDate: '2020-02-15', entitlementAL: 14, entitlementML: 14, branch: 'Klinik Syed Badaruddin Gebeng', active: true },
-    { id: '880101-10-1234', name: 'Alice Tan', ic: '880101-10-1234', balanceAL: 14, balanceML: 14, password: 'password123', role: 'staff', address: '123 Tech Lane', phone: '012-5555555', joinDate: '2022-12-12', entitlementAL: 14, entitlementML: 14, branch: 'Klinik Syed Badaruddin Kempadang', active: true },
+    { id: '770711-11-5447', name: 'MOHD AZLI BIN RAZAK', ic: '770711-11-5447', balanceAL: 14, balanceML: 14, password: 'password123', role: 'hod', address: 'Unknown', phone: 'N/A', joinDate: '2024-01-01', entitlementAL: 14, entitlementML: 14, branch: 'Klinik Syed Badaruddin Balok (HQ)', active: true },
+    { id: '801010-06-5052', name: 'FARAHTINA BINTI KAMARUDDIN', ic: '801010-06-5052', balanceAL: 14, balanceML: 14, password: 'password123', role: 'staff', address: 'Unknown', phone: 'N/A', joinDate: '2024-01-01', entitlementAL: 14, entitlementML: 14, branch: 'Klinik Syed Badaruddin Balok (HQ)', active: true },
+    { id: '880706-06-5040', name: 'FATIN ZALIKHA BINTI ISMAIL', ic: '880706-06-5040', balanceAL: 14, balanceML: 14, password: 'password123', role: 'staff', address: 'Unknown', phone: 'N/A', joinDate: '2024-01-01', entitlementAL: 14, entitlementML: 14, branch: 'Klinik Syed Badaruddin Balok (HQ)', active: true },
+    { id: '760205-06-5687', name: 'MOHD AKMAL BIN SEMAN @ ABD JABAR', ic: '760205-06-5687', balanceAL: 14, balanceML: 14, password: 'password123', role: 'hod', address: 'Unknown', phone: 'N/A', joinDate: '2024-01-01', entitlementAL: 14, entitlementML: 14, branch: 'Klinik Syed Badaruddin Balok (HQ)', active: true },
+    { id: '810506-03-5572', name: 'NORHAZLINAH BINTI ALI', ic: '810506-03-5572', balanceAL: 14, balanceML: 14, password: 'password123', role: 'hr', address: 'Unknown', phone: 'N/A', joinDate: '2024-01-01', entitlementAL: 14, entitlementML: 14, branch: 'Klinik Syed Badaruddin Balok (HQ)', active: true },
+    { id: '880712-06-5055', name: 'MUHAMMAD LUKHMAN BIN ISMAIL', ic: '880712-06-5055', balanceAL: 14, balanceML: 14, password: 'my@5132129', role: 'staff', address: 'Unknown', phone: 'N/A', joinDate: '2022-12-12', entitlementAL: 14, entitlementML: 14, branch: 'Klinik Syed Badaruddin Balok (HQ)', active: true, prevYearBalance: 5 },
+    // Requested Change: Update/Add Main Admin
+    { id: '611021-06-5069', name: 'SYED BADARUDDIN BIN SYED ALI', ic: '611021-06-5069', balanceAL: 14, balanceML: 14, password: 'adminpassword', role: 'admin', address: 'Klinik Syed Badaruddin HQ', phone: '012-1111111', joinDate: '1991-01-01', entitlementAL: 14, entitlementML: 14, branch: 'Klinik Syed Badaruddin Balok (HQ)', active: true },
+    // Super Admin
+    { id: 'super-admin', name: 'Super Admin', ic: 'super_admin', balanceAL: 999, balanceML: 999, password: 'superpassword', role: 'super_admin', address: 'System Root', phone: '000-0000000', joinDate: '2020-01-01', entitlementAL: 999, entitlementML: 999, branch: 'HQ', active: true },
   ];
 
   if (isDemo || !db) {
@@ -372,9 +401,34 @@ export const submitLeaveApplication = async (
   } catch (error: any) { return { success: false, error: error.message }; }
 };
 
+export const calculateYearsOfService = (joinDate: string) => {
+  const start = new Date(joinDate);
+  const now = new Date();
+  let years = now.getFullYear() - start.getFullYear();
+  let months = now.getMonth() - start.getMonth();
+  if (months < 0 || (months === 0 && now.getDate() < start.getDate())) {
+    years--;
+    months += 12;
+  }
+  return { years, months };
+};
+
+export const calculateEntitlement = (joinDate: string) => {
+  const { years } = calculateYearsOfService(joinDate);
+  if (years < 1) return 0; // Probation/New (< 1 year)
+  if (years < 2) return 8; // 1-2 Years
+  if (years < 5) return 12; // 2-5 Years
+  return 16; // 5+ Years
+};
+
 export const calculateProRatedAL = (staff: Staff, logs: LeaveLog[]) => {
+  const entitlement = calculateEntitlement(staff.joinDate || new Date().toISOString());
   const currentMonth = new Date().getMonth() + 1;
-  const earned = currentMonth * 1;
+  const carryForward = Math.min(staff.prevYearBalance || 0, 3);
+
+  const earnedThisYear = (entitlement / 12) * currentMonth;
+  const totalAvailable = earnedThisYear + carryForward;
+
   const currentYear = new Date().getFullYear();
   const usedThisYear = logs
     .filter(l => l.staffId === staff.id &&
@@ -383,10 +437,10 @@ export const calculateProRatedAL = (staff: Staff, logs: LeaveLog[]) => {
       new Date(l.startDate).getFullYear() === currentYear)
     .reduce((sum, l) => sum + l.duration, 0);
 
-  return Math.max(0, earned - usedThisYear);
+  return Math.max(0, parseFloat((totalAvailable - usedThisYear).toFixed(1)));
 };
 
-export const approveLeave = async (logId: string, role: 'hod' | 'gm' | 'admin', approverId: string) => {
+export const approveLeave = async (logId: string, role: 'hod' | 'gm' | 'admin' | 'super_admin', approverId: string) => {
   if (isDemo || !db) return await mockStore.approveLeave(logId, role, approverId);
 
   try {
@@ -481,8 +535,8 @@ export const loginStaff = async (ic: string, password: string): Promise<Staff> =
   return data;
 };
 
-export const registerStaff = async (ic: string, name: string, address: string, password: string, branch: string): Promise<Staff> => {
-  const newStaff: Staff = { id: ic, name, ic, address, password, balanceAL: 14, balanceML: 14, role: 'staff', branch };
+export const registerStaff = async (ic: string, name: string, address: string, password: string, branch: string, joinDate: string): Promise<Staff> => {
+  const newStaff: Staff = { id: ic, name, ic, address, password, balanceAL: 14, balanceML: 14, role: 'staff', branch, joinDate, active: true };
   if (isDemo || !db) return await mockStore.register(newStaff);
   const staffRef = doc(db, STAFF_COLLECTION, ic);
   if ((await getDoc(staffRef)).exists()) throw new Error("Staff already exists");

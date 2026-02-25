@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Lock, User, Activity, AlertCircle, MapPin, ArrowLeft, Building2 } from 'lucide-react';
 import { NeuCard, NeuButton, NeuInput } from './NeuElements';
 import { registerStaff } from '../services/firebase';
-import { Staff, BRANCHES } from '../types';
+import { Staff, BRANCHES, BRANCH_GROUPS } from '../types';
 
 interface RegistrationPageProps {
     onRegister: (user: Staff) => void;
@@ -14,19 +14,20 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onRegister, 
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
     const [branch, setBranch] = useState(BRANCHES[0]);
+    const [joinDate, setJoinDate] = useState(new Date().toISOString().split('T')[0]);
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!ic || !name || !address || !password || !branch) return;
+        if (!ic || !name || !address || !password || !branch || !joinDate) return;
 
         setLoading(true);
         setError(null);
 
         try {
-            const user = await registerStaff(ic, name, address, password, branch);
+            const user = await registerStaff(ic, name, address, password, branch, joinDate);
             onRegister(user);
         } catch (err: any) {
             setError(err.message || 'Registration failed. Please try again.');
@@ -122,13 +123,35 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onRegister, 
                                     aria-label="Select Branch"
                                     title="Select Branch"
                                 >
-                                    {BRANCHES.map(b => (
-                                        <option key={b} value={b}>{b}</option>
+                                    {Object.entries(BRANCH_GROUPS).map(([site, branches]) => (
+                                        <optgroup key={site} label={site}>
+                                            {branches.map(b => (
+                                                <option key={b} value={b}>{b}</option>
+                                            ))}
+                                        </optgroup>
                                     ))}
                                 </select>
                                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
                                     <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Date Joined</label>
+                            <div className="relative">
+                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                                    <Activity className="w-5 h-5" />
+                                </div>
+                                <input
+                                    type="date"
+                                    value={joinDate}
+                                    onChange={(e) => setJoinDate(e.target.value)}
+                                    className="w-full bg-neu-base rounded-[16px] shadow-neu-pressed-sm px-12 py-4 outline-none focus:shadow-neu-pressed transition-all duration-300"
+                                    required
+                                    title="Date Joined"
+                                    aria-label="Date Joined"
+                                />
                             </div>
                         </div>
 
