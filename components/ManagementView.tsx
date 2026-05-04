@@ -1,11 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-    CheckCircle, XCircle, Trash2, Edit3, User, Calendar, Clock,
-    Search, Shield, Activity, Save, ArrowLeft, Printer, Download, FileText
+    CheckCircle, XCircle, Trash2, Edit3, User, Users, Calendar, Clock,
+    Search, Shield, Activity, Save, ArrowLeft, Printer, Download, FileText,
+    Briefcase, MapPin, Stethoscope, ChevronDown, ChevronUp, Lock, AlertCircle,
+    ShieldAlert, UserCog, ShieldCheck, PieChart
 } from 'lucide-react';
 import { NeuCard, NeuButton, NeuInput, NeuBadge, NeuTextArea } from './NeuElements';
-import { Staff, LeaveLog, BRANCHES, BRANCH_GROUPS } from '../types';
-import { approveLeave, rejectLeave, updateStaffData, deleteLeaveLog, updateLeaveLog, deleteStaff } from '../services/firebase';
+import { Staff, LeaveLog, BRANCHES, BRANCH_GROUPS, MALAYSIA_STATES } from '../types';
+import { 
+    approveLeave, rejectLeave, updateStaffData, deleteLeaveLog, 
+    updateLeaveLog, deleteStaff, subscribeToBranches, addBranch, deleteBranch 
+} from '../services/firebase';
 
 interface ManagementViewProps {
     user: Staff;
@@ -15,15 +20,70 @@ interface ManagementViewProps {
 }
 
 export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList, logs, sessions }) => {
-    const [activeSubTab, setActiveSubTab] = useState<'approvals' | 'staff' | 'logs' | 'reports' | 'sessions'>(
+    const [activeSubTab, setActiveSubTab] = useState<'approvals' | 'staff' | 'logs' | 'reports' | 'sessions' | 'branches' | 'audit'>(
         user.role === 'hr' ? 'reports' : (user.role === 'admin' || user.role === 'super_admin') ? 'staff' : 'approvals'
     );
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedBranch, setSelectedBranch] = useState<string>('');
     const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+
+    const calculateTenure = (joinDate: string) => {
+        if (!joinDate) return 0;
+        const join = new Date(joinDate);
+        const now = new Date();
+        let years = now.getFullYear() - join.getFullYear();
+        const m = now.getMonth() - join.getMonth();
+        if (m < 0 || (m === 0 && now.getDate() < join.getDate())) {
+            years--;
+        }
+        return years >= 0 ? years : 0;
+    };
     const [editingLog, setEditingLog] = useState<LeaveLog | null>(null);
     const [printingLog, setPrintingLog] = useState<LeaveLog | null>(null);
     const [isUpdating, setIsUpdating] = useState(false);
     const [showInactive, setShowInactive] = useState(false);
+
+    // Branch Management State
+    const [branchesConfig, setBranchesConfig] = useState<Record<string, string[]>>({});
+    const [newState, setNewState] = useState('Pahang');
+    const [newBranch, setNewBranch] = useState('');
+    const [expandedBranches, setExpandedBranches] = useState<string[]>([]);
+
+    useEffect(() => {
+        return subscribeToBranches((config) => {
+            setBranchesConfig(config);
+        });
+    }, []);
+
+    const handleAddBranch = () => {
+        if (!newBranch.trim()) return;
+        addBranch(newState, newBranch.trim());
+        setNewBranch('');
+    };
+
+    const handleDeleteBranch = (state: string, branch: string) => {
+        if (confirm(`Buang cawangan ${branch} dari ${state}?`)) {
+            deleteBranch(state, branch);
+        }
+    };
+
+    const toggleBranch = (branchName: string) => {
+        setExpandedBranches(prev => 
+            prev.includes(branchName) 
+                ? prev.filter(b => b !== branchName) 
+                : [...prev, branchName]
+        );
+    };
+
+    const getBranchColor = (branchName: string) => {
+        if (branchName.includes('Balok')) return 'bg-luxury-gold shadow-premium-lg ring-1 ring-white/20';
+        if (branchName.includes('Beserah') || branchName.includes('Utama')) return 'bg-stone-800 shadow-premium-md ring-1 ring-white/10';
+        if (branchName.includes('Gebeng')) return 'bg-premium-accent shadow-premium-md';
+        if (branchName.includes('Kempadang') || branchName.includes('Bentong')) return 'bg-stone-500 shadow-premium-sm';
+        if (branchName.includes('MCKIP') || branchName.includes('Kerteh')) return 'bg-stone-700 shadow-premium-sm';
+        if (branchName.includes('RPCM') || branchName.includes('Paka')) return 'bg-stone-900 shadow-premium-sm';
+        return 'bg-stone-400 shadow-premium-sm';
+    };
 
     // Filter logs for approval
     const pendingLogs = logs.filter(log => {
@@ -59,11 +119,20 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
         try {
             await updateStaffData(editingStaff.id, {
                 balanceAL: editingStaff.balanceAL,
-                balanceML: editingStaff.balanceML,
+                balanceMC: editingStaff.balanceMC,
+                balanceHL: editingStaff.balanceHL || 0,
+                balanceRL: editingStaff.balanceRL || 0,
+                balanceML: editingStaff.balanceML || 0,
+                balancePL: editingStaff.balancePL || 0,
+                balanceEL: editingStaff.balanceEL || 0,
+                balanceBL: editingStaff.balanceBL || 0,
+                balanceUL: editingStaff.balanceUL || 0,
+                staffType: (editingStaff.staffType || undefined) as any,
                 role: editingStaff.role,
-                branch: editingStaff.branch,
+                branch: editingStaff.branch ? editingStaff.branch.trim() : '',
                 name: editingStaff.name,
-                joinDate: editingStaff.joinDate
+                joinDate: editingStaff.joinDate,
+                prevYearBalance: editingStaff.prevYearBalance || 0
             });
             setEditingStaff(null);
         } catch (e: any) {
@@ -129,94 +198,117 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
     return (
         <div className="space-y-8 animate-fade-in">
             {/* Sub-Navigation */}
-            <div className="flex gap-4 p-2 bg-neu-base rounded-2xl shadow-neu-pressed max-w-fit overflow-x-auto">
+            <div className="flex flex-wrap gap-2 p-2 bg-white/60 backdrop-blur-xl rounded-[1.5rem] border border-premium-border/30 max-w-fit shadow-premium-md sticky top-4 z-20 mx-auto lg:mx-0">
                 {(user.role === 'hod' || user.role === 'gm' || user.role === 'admin' || user.role === 'super_admin') && (
-                    <NeuButton
+                    <button
                         onClick={() => setActiveSubTab('approvals')}
-                        active={activeSubTab === 'approvals'}
-                        className="px-6 py-2 text-xs"
+                        className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-500 ${activeSubTab === 'approvals' 
+                            ? 'bg-luxury-gold text-white shadow-premium-lg scale-[1.02]' 
+                            : 'text-premium-muted hover:bg-premium-bg hover:text-premium-primary'}`}
                     >
-                        Pending Approvals ({pendingLogs.length})
-                    </NeuButton>
+                        Kelulusan ({pendingLogs.length})
+                    </button>
                 )}
                 {(user.role === 'admin' || user.role === 'super_admin' || user.role === 'hr') && (
-                    <NeuButton
+                    <button
                         onClick={() => setActiveSubTab('staff')}
-                        active={activeSubTab === 'staff'}
-                        className="px-6 py-2 text-xs"
+                        className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-500 ${activeSubTab === 'staff' 
+                            ? 'bg-luxury-gold text-white shadow-premium-lg scale-[1.02]' 
+                            : 'text-premium-muted hover:bg-premium-bg hover:text-premium-primary'}`}
                     >
-                        Staff Management
-                    </NeuButton>
+                        Senarai Staff
+                    </button>
                 )}
                 {(user.role === 'admin' || user.role === 'super_admin') && (
                     <>
-                        <NeuButton
-                            onClick={() => setActiveSubTab('logs')}
-                            active={activeSubTab === 'logs'}
-                            className="px-6 py-2 text-xs"
+                        <button
+                            onClick={() => setActiveSubTab('branches')}
+                            className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-500 flex items-center gap-2 ${activeSubTab === 'branches' 
+                                ? 'bg-luxury-gold text-white shadow-premium-lg scale-[1.02]' 
+                                : 'text-premium-muted hover:bg-stone-100 hover:text-premium-primary'}`}
                         >
-                            Master Audit
-                        </NeuButton>
-                        <NeuButton
-                            onClick={() => setActiveSubTab('sessions')}
-                            active={activeSubTab === 'sessions'}
-                            className="px-6 py-2 text-xs flex items-center gap-2"
-                        >
-                            <Shield className="w-3 h-3" />
-                            Login Audit
-                        </NeuButton>
+                            <Briefcase className="w-3.5 h-3.5" />
+                            Cawangan
+                        </button>
+                        {(user.role === 'admin' || user.role === 'super_admin') && (
+                            <button
+                                onClick={() => setActiveSubTab('sessions')}
+                                className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-500 ${activeSubTab === 'sessions' 
+                                    ? 'bg-premium-primary text-white shadow-premium-lg scale-[1.02]' 
+                                    : 'text-premium-muted hover:bg-premium-bg hover:text-premium-primary'}`}
+                            >
+                                Sesi Login
+                            </button>
+                        )}
+                        {user.role === 'super_admin' && (
+                            <button
+                                onClick={() => setActiveSubTab('audit')}
+                                className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-500 ${activeSubTab === 'audit' 
+                                    ? 'bg-red-900 text-white shadow-premium-lg scale-[1.02]' 
+                                    : 'text-premium-muted hover:bg-premium-bg hover:text-premium-primary'}`}
+                            >
+                                Master Audit
+                            </button>
+                        )}
                     </>
                 )}
                 {(user.role === 'admin' || user.role === 'super_admin' || user.role === 'hr') && (
-                    <NeuButton
+                    <button
                         onClick={() => setActiveSubTab('reports')}
-                        active={activeSubTab === 'reports'}
-                        className="px-6 py-2 text-xs flex items-center gap-2"
+                        className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-500 flex items-center gap-2 ${activeSubTab === 'reports' 
+                            ? 'bg-luxury-gold text-white shadow-premium-lg scale-[1.02]' 
+                            : 'text-premium-muted hover:bg-premium-bg hover:text-premium-primary'}`}
                     >
-                        <FileText className="w-3 h-3" />
-                        HR Reports
-                    </NeuButton>
+                        <FileText className="w-3.5 h-3.5" />
+                        Laporan HR
+                    </button>
                 )}
             </div>
 
             {/* --- Approvals Tab --- */}
             {activeSubTab === 'approvals' && (
                 <div className="space-y-6">
-                    <div className="flex items-center gap-3 mb-2">
-                        <Clock className="w-5 h-5 text-yellow-500" />
-                        <h3 className="text-xl font-bold text-gray-700">Awaiting Authorization</h3>
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-premium-bg rounded-2xl border border-luxury-gold/30">
+                            <Clock className="w-6 h-6 text-luxury-gold" />
+                        </div>
+                        <h3 className="text-2xl font-bold text-premium-primary uppercase tracking-tight font-luxury">Menunggu Kelulusan</h3>
                     </div>
 
                     {pendingLogs.length === 0 ? (
-                        <NeuCard className="text-center py-16">
-                            <CheckCircle className="w-12 h-12 text-green-300 mx-auto mb-4" />
-                            <p className="text-gray-400 font-bold uppercase tracking-widest text-sm">Clear Queue: All caught up!</p>
+                        <NeuCard className="text-center py-20 bg-premium-bg/50 border-dashed">
+                            <div className="w-20 h-20 bg-premium-bg rounded-full flex items-center justify-center mx-auto mb-6 border border-luxury-gold/20">
+                                <CheckCircle className="w-10 h-10 text-luxury-gold" />
+                            </div>
+                            <p className="text-premium-muted font-black uppercase tracking-widest text-sm font-luxury">Tiada Kelulusan Tertunggak</p>
+                            <p className="text-xs text-premium-muted mt-2">Semua permohonan telah diproses</p>
                         </NeuCard>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                             {pendingLogs.map(log => (
-                                <NeuCard key={log.id} className="relative overflow-hidden group">
+                                <NeuCard key={log.id} className="relative overflow-hidden group border border-premium-border/50 hover:shadow-premium-lg transition-all duration-300">
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-luxury-gold/5 -translate-y-16 translate-x-16 rounded-full group-hover:scale-110 transition-transform duration-500" />
                                     <div className="flex justify-between items-start mb-4">
                                         <div>
                                             <h4 className="font-black text-gray-700 text-lg">{log.staffName}</h4>
                                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{log.staffId}</p>
                                             {staffList.find(s => s.id === log.staffId)?.branch && (
-                                                <p className="text-[9px] font-bold text-blue-400 uppercase tracking-widest mt-1">
+                                                <p className="text-[9px] font-bold text-premium-accent uppercase tracking-widest mt-1">
                                                     {staffList.find(s => s.id === log.staffId)?.branch}
                                                 </p>
                                             )}
                                         </div>
-                                        <NeuBadge variant={log.type === 'AL' ? 'blue' : 'green'}>{log.type}</NeuBadge>
+                                        <NeuBadge variant={log.type === 'AL' ? 'gold' : 'green'}>{log.type}</NeuBadge>
                                     </div>
 
-                                    <div className="flex items-center gap-4 mb-6">
-                                        <div className="flex-1 p-3 bg-neu-base rounded-xl shadow-neu-pressed text-center">
-                                            <span className="block text-xl font-black text-gray-700">{log.duration}</span>
-                                            <span className="text-[9px] font-bold text-gray-400 uppercase">Days</span>
+                                    <div className="flex items-center gap-4 mb-6 relative z-10">
+                                        <div className="flex-1 p-4 bg-premium-bg rounded-2xl border border-premium-border/50 text-center">
+                                            <span className="block text-2xl font-bold text-premium-primary font-luxury">{log.duration}</span>
+                                            <span className="text-[10px] font-black text-premium-muted uppercase tracking-widest">Hari</span>
                                         </div>
-                                        <div className="flex-2 p-3 bg-neu-base rounded-xl shadow-neu-pressed text-center">
-                                            <span className="block text-[10px] font-black text-gray-700">{log.startDate} to {log.endDate}</span>
-                                            <span className="text-[9px] font-bold text-gray-400 uppercase">Period</span>
+                                        <div className="flex-[2] p-4 bg-premium-bg rounded-2xl border border-premium-border/50 text-center">
+                                            <span className="block text-[11px] font-bold text-premium-primary tracking-tight font-luxury">{log.startDate} hingga {log.endDate}</span>
+                                            <span className="text-[10px] font-black text-premium-muted uppercase tracking-widest">Tempoh Cuti</span>
                                         </div>
                                     </div>
 
@@ -225,7 +317,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
                                     </div>
 
                                     <div className="flex gap-3 mb-4">
-                                        <NeuButton onClick={() => handlePrintForm(log)} className="flex-1 py-3 text-purple-600 hover:bg-purple-50/50 flex items-center justify-center gap-2">
+                                        <NeuButton onClick={() => handlePrintForm(log)} className="flex-1 py-3 text-premium-accent hover:bg-premium-bg flex items-center justify-center gap-2 border-premium-border/30">
                                             <Printer className="w-4 h-4" /> Print Form
                                         </NeuButton>
                                     </div>
@@ -249,7 +341,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
 
                                     {log.status === 'hod_approved' && (
                                         <div className="mt-4 pt-4 border-t border-gray-200">
-                                            <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest flex items-center gap-1">
+                                            <p className="text-[10px] font-bold text-premium-accent uppercase tracking-widest flex items-center gap-1">
                                                 <Shield className="w-3 h-3" /> HOD Authorized
                                             </p>
                                         </div>
@@ -265,401 +357,833 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
             {/* --- Staff Management Tab --- */}
             {activeSubTab === 'staff' && (user.role === 'admin' || user.role === 'super_admin' || user.role === 'hr') && (
                 <div className="space-y-6">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                            <img src="/logo.jpg" alt="Logo" className="w-8 h-8 rounded-full border border-gray-200" />
-                            <h3 className="text-xl font-bold text-gray-700">Staff Census</h3>
+                    <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+                        <div>
+                            <h3 className="text-3xl font-black text-premium-primary uppercase tracking-tight flex items-center gap-3">
+                                <Users className="w-8 h-8 text-premium-accent" />
+                                SENARAI KAKITANGAN
+                            </h3>
+                            <p className="text-sm text-premium-muted font-bold mt-2 ml-1">Pengurusan data personel dan kelayakan cuti</p>
                         </div>
-                        <div className="flex items-center gap-4">
-                            <label className="flex items-center gap-2 cursor-pointer select-none">
-                                <div className={`w-10 h-6 rounded-full p-1 transition-colors duration-300 ${showInactive ? 'bg-blue-500' : 'bg-gray-300'}`}>
-                                    <div className={`w-4 h-4 rounded-full bg-white shadow-sm transform transition-transform duration-300 ${showInactive ? 'translate-x-full' : ''}`}></div>
+                        <div className="flex flex-wrap items-center gap-4 bg-white/50 backdrop-blur-sm p-3 rounded-2xl border border-premium-border/50 shadow-premium-sm">
+                            <label className="flex items-center gap-3 cursor-pointer select-none px-2 group">
+                                <div className={`w-11 h-6 rounded-full p-1 transition-all duration-300 ${showInactive ? 'bg-luxury-gold' : 'bg-premium-border'}`}>
+                                    <div className={`w-4 h-4 rounded-full bg-white shadow-sm transform transition-transform duration-300 ${showInactive ? 'translate-x-5' : ''}`}></div>
                                 </div>
                                 <input type="checkbox" className="hidden" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
-                                <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Show Inactive</span>
+                                <span className="text-[11px] font-black text-premium-muted uppercase tracking-widest group-hover:text-premium-primary transition-colors">Tunjuk Tidak Aktif</span>
                             </label>
-                            <div className="w-full md:w-60">
+                            <div className="w-full md:w-72">
                                 <NeuInput
-                                    placeholder="Search Staff..."
+                                    placeholder="Carian Nama / IC / Cawangan..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="!rounded-xl"
                                 />
                             </div>
                         </div>
                     </div>
 
-                    <NeuCard className="overflow-x-auto p-0">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-gray-200">
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Employee</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Role</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Branch</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">AL Bal</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">ML Bal</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {staffList.filter(s =>
-                                    (showInactive || s.active !== false) &&
-                                    (s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                        s.ic.includes(searchTerm) ||
-                                        (s.branch && s.branch.toLowerCase().includes(searchTerm.toLowerCase())))
-                                ).map(s => (
-                                    <tr key={s.id} className="hover:bg-gray-50/50 transition-colors">
-                                        <td className="p-6">
-                                            <p className={s.active !== false ? "font-bold text-gray-700" : "font-bold text-gray-400"}>{s.name}</p>
-                                            <p className="text-[10px] text-gray-400 font-bold">{s.ic}</p>
-                                        </td>
-                                        <td className="p-6">
-                                            <button
-                                                onClick={() => {
-                                                    if (confirm(`Change status of ${s.name} to ${s.active !== false ? 'Inactive' : 'Active'}?`)) {
-                                                        updateStaffData(s.id, { active: s.active === false });
-                                                    }
-                                                }}
-                                                className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${s.active !== false
-                                                    ? "bg-green-100 text-green-600 border border-green-200 hover:bg-green-200"
-                                                    : "bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200"
-                                                    }`}
-                                            >
-                                                {s.active !== false ? "Active" : "Inactive"}
-                                            </button>
-                                        </td>
-                                        <td className="p-6">
-                                            <NeuBadge variant={s.role === 'super_admin' ? 'purple' : s.role === 'admin' ? 'purple' : s.role === 'gm' ? 'blue' : 'yellow'}>
-                                                {s.role || 'Staff'}
-                                            </NeuBadge>
-                                        </td>
-                                        <td className="p-6">
-                                            <p className="text-[10px] font-bold text-gray-500 max-w-[150px] truncate" title={s.branch || ''}>{s.branch || '-'}</p>
-                                        </td>
-                                        <td className="p-6 text-center font-bold text-blue-500">{s.balanceAL}</td>
-                                        <td className="p-6 text-center font-bold text-green-500">{s.balanceML}</td>
-                                        <td className="p-6 text-right flex justify-end gap-2">
-                                            <NeuButton onClick={() => setEditingStaff(s)} className="p-2 text-blue-500">
-                                                <Edit3 className="w-4 h-4" />
-                                            </NeuButton>
-                                            <NeuButton onClick={() => handleDeleteStaff(s.id)} className="p-2 text-red-500 hover:bg-red-50" title="Delete Staff">
-                                                <Trash2 className="w-4 h-4" />
-                                            </NeuButton>
-                                        </td>
+                    <div className="space-y-8">
+                        {Object.entries(branchesConfig).map(([state, branches]) => {
+                            const stateStaff = staffList.filter(s => {
+                                const isInSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                                  s.id.includes(searchTerm) || 
+                                                  (s.branch && s.branch.toLowerCase().includes(searchTerm.toLowerCase()));
+                                const isActiveMatch = showInactive || s.active !== false;
+                                return isInSearch && isActiveMatch && branches.includes(s.branch || '');
+                            });
+
+                            if (stateStaff.length === 0 && !searchTerm) return null;
+
+                            return (
+                                <div key={state} className="space-y-4">
+                                    {/* State Header Dashboard Style */}
+                                    <div className="bg-white rounded-[2.5rem] p-8 shadow-premium-md flex flex-col md:flex-row justify-between items-center gap-8 border border-premium-border/50 relative overflow-hidden group">
+                                        <div className="absolute top-0 left-0 w-1 h-full bg-luxury-gold" />
+                                        <div className="flex items-center gap-8 relative z-10">
+                                            <div className="w-20 h-20 bg-premium-bg rounded-3xl flex items-center justify-center border border-premium-border shadow-premium-sm group-hover:scale-110 transition-transform duration-500">
+                                                <MapPin className="w-10 h-10 text-premium-accent" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[11px] font-black text-premium-muted uppercase tracking-[0.25em] mb-2 leading-none">Negeri / Kawasan</p>
+                                                <h3 className="text-3xl font-black text-premium-primary tracking-tight uppercase leading-none">
+                                                    {state} SITE
+                                                </h3>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-12 relative z-10 bg-premium-bg/50 p-6 rounded-[2rem] border border-premium-border/30">
+                                            <div className="text-center">
+                                                <p className="text-3xl font-black text-premium-primary leading-none tabular-nums font-luxury">{branches.length}</p>
+                                                <p className="text-[10px] font-black text-premium-muted uppercase tracking-widest mt-2">Cawangan</p>
+                                            </div>
+                                            <div className="h-10 w-px bg-premium-border/30"></div>
+                                            <div className="text-center">
+                                                <p className="text-3xl font-black text-premium-primary leading-none tabular-nums font-luxury">{stateStaff.length}</p>
+                                                <p className="text-[10px] font-black text-premium-muted uppercase tracking-widest mt-2">Kakitangan</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3 pl-4 md:pl-0">
+                                        {branches.map(branch => {
+                                            const branchStaff = stateStaff.filter(s => s.branch === branch);
+                                            if (branchStaff.length === 0 && searchTerm) return null;
+                                            if (branchStaff.length === 0 && !searchTerm) return null;
+
+                                            const isExpanded = expandedBranches.includes(branch);
+                                            const stats = {
+                                                total: branchStaff.length,
+                                                active: branchStaff.filter(s => s.active !== false).length,
+                                                admin: branchStaff.filter(s => s.staffType === 'admin_staff').length,
+                                                doctor: branchStaff.filter(s => s.staffType === 'doctor').length,
+                                                operations: branchStaff.filter(s => s.staffType === 'operation_staff').length
+                                            };
+
+                                            return (
+                                                <div key={branch} className="space-y-2">
+                                                    {/* Branch Bar */}
+                                                    <div 
+                                                        onClick={() => toggleBranch(branch)}
+                                                        className="bg-white rounded-[2rem] p-5 flex flex-col md:flex-row justify-between items-center gap-5 cursor-pointer hover:shadow-premium-md transition-all duration-300 border border-premium-border/50 group relative overflow-hidden"
+                                                    >
+                                                        <div className="absolute top-0 right-0 w-2 h-full bg-premium-bg transition-colors group-hover:bg-premium-accent/5" />
+                                                        <div className="flex items-center gap-5 relative z-10">
+                                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border border-white shadow-premium-sm transition-transform duration-300 group-hover:rotate-6 ${
+                                                                branch.toLowerCase().includes('balok') ? 'bg-luxury-gold' :
+                                                                branch.toLowerCase().includes('beserah') ? 'bg-premium-primary' :
+                                                                branch.toLowerCase().includes('gebeng') ? 'bg-premium-accent' :
+                                                                branch.toLowerCase().includes('kempadang') ? 'bg-premium-muted' :
+                                                                'bg-premium-muted/70'
+                                                            }`}>
+                                                                {branch.toLowerCase().includes('klinik') ? <Stethoscope className="w-6 h-6 text-white" /> : <Briefcase className="w-6 h-6 text-white" />}
+                                                            </div>
+                                                            <h5 className="text-base font-black text-premium-primary tracking-tight uppercase truncate max-w-[200px] md:max-w-none">
+                                                                {branch}
+                                                            </h5>
+                                                        </div>
+
+                                                        <div className="flex flex-wrap items-center justify-center gap-3 relative z-10">
+                                                            {[
+                                                                { label: 'Staff', val: stats.total, color: 'text-premium-primary' },
+                                                                { label: 'Aktif', val: stats.active, color: 'text-luxury-gold' },
+                                                                { label: 'Doktor', val: stats.doctor, color: 'text-premium-muted/70' },
+                                                                { label: 'Admin', val: stats.admin, color: 'text-premium-accent' }
+                                                            ].map(stat => (
+                                                                <div key={stat.label} className="bg-premium-bg/80 rounded-xl px-4 py-2 min-w-[70px] text-center border border-premium-border/30">
+                                                                    <p className={`text-base font-bold ${stat.color} leading-none tabular-nums font-luxury`}>{stat.val}</p>
+                                                                    <p className="text-[8px] font-black text-premium-muted uppercase tracking-widest mt-1.5">{stat.label}</p>
+                                                                </div>
+                                                            ))}
+                                                            <div className="ml-3 w-10 h-10 rounded-full bg-premium-bg flex items-center justify-center border border-premium-border group-hover:bg-premium-primary group-hover:border-premium-primary transition-all duration-300">
+                                                                {isExpanded ? <ChevronUp className="w-5 h-5 text-premium-muted group-hover:text-white" /> : <ChevronDown className="w-5 h-5 text-premium-muted group-hover:text-white" />}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Expanded Staff Table */}
+                                                    {isExpanded && (
+                                                        <div className="mx-6 animate-in slide-in-from-top-4 duration-500">
+                                                            <div className="bg-white/50 backdrop-blur-xl rounded-b-[2rem] shadow-premium-lg border-x border-b border-premium-border/30 overflow-hidden">
+                                                                <div className="overflow-x-auto">
+                                                                    <table className="w-full text-left border-collapse">
+                                                                        <thead>
+                                                                            <tr className="border-b border-premium-border/30 bg-premium-bg/50">
+                                                                                <th className="p-6 pl-8 text-[10px] font-black text-premium-muted uppercase tracking-[0.2em]">Profil Kakitangan</th>
+                                                                                <th className="p-4 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">Ent</th>
+                                                                                <th className="p-4 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">AL</th>
+                                                                                <th className="p-4 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">MC</th>
+                                                                                <th className="p-4 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">HL</th>
+                                                                                <th className="p-4 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">RL</th>
+                                                                                <th className="p-4 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">ML</th>
+                                                                                <th className="p-4 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">PL</th>
+                                                                                <th className="p-4 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">EL</th>
+                                                                                <th className="p-4 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">BL</th>
+                                                                                <th className="p-4 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">UL</th>
+                                                                                <th className="p-4 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">CF</th>
+                                                                                <th className="p-6 pr-8 text-[10px] font-black text-premium-muted uppercase tracking-[0.2em] text-right">Tindakan</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody className="divide-y divide-premium-border/20">
+                                                                            {branchStaff.map(s => (
+                                                                                <tr key={s.id} className="hover:bg-premium-bg/50 even:bg-premium-bg/30 transition-colors">
+                                                                                    <td className="p-4 pl-6">
+                                                                                        <p className={s.active !== false ? "font-black text-[13px] text-gray-700 uppercase tracking-tight" : "font-black text-[13px] text-gray-400 uppercase tracking-tight"}>{s.name}</p>
+                                                                                        <p className="text-[11px] text-gray-400 font-bold mb-2 tracking-tighter">{s.ic}</p>
+                                                                                        <div className="flex flex-wrap gap-1.5">
+                                                                                            <button
+                                                                                                onClick={() => {
+                                                                                                    if (confirm(`Change status of ${s.name} to ${s.active !== false ? 'Inactive' : 'Active'}?`)) {
+                                                                                                        updateStaffData(s.id, { active: s.active === false });
+                                                                                                    }
+                                                                                                }}
+                                                                                                className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest transition-all shadow-sm ${s.active !== false
+                                                                                                    ? "bg-luxury-gold/20 text-luxury-gold border border-luxury-gold/30"
+                                                                                                    : "bg-premium-bg text-premium-muted/70 border border-premium-border"
+                                                                                                    }`}
+                                                                                            >
+                                                                                                {s.active !== false ? "Active" : "Inactive"}
+                                                                                            </button>
+                                                                                            {s.staffType && (
+                                                                                                <NeuBadge className="text-[9px] px-2.5 py-1" variant={s.staffType === 'doctor' ? 'green' : s.staffType === 'admin_staff' ? 'gold' : 'stone'}>
+                                                                                                    {s.staffType === 'admin_staff' ? 'ADMIN' : s.staffType === 'operation_staff' ? 'OPERASI' : 'DOKTOR'}
+                                                                                                </NeuBadge>
+                                                                                            )}
+                                                                                            <NeuBadge className="text-[9px] px-2.5 py-1" variant={s.role === 'super_admin' ? 'stone' : s.role === 'admin' ? 'stone' : s.role === 'gm' ? 'gold' : 'gold'}>
+                                                                                                {s.role?.toUpperCase() || 'STAFF'}
+                                                                                            </NeuBadge>
+                                                                                        </div>
+                                                                                    </td>
+                                                                                    <td className="p-4 text-center border-l border-premium-border/30">
+                                                                                        <span className="text-[12px] font-black text-premium-muted/50">
+                                                                                            {s.entitlementAL || 0}
+                                                                                        </span>
+                                                                                    </td>
+                                                                                    <td className="p-2 text-center text-[12px] font-bold text-premium-primary font-luxury">{s.balanceAL}</td>
+                                                                                    <td className="p-2 text-center text-[12px] font-bold text-luxury-gold font-luxury">{s.balanceMC}</td>
+                                                                                    <td className="p-2 text-center text-[12px] font-bold text-premium-muted font-luxury">{s.balanceHL || 0}</td>
+                                                                                    <td className="p-2 text-center text-[12px] font-bold text-premium-muted font-luxury">{s.balanceRL || 0}</td>
+                                                                                    <td className="p-2 text-center text-[12px] font-bold text-premium-accent font-luxury">{s.balanceML || 0}</td>
+                                                                                    <td className="p-2 text-center text-[12px] font-bold text-premium-muted font-luxury">{s.balancePL || 0}</td>
+                                                                                    <td className="p-2 text-center text-[12px] font-bold text-red-500 font-luxury">{s.balanceEL || 0}</td>
+                                                                                    <td className="p-2 text-center text-[12px] font-bold text-premium-accent font-luxury">{s.balanceBL || 0}</td>
+                                                                                    <td className="p-2 text-center text-[12px] font-bold text-premium-muted font-luxury">{s.balanceUL || 0}</td>
+                                                                                    <td className="p-2 text-center text-[12px] font-bold text-luxury-gold font-luxury">{s.prevYearBalance || 0}</td>
+                                                                                    <td className="p-4 pr-8 text-right flex justify-end gap-3">
+                                                                                        <NeuButton onClick={() => setEditingStaff(s)} variant="gold" className="p-2.5 shadow-premium-sm border-premium-border/30">
+                                                                                            <Edit3 className="w-4 h-4 text-premium-muted" />
+                                                                                        </NeuButton>
+                                                                                        <NeuButton onClick={() => handleDeleteStaff(s.id)} variant="danger" className="p-2.5 shadow-premium-sm">
+                                                                                            <Trash2 className="w-4 h-4" />
+                                                                                        </NeuButton>
+                                                                                    </td>
+                                                                                </tr>
+                                                                            ))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Other/Unassigned Section Dashboard Style */}
+                    {(() => {
+                        const otherStaff = staffList.filter(s => {
+                            const isInSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                              s.id.includes(searchTerm);
+                            const isActiveMatch = showInactive || s.active !== false;
+                            const isUnassigned = !s.branch || !Object.values(branchesConfig).flat().includes(s.branch);
+                            return isInSearch && isActiveMatch && isUnassigned;
+                        });
+
+                        if (otherStaff.length === 0) return null;
+
+                        return (
+                            <div className="space-y-6 pb-12">
+                                <div className="bg-white rounded-[2.5rem] p-8 shadow-premium-md flex justify-between items-center border border-premium-border/50 relative overflow-hidden group">
+                                    <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400" />
+                                    <div className="flex items-center gap-8 relative z-10">
+                                        <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover:scale-105 transition-transform">
+                                            <User className="w-8 h-8 text-stone-500" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black text-premium-muted uppercase tracking-widest mb-1">Status Khas</p>
+                                            <h3 className="text-2xl font-black text-premium-primary tracking-tight uppercase">Belum Ditugaskan</h3>
+                                        </div>
+                                    </div>
+                                    <div className="bg-slate-50 px-6 py-3 rounded-2xl border border-slate-100 flex flex-col items-center justify-center">
+                                        <p className="text-2xl font-bold text-premium-primary leading-none tabular-nums font-luxury">{otherStaff.length}</p>
+                                        <p className="text-[9px] font-black text-premium-muted uppercase tracking-widest mt-1.5">Personel</p>
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-[2rem] shadow-premium-sm border border-premium-border/30 overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="border-b border-slate-100 bg-slate-50/30">
+                                                    <th className="p-5 pl-8 text-[10px] font-black text-premium-muted uppercase tracking-widest text-left">Info Kakitangan</th>
+                                                    <th className="p-5 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">Status</th>
+                                                    <th className="p-5 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">Jenis</th>
+                                                    <th className="p-5 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">CF</th>
+                                                    <th className="p-5 text-[10px] font-black text-premium-muted uppercase tracking-widest text-center">Cawangan Semasa</th>
+                                                    <th className="p-5 pr-8 text-[10px] font-black text-premium-muted uppercase tracking-widest text-right">Tindakan</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-50">
+                                                {otherStaff.map(s => (
+                                                    <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                                                        <td className="p-5 pl-8">
+                                                            <p className="font-black text-sm text-premium-primary uppercase">{s.name}</p>
+                                                            <p className="text-[11px] text-premium-muted font-bold tracking-tighter">{s.ic}</p>
+                                                        </td>
+                                                        <td className="p-5 text-center">
+                                                            <NeuBadge variant={s.active !== false ? 'green' : 'slate'}>
+                                                                {s.active !== false ? 'AKTIF' : 'TIDAK AKTIF'}
+                                                            </NeuBadge>
+                                                        </td>
+                                                        <td className="p-5 text-center">
+                                                            {s.staffType && (
+                                                                <NeuBadge variant={s.staffType === 'doctor' ? 'green' : s.staffType === 'admin_staff' ? 'gold' : 'stone'}>
+                                                                    {s.staffType === 'admin_staff' ? 'Admin Staff' : s.staffType === 'operation_staff' ? 'Operation Staff' : 'Doctor'}
+                                                                </NeuBadge>
+                                                            )}
+                                                        </td>
+                                                        <td className="p-5 text-center font-bold text-xs text-luxury-gold font-luxury">
+                                                            {s.prevYearBalance || 0}
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <p className="text-[10px] font-bold text-red-400 italic">
+                                                                {s.branch || "Tiada Cawangan"}
+                                                            </p>
+                                                        </td>
+                                                        <td className="p-4 pr-6 text-right">
+                                                            <NeuButton onClick={() => setEditingStaff(s)} className="p-2 text-premium-accent">
+                                                                <Edit3 className="w-3.5 h-3.5" />
+                                                            </NeuButton>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
+                </div>
+            )}
+
+            {/* --- Branch Management Tab --- */}
+            {activeSubTab === 'branches' && (user.role === 'admin' || user.role === 'super_admin') && (
+                <div className="space-y-8 animate-fade-in">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3.5 bg-stone-100 rounded-2xl border border-premium-border/30 shadow-premium-sm">
+                            <MapPin className="w-8 h-8 text-premium-accent" />
+                        </div>
+                        <div>
+                            <h3 className="text-3xl font-bold text-premium-primary uppercase tracking-tight font-luxury">Pengurusan Kawasan</h3>
+                            <p className="text-xs text-premium-muted font-bold mt-1">Konfigurasi cawangan dan pemetaan lokasi</p>
+                        </div>
+                    </div>
+
+                    <NeuCard className="p-0 overflow-hidden border border-premium-border/50">
+                        <div className="p-8 bg-slate-50/50 border-b border-premium-border/30">
+                            <h4 className="text-[11px] font-black text-premium-muted uppercase tracking-[0.25em] mb-6">Tambah Cawangan Baharu</h4>
+                            <div className="flex flex-col lg:flex-row gap-6 items-end">
+                                <div className="flex-1 w-full">
+                                    <label className="text-[10px] font-black text-premium-muted uppercase tracking-widest mb-2.5 block ml-1">Pilih Negeri / Kawasan</label>
+                                    <select 
+                                        value={newState} 
+                                        onChange={e => setNewState(e.target.value)} 
+                                        className="w-full text-xs font-black text-premium-primary bg-white border border-premium-border rounded-xl px-5 py-4 focus:outline-none focus:ring-4 focus:ring-premium-primary/5 transition-all appearance-none cursor-pointer hover:border-premium-primary/50 shadow-premium-sm uppercase tracking-wider"
+                                        title="Pilih Negeri"
+                                    >
+                                        {MALAYSIA_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+                                <div className="flex-[2] w-full">
+                                    <NeuInput 
+                                        label="Nama Cawangan"
+                                        value={newBranch} 
+                                        onChange={e => setNewBranch(e.target.value)} 
+                                        placeholder="Contoh: KSB BALOK" 
+                                        className="text-sm py-4" 
+                                    />
+                                </div>
+                                <NeuButton 
+                                    onClick={handleAddBranch} 
+                                    variant="primary"
+                                    className="w-full lg:w-60 h-[58px] uppercase tracking-[0.2em] text-[10px]"
+                                >
+                                    Daftar Cawangan
+                                </NeuButton>
+                            </div>
+                        </div>
+                        
+                        <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 bg-white">
+                            {Object.entries(branchesConfig).map(([state, branches]) => branches.length > 0 && (
+                                <div key={state} className="group bg-slate-50/30 border border-premium-border/50 rounded-3xl overflow-hidden hover:shadow-premium-md transition-all duration-300">
+                                    <div className="bg-white px-6 py-4 border-b border-premium-border/50 flex justify-between items-center">
+                                        <span className="text-[11px] font-black text-premium-primary uppercase tracking-widest">{state}</span>
+                                        <NeuBadge variant="stone" className="text-[9px]">{branches.length}</NeuBadge>
+                                    </div>
+                                    <div className="p-2 space-y-1">
+                                        {branches.map(b => (
+                                            <div key={b} className="flex justify-between items-center px-4 py-3 rounded-2xl hover:bg-white hover:shadow-premium-sm transition-all group/item border border-transparent hover:border-premium-border/30">
+                                                <span className="text-xs font-bold text-slate-600 group-hover/item:text-premium-primary transition-colors">{b}</span>
+                                                <button 
+                                                    onClick={() => handleDeleteBranch(state, b)} 
+                                                    className="text-red-300 hover:text-red-500 p-2 rounded-xl hover:bg-red-50 transition-all opacity-0 group-hover/item:opacity-100" 
+                                                    title="Padam Cawangan"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </NeuCard>
+                </div>
+            )}
+
+            {/* --- Login Sessions Tab --- */}
+            {activeSubTab === 'sessions' && (user.role === 'admin' || user.role === 'super_admin') && (
+                <div className="space-y-8 animate-fade-in">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3.5 bg-premium-bg rounded-2xl border border-premium-border shadow-premium-sm">
+                            <Lock className="w-8 h-8 text-premium-accent" />
+                        </div>
+                        <div>
+                            <h3 className="text-3xl font-black text-premium-primary uppercase tracking-tight">Sesi Log Masuk Aktif</h3>
+                            <p className="text-xs text-premium-muted font-bold mt-1">Kawalan keselamatan peranti tunggal</p>
+                        </div>
+                    </div>
+                    
+                    <NeuCard className="overflow-hidden p-0 border border-premium-border/50">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-50/80 border-b border-premium-border/30">
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.2em]">Pengguna</th>
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.2em]">Status Sesi</th>
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.2em]">Aktiviti Terakhir</th>
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.2em] text-right">Kawalan</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-premium-border/20">
+                                    {sessions.sort((a, b) => (b.lastSeen?.seconds || 0) - (a.lastSeen?.seconds || 0)).map(session => (
+                                        <tr key={session.id} className="hover:bg-slate-50/50 transition-colors">
+                                            <td className="p-6">
+                                                <p className="font-black text-premium-primary uppercase text-sm leading-none mb-1.5">{session.id}</p>
+                                                <p className="text-[10px] font-bold text-premium-muted tracking-tight">Device: {session.deviceId?.slice(0, 12)}...</p>
+                                            </td>
+                                            <td className="p-6">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className={`w-2 h-2 rounded-full ${Date.now() - (session.lastSeen?.seconds * 1000) < 600000 ? 'bg-luxury-gold animate-pulse' : 'bg-stone-300'}`} />
+                                                    <span className={`text-[10px] font-black uppercase tracking-widest ${Date.now() - (session.lastSeen?.seconds * 1000) < 600000 ? 'text-luxury-gold' : 'text-stone-400'}`}>
+                                                        {Date.now() - (session.lastSeen?.seconds * 1000) < 600000 ? 'DALAM TALIAN' : 'LUAR TALIAN'}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="p-6">
+                                                <p className="text-xs font-black text-stone-500">
+                                                    {session.lastSeen ? new Date(session.lastSeen.seconds * 1000).toLocaleString('ms-MY', { 
+                                                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' 
+                                                    }) : 'N/A'}
+                                                </p>
+                                            </td>
+                                            <td className="p-6 text-right">
+                                                <NeuButton 
+                                                    onClick={() => {
+                                                        if (confirm(`Tamatkan sesi untuk ${session.id}?`)) {
+                                                            alert('Fungsi Reset Sesi memerlukan akses Firebase Admin.');
+                                                        }
+                                                    }}
+                                                    variant="danger"
+                                                    className="px-5 py-2 text-[9px] uppercase tracking-widest"
+                                                >
+                                                    Tamatkan Sesi
+                                                </NeuButton>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </NeuCard>
                 </div>
             )}
 
             {/* --- Logs Management Tab --- */}
             {activeSubTab === 'logs' && (user.role === 'admin' || user.role === 'super_admin') && (
-                <div className="space-y-6">
-                    <div className="flex items-center gap-3 mb-2">
-                        <Activity className="w-5 h-5 text-purple-500" />
-                        <h3 className="text-xl font-bold text-gray-700">Master Audit Logs</h3>
+                <div className="space-y-8 animate-fade-in">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3.5 bg-stone-100 rounded-2xl border border-premium-border/30 shadow-premium-sm">
+                            <Activity className="w-8 h-8 text-premium-accent" />
+                        </div>
+                        <div>
+                            <h3 className="text-3xl font-bold text-premium-primary uppercase tracking-tight font-luxury">Log Audit Induk</h3>
+                            <p className="text-xs text-premium-muted font-bold mt-1">Jejak audit menyeluruh sistem</p>
+                        </div>
                     </div>
 
-                    <NeuCard className="overflow-x-auto p-0">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-gray-200">
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Period</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Employee</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Leave</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Reason</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {logs.map(log => (
-                                    <tr key={log.id} className="hover:bg-gray-50/50 transition-colors border-b border-gray-100/50">
-                                        <td className="p-6">
-                                            <p className="text-xs font-black text-gray-700">{log.startDate}</p>
-                                            <p className="text-[10px] text-gray-400 font-bold">to {log.endDate}</p>
-                                        </td>
-                                        <td className="p-6">
-                                            <p className="font-bold text-gray-700 text-sm">{log.staffName}</p>
-                                            {staffList.find(s => s.id === log.staffId)?.branch && (
-                                                <p className="text-[9px] font-bold text-blue-400 uppercase tracking-tight mt-1">
-                                                    {staffList.find(s => s.id === log.staffId)?.branch}
-                                                </p>
-                                            )}
-                                        </td>
-                                        <td className="p-6">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-black text-gray-700">{log.duration}d</span>
-                                                <NeuBadge variant={log.type === 'AL' ? 'blue' : 'green'}>{log.type}</NeuBadge>
-                                            </div>
-                                        </td>
-                                        <td className="p-6">
-                                            <p className="text-[10px] text-gray-500 italic truncate max-w-[150px]">{log.reason}</p>
-                                        </td>
-                                        <td className="p-6">
-                                            <NeuBadge variant={log.status === 'approved' ? 'green' : log.status === 'rejected' ? 'red' : 'yellow'}>
-                                                {log.status.replace('_', ' ')}
-                                            </NeuBadge>
-                                        </td>
-                                        <td className="p-6 text-right flex justify-end gap-2">
-                                            <button onClick={() => handlePrintForm(log)} className="p-2 text-purple-300 hover:text-purple-500 transition-colors" title="Print Official Form" aria-label="Print Official Form">
-                                                <Printer className="w-4 h-4" />
-                                            </button>
-                                            <button onClick={() => setEditingLog(log)} className="p-2 text-blue-300 hover:text-blue-500 transition-colors" title="Edit Log" aria-label="Edit Log">
-                                                <Edit3 className="w-4 h-4" />
-                                            </button>
-                                            <button onClick={() => handleDeleteLog(log.id)} className="p-2 text-red-300 hover:text-red-500 transition-colors" title="Delete Log" aria-label="Delete Log">
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </td>
+                    <NeuCard className="overflow-hidden p-0 border border-premium-border/50 shadow-premium-md">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-50/80 border-b border-premium-border/30">
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.2em]">Tempoh Cuti</th>
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.2em]">Kakitangan</th>
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.2em] text-center">Jenis / Bil</th>
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.2em]">Sebab</th>
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.2em]">Status</th>
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.2em] text-right">Tindakan</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-premium-border/20">
+                                    {logs.slice().sort((a,b) => b.timestamp - a.timestamp).map(log => (
+                                        <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
+                                            <td className="p-6">
+                                                <p className="text-xs font-black text-premium-primary">{log.startDate}</p>
+                                                <p className="text-[10px] text-premium-muted font-bold mt-0.5">hingga {log.endDate}</p>
+                                            </td>
+                                            <td className="p-6">
+                                                <p className="font-black text-premium-primary text-sm uppercase leading-none mb-1.5">{log.staffName}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <NeuBadge variant="stone" className="text-[8px] py-0 px-1.5">{log.staffId}</NeuBadge>
+                                                    {staffList.find(s => s.id === log.staffId)?.branch && (
+                                                        <span className="text-[9px] font-bold text-premium-accent uppercase tracking-tighter">
+                                                            {staffList.find(s => s.id === log.staffId)?.branch}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="p-6 text-center">
+                                                <div className="inline-flex flex-col items-center">
+                                                    <NeuBadge variant={log.type === 'AL' ? 'gold' : 'green'} className="text-[9px] mb-1">{log.type}</NeuBadge>
+                                                    <span className="text-xs font-black text-premium-primary tabular-nums">{log.duration} Hari</span>
+                                                </div>
+                                            </td>
+                                            <td className="p-6">
+                                                <p className="text-[11px] text-premium-muted font-medium italic leading-relaxed max-w-[180px]">"{log.reason}"</p>
+                                            </td>
+                                            <td className="p-6">
+                                                <NeuBadge variant={log.status === 'approved' ? 'green' : log.status === 'rejected' ? 'red' : 'yellow'} className="text-[9px]">
+                                                    {log.status.replace('_', ' ')}
+                                                </NeuBadge>
+                                            </td>
+                                            <td className="p-6 text-right">
+                                                <div className="flex justify-end gap-2 text-premium-muted">
+                                                    <button onClick={() => handlePrintForm(log)} className="p-2.5 hover:text-luxury-gold hover:bg-stone-50 rounded-xl transition-all" title="Cetak Borang">
+                                                        <Printer className="w-4 h-4" />
+                                                    </button>
+                                                    <button onClick={() => setEditingLog(log)} className="p-2.5 text-slate-400 hover:text-premium-accent hover:bg-premium-bg rounded-xl transition-all" title="Edit Log">
+                                                        <Edit3 className="w-4 h-4" />
+                                                    </button>
+                                                    <button onClick={() => handleDeleteLog(log.id)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Padam Log">
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </NeuCard>
                 </div>
             )}
             {/* --- HR Reports Tab --- */}
             {activeSubTab === 'reports' && (
-                <div className="space-y-6 animate-fade-in">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                            <FileText className="w-5 h-5 text-purple-500" />
-                            <h3 className="text-xl font-bold text-gray-700">Official Leave Reports</h3>
+                <div className="space-y-8 animate-fade-in">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3.5 bg-premium-bg rounded-2xl border border-premium-border/30 shadow-premium-sm">
+                                <FileText className="w-8 h-8 text-premium-accent" />
+                            </div>
+                            <div>
+                                <h3 className="text-3xl font-bold text-premium-primary uppercase tracking-tight font-luxury">Dokumentasi & Laporan</h3>
+                                <p className="text-xs text-premium-muted font-bold mt-1">Arkib rasmi rekod cuti kakitangan</p>
+                            </div>
                         </div>
                         <NeuButton
                             onClick={() => window.print()}
                             variant="primary"
-                            className="flex items-center gap-2 whitespace-nowrap"
+                            className="flex items-center gap-3 px-8 py-4 shadow-premium-lg bg-luxury-gold text-white"
                         >
                             <Printer className="w-4 h-4" />
-                            Generate PDF Record
+                            Cetak Laporan Rasmi (PDF)
                         </NeuButton>
                     </div>
 
-                    <NeuCard className="print:shadow-none print:border-none">
-                        <div className="hidden print:block mb-8">
-                            <div className="flex items-center gap-4 border-b-2 border-gray-100 pb-6 mb-6">
-                                <img src="/logo.jpg" alt="Logo" className="w-16 h-16 rounded-full" />
+                    <NeuCard className="print:shadow-none print:border-none p-0 overflow-hidden border border-premium-border/50">
+                        {/* Print Header */}
+                        <div className="hidden print:block p-10 bg-stone-50 border-b-2 border-stone-100">
+                            <div className="flex items-center gap-6 mb-8">
+                                <div className="w-20 h-20 bg-luxury-gold rounded-3xl flex items-center justify-center text-white text-3xl font-bold shadow-premium-md font-luxury">KSB</div>
                                 <div>
-                                    <h1 className="text-2xl font-black text-gray-800">Klinik Syed Badaruddin</h1>
-                                    <p className="text-sm text-gray-400 font-bold uppercase tracking-widest">Official HR Leave Ledger</p>
+                                    <h1 className="text-3xl font-black text-slate-800">Klinik Syed Badaruddin</h1>
+                                    <p className="text-[10px] text-stone-500 font-black uppercase tracking-[0.3em] mt-1">Sistem Pengurusan Cuti Pintar</p>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-8 text-sm mb-8">
-                                <div>
-                                    <p className="text-gray-400 font-bold uppercase text-[10px]">Report Category</p>
-                                    <p className="font-bold text-gray-700">All Classified Leave Records</p>
+                            <div className="grid grid-cols-2 gap-12 text-xs">
+                                <div className="space-y-2">
+                                    <p className="text-slate-400 font-black uppercase tracking-widest text-[9px]">Kategori Laporan</p>
+                                    <p className="font-black text-slate-700 text-sm">Semua Rekod Cuti Klasifikasi Rasmi</p>
                                 </div>
-                                <div className="text-right">
-                                    <p className="text-gray-400 font-bold uppercase text-[10px]">Generation Date</p>
-                                    <p className="font-bold text-gray-700">{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+                                <div className="text-right space-y-2">
+                                    <p className="text-slate-400 font-black uppercase tracking-widest text-[9px]">Tarikh Penjanaan</p>
+                                    <p className="font-black text-slate-700 text-sm">{new Date().toLocaleDateString('ms-MY', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
                                 </div>
                             </div>
                         </div>
 
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-gray-200">
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Period</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Employee</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Type</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Reason</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Days</th>
-                                    <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest pr-10 text-right">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {logs.sort((a, b) => b.timestamp - a.timestamp).map(log => (
-                                    <tr key={log.id} className="border-b border-gray-50/50 print:border-gray-100">
-                                        <td className="p-6">
-                                            <p className="text-xs font-black text-gray-700">{log.startDate}</p>
-                                            <p className="text-[10px] text-gray-400 font-bold">to {log.endDate}</p>
-                                        </td>
-                                        <td className="p-6">
-                                            <p className="font-bold text-gray-700 text-sm">{log.staffName}</p>
-                                            <p className="text-[10px] text-gray-400 font-bold">{log.staffId}</p>
-                                            {staffList.find(s => s.id === log.staffId)?.branch && (
-                                                <p className="text-[9px] font-bold text-blue-400 uppercase tracking-tight mt-0.5">
-                                                    {staffList.find(s => s.id === log.staffId)?.branch}
-                                                </p>
-                                            )}
-                                        </td>
-                                        <td className="p-6 text-center">
-                                            <span className={`text-[10px] font-black px-2 py-1 rounded-md ${log.type === 'AL' ? 'bg-blue-50 text-blue-500' : 'bg-green-50 text-green-500'}`}>
-                                                {log.type}
-                                            </span>
-                                        </td>
-                                        <td className="p-6 text-center">
-                                            <p className="text-[10px] text-gray-500 italic max-w-[200px] mx-auto">{log.reason}</p>
-                                        </td>
-                                        <td className="p-6 text-center font-black text-gray-700">{log.duration}</td>
-                                        <td className="p-6 text-right pr-10">
-                                            <NeuBadge variant={log.status === 'approved' ? 'green' : log.status === 'rejected' ? 'red' : 'yellow'}>
-                                                {log.status.replace('_', ' ')}
-                                            </NeuBadge>
-                                        </td>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-50 border-b border-premium-border/30">
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.15em]">Tempoh</th>
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.15em]">Nama Kakitangan</th>
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.15em] text-center">Kate</th>
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.15em] text-center">Hari</th>
+                                        <th className="p-6 text-[10px] font-black text-premium-muted uppercase tracking-[0.15em] pr-10 text-right">Status Akhir</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-premium-border/10">
+                                    {logs.slice().sort((a, b) => b.timestamp - a.timestamp).map(log => (
+                                        <tr key={log.id} className="border-b border-slate-50/50 print:border-slate-100 hover:bg-slate-50/30 transition-colors">
+                                            <td className="p-6">
+                                                <p className="text-xs font-black text-slate-700">{log.startDate}</p>
+                                                <p className="text-[10px] text-slate-400 font-bold">hingga {log.endDate}</p>
+                                            </td>
+                                            <td className="p-6">
+                                                <p className="font-black text-slate-700 text-sm uppercase">{log.staffName}</p>
+                                                <p className="text-[10px] text-slate-400 font-bold tracking-tight">{log.staffId}</p>
+                                            </td>
+                                            <td className="p-6 text-center">
+                                                <NeuBadge variant={log.type === 'AL' ? 'gold' : 'green'} className="text-[9px] font-black">{log.type}</NeuBadge>
+                                            </td>
+                                            <td className="p-6 text-center font-black text-slate-700 tabular-nums">{log.duration}</td>
+                                            <td className="p-6 text-right pr-10">
+                                                <NeuBadge variant={log.status === 'approved' ? 'green' : log.status === 'rejected' ? 'red' : 'yellow'} className="text-[9px]">
+                                                    {log.status.replace('_', ' ').toUpperCase()}
+                                                </NeuBadge>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
 
-                        <div className="hidden print:block mt-12 pt-12 border-t border-gray-100 italic text-[10px] text-gray-400 text-center">
-                            This is a computer-generated document from the Smart Leave Tracker. No signature required.
+                        <div className="hidden print:block mt-16 pt-10 border-t border-slate-100 italic text-[9px] text-slate-400 text-center tracking-widest font-bold">
+                            DOKUMEN INI DIJANA SECARA AUTOMATIK OLEH SMART LEAVE TRACKER. TIADA TANDATANGAN DIPERLUKAN.
                         </div>
                     </NeuCard>
                 </div>
             )}
 
 
-            {/* --- Login Sessions Tab --- */}
-            {activeSubTab === 'sessions' && (user.role === 'admin' || user.role === 'super_admin') && (
-                <div className="space-y-6 animate-fade-in">
-                    <div className="flex items-center gap-3 mb-2">
-                        <Shield className="w-5 h-5 text-gray-500" />
-                        <h3 className="text-xl font-bold text-gray-700">System Access Log</h3>
+            {/* --- Master Audit Tab (Super Admin Only) --- */}
+            {activeSubTab === 'audit' && user.role === 'super_admin' && (
+                <div className="space-y-8 animate-fade-in">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3.5 bg-rose-50 rounded-2xl border border-rose-100 shadow-premium-sm">
+                            <ShieldAlert className="w-8 h-8 text-rose-600" />
+                        </div>
+                        <div>
+                            <h3 className="text-3xl font-black text-premium-primary uppercase tracking-tight">Kawalan Utama Sistem</h3>
+                            <p className="text-xs text-premium-muted font-bold mt-1">Konfigurasi kritikal dan integriti data</p>
+                        </div>
                     </div>
 
-                    <NeuCard className="overflow-hidden p-0">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-gray-200 bg-gray-50/50">
-                                    <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Timestamp</th>
-                                    <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">User</th>
-                                    <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">User ID</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {sessions.map(session => (
-                                    <tr key={session.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="p-4 text-xs font-bold text-gray-500">
-                                            {new Date(session.loginTime).toLocaleString()}
-                                        </td>
-                                        <td className="p-4 font-bold text-gray-700">
-                                            {session.staffName}
-                                            {staffList.find(s => s.id === session.staffId)?.branch && (
-                                                <p className="text-[9px] font-bold text-blue-400 uppercase tracking-tight mt-0.5">
-                                                    {staffList.find(s => s.id === session.staffId)?.branch}
-                                                </p>
-                                            )}
-                                        </td>
-                                        <td className="p-4 text-xs text-gray-400 font-bold">
-                                            {session.staffId}
-                                        </td>
-                                    </tr>
-                                ))}
-                                {sessions.length === 0 && (
-                                    <tr>
-                                        <td colSpan={3} className="p-8 text-center text-gray-400 italic text-xs">
-                                            No login sessions recorded yet.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+                    <NeuCard className="p-10 border-t-4 border-t-rose-500 shadow-premium-lg">
+                        <div className="space-y-10">
+                            <div className="bg-rose-50/40 p-8 rounded-[2.5rem] border border-rose-100 shadow-inner">
+                                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
+                                    <div className="flex items-start gap-5">
+                                        <div className="mt-1 p-2 bg-rose-100 rounded-xl text-rose-600">
+                                            <AlertCircle className="w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-black text-rose-700 uppercase tracking-widest mb-2">Penetapan Semula Data Aplikasi</h4>
+                                            <p className="text-[11px] text-stone-500 font-bold leading-relaxed max-w-xl">
+                                                Tindakan ini akan memadamkan <span className="text-rose-600">SEMUA</span> rekod termasuk profil kakitangan, sejarah cuti, dan sesi log masuk. 
+                                                Data akan dikembalikan ke keadaan asal (Empty State). Tindakan ini tidak boleh dibatalkan.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    
+                                    <NeuButton
+                                        variant="danger"
+                                        onClick={async () => {
+                                            const confirmReset = window.confirm(
+                                                "⚠️ PERHATIAN: Anda akan memadam SEMUA DATA sistem secara kekal.\n\nAdakah anda benar-benar pasti?"
+                                            );
+                                            if (confirmReset) {
+                                                try {
+                                                    const { resetApplicationData } = await import('../services/firebase');
+                                                    await resetApplicationData();
+                                                    window.location.reload();
+                                                } catch (err) {
+                                                    alert("Gagal melakukan reset: " + err);
+                                                }
+                                            }
+                                        }}
+                                        className="w-full lg:w-fit px-10 py-5 text-[10px] font-black uppercase tracking-[0.25em] bg-red-600 hover:bg-red-700 shadow-red-200/50"
+                                    >
+                                        Padam Semua Rekod
+                                    </NeuButton>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <div className="p-6 bg-premium-bg rounded-3xl border border-premium-border/30 text-center hover:shadow-premium-md transition-all">
+                                    <p className="text-[9px] font-black text-premium-muted uppercase tracking-widest mb-2">Pengkalan Data</p>
+                                    <div className="flex items-center justify-center gap-2">
+                                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                                        <p className="text-xs font-black text-emerald-600">TERSAMBUNG</p>
+                                    </div>
+                                </div>
+                                <div className="p-6 bg-premium-bg rounded-3xl border border-premium-border/30 text-center hover:shadow-premium-md transition-all">
+                                    <p className="text-[9px] font-black text-premium-muted uppercase tracking-widest mb-2">WhatsApp API</p>
+                                    <div className="flex items-center justify-center gap-2">
+                                        <div className="w-2 h-2 bg-emerald-500 rounded-full" />
+                                        <p className="text-xs font-black text-emerald-600">AKTIF (FONNTE)</p>
+                                    </div>
+                                </div>
+                                <div className="p-6 bg-premium-bg rounded-3xl border border-premium-border/30 text-center hover:shadow-premium-md transition-all">
+                                    <p className="text-[9px] font-black text-premium-muted uppercase tracking-widest mb-2">Auto-Logout</p>
+                                    <p className="text-xs font-black text-premium-primary">AKTIF (10 MINIT)</p>
+                                </div>
+                                <div className="p-6 bg-premium-bg rounded-3xl border border-premium-border/30 text-center hover:shadow-premium-md transition-all">
+                                    <p className="text-[9px] font-black text-premium-muted uppercase tracking-widest mb-2">Sesi Tunggal</p>
+                                    <p className="text-xs font-black text-red-600">DIKETATKAN</p>
+                                </div>
+                            </div>
+                        </div>
                     </NeuCard>
                 </div>
             )}
-
-            {/* --- Editing Modal/Overlay --- */}
+                       {/* --- Editing Modal/Overlay --- */}
             {editingStaff && (
-                <div className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="max-w-md w-full animate-pop-in">
-                        <NeuCard className="relative">
+                <div className="fixed inset-0 bg-premium-primary/60 backdrop-blur-md flex items-center justify-center z-[100] p-4 p-y-12">
+                    <div className="max-w-4xl w-full max-h-[90vh] animate-premium-pop flex flex-col shadow-premium-2xl">
+                        <NeuCard className="relative overflow-y-auto flex-1 scroll-smooth custom-scrollbar p-10 rounded-[2.5rem] border-premium-border/50">
                             <button
                                 onClick={() => setEditingStaff(null)}
-                                className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600"
-                                title="Close Modal"
-                                aria-label="Close Modal"
+                                className="absolute top-6 right-6 p-3 text-premium-muted/50 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all z-10"
+                                title="Tutup"
                             >
-                                <ArrowLeft className="w-5 h-5" />
+                                <ArrowLeft className="w-6 h-6" />
                             </button>
 
-                            <h3 className="text-xl font-bold text-gray-700 mb-8 pt-2">Modify Employee Records</h3>
-                            <p className="text-xs font-bold text-gray-400 uppercase mb-6 flex items-center gap-2">
-                                <Shield className="w-4 h-4" /> Security Mode: Admin Override
-                            </p>
-
-                            <form onSubmit={handleUpdateStaff} className="space-y-6">
+                            <div className="flex items-center gap-4 mb-10">
+                                <div className="p-3 bg-premium-bg rounded-2xl border border-premium-border">
+                                    <UserCog className="w-8 h-8 text-premium-accent" />
+                                </div>
                                 <div>
+                                    <h3 className="text-2xl font-black text-premium-primary uppercase tracking-tight">Kemas Kini Profil Kakitangan</h3>
+                                    <p className="text-[10px] font-black text-premium-accent uppercase tracking-[0.2em] mt-1 flex items-center gap-2">
+                                        <ShieldCheck className="w-3.5 h-3.5" /> Mod Keselamatan: Admin
+                                    </p>
+                                </div>
+                            </div>
+
+                            <form onSubmit={handleUpdateStaff} className="space-y-10">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                     <NeuInput
-                                        label="Full Name"
+                                        label="Nama Penuh (Seperti Dalam Kad Pengenalan)"
                                         value={editingStaff.name}
                                         onChange={e => setEditingStaff({ ...editingStaff, name: e.target.value })}
                                         placeholder="Staff Name"
+                                        className="text-sm font-bold"
                                     />
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-premium-muted uppercase tracking-widest ml-1">Kategori Staff</label>
+                                        <select
+                                            value={editingStaff.staffType || ''}
+                                            onChange={e => setEditingStaff({ ...editingStaff, staffType: e.target.value as any })}
+                                            className="w-full bg-premium-bg border border-premium-border rounded-xl px-5 py-4 focus:outline-none focus:ring-4 focus:ring-premium-primary/5 transition-all appearance-none cursor-pointer hover:border-premium-primary/50 shadow-premium-sm text-xs font-black text-premium-primary uppercase tracking-wider"
+                                            title="Kategori Staff"
+                                        >
+                                            <option value="">-- Sila Pilih Kategori --</option>
+                                            <option value="admin_staff">Staff Admin</option>
+                                            <option value="operation_staff">Staff Operasi</option>
+                                            <option value="doctor">Doctor</option>
+                                        </select>
+                                    </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <NeuInput
-                                        label="AL Balance"
-                                        type="number"
-                                        value={editingStaff.balanceAL}
-                                        onChange={e => setEditingStaff({ ...editingStaff, balanceAL: parseInt(e.target.value) })}
-                                    />
-                                    <NeuInput
-                                        label="ML Balance"
-                                        type="number"
-                                        value={editingStaff.balanceML}
-                                        onChange={e => setEditingStaff({ ...editingStaff, balanceML: parseInt(e.target.value) })}
-                                    />
+                                <div className="bg-premium-bg/50 p-8 rounded-[2.5rem] border border-premium-border/30 shadow-inner">
+                                    <div className="flex items-center gap-3 mb-6 ml-1">
+                                        <PieChart className="w-4 h-4 text-stone-500" />
+                                        <h4 className="text-[11px] font-black text-premium-primary uppercase tracking-[0.2em]">Penyelarasan Baki Cuti Induk</h4>
+                                    </div>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                                        <NeuInput label="Annual (AL)" type="number" value={editingStaff.balanceAL} onChange={e => setEditingStaff({ ...editingStaff, balanceAL: parseInt(e.target.value) || 0 })} />
+                                        <NeuInput label="Medical (MC)" type="number" value={editingStaff.balanceMC} onChange={e => setEditingStaff({ ...editingStaff, balanceMC: parseInt(e.target.value) || 0 })} />
+                                        <NeuInput label="Hosp (HL)" type="number" value={editingStaff.balanceHL || 0} onChange={e => setEditingStaff({ ...editingStaff, balanceHL: parseInt(e.target.value) || 0 })} />
+                                        <NeuInput label="Ganti (RL)" type="number" value={editingStaff.balanceRL || 0} onChange={e => setEditingStaff({ ...editingStaff, balanceRL: parseInt(e.target.value) || 0 })} />
+                                        <NeuInput label="Annual-CF" type="number" value={editingStaff.prevYearBalance || 0} onChange={e => setEditingStaff({ ...editingStaff, prevYearBalance: parseInt(e.target.value) || 0 })} className="bg-stone-100" />
+                                        <NeuInput label="Bersalin (ML)" type="number" value={editingStaff.balanceML || 0} onChange={e => setEditingStaff({ ...editingStaff, balanceML: parseInt(e.target.value) || 0 })} />
+                                        <NeuInput label="Isteri (PL)" type="number" value={editingStaff.balancePL || 0} onChange={e => setEditingStaff({ ...editingStaff, balancePL: parseInt(e.target.value) || 0 })} />
+                                        <NeuInput label="Kecemasan (EL)" type="number" value={editingStaff.balanceEL || 0} onChange={e => setEditingStaff({ ...editingStaff, balanceEL: parseInt(e.target.value) || 0 })} />
+                                        <NeuInput label="Ihsan (BL)" type="number" value={editingStaff.balanceBL || 0} onChange={e => setEditingStaff({ ...editingStaff, balanceBL: parseInt(e.target.value) || 0 })} />
+                                        <NeuInput label="Unpaid (UL)" type="number" value={editingStaff.balanceUL || 0} onChange={e => setEditingStaff({ ...editingStaff, balanceUL: parseInt(e.target.value) || 0 })} />
+                                    </div>
                                 </div>
 
-                                <div>
-                                    <NeuInput
-                                        label="Service Start Date"
-                                        type="date"
-                                        value={editingStaff.joinDate || ''}
-                                        onChange={e => setEditingStaff({ ...editingStaff, joinDate: e.target.value })}
-                                        placeholder="YYYY-MM-DD"
-                                    />
-                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center ml-1">
+                                            <label className="text-[10px] font-black text-premium-muted uppercase tracking-widest">Tarikh Mula Khidmat</label>
+                                            {editingStaff.joinDate && (
+                                                <span className="text-[9px] font-bold text-luxury-gold uppercase bg-stone-100 px-2.5 py-1 rounded-full border border-luxury-gold/20 font-luxury">
+                                                    {calculateTenure(editingStaff.joinDate)} Tahun
+                                                </span>
+                                            )}
+                                        </div>
+                                        <NeuInput
+                                            type="date"
+                                            value={editingStaff.joinDate || ''}
+                                            onChange={e => setEditingStaff({ ...editingStaff, joinDate: e.target.value })}
+                                            className="text-xs font-bold"
+                                        />
+                                    </div>
 
-                                <div>
-                                    <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Assigned Branch</label>
-                                    <select
-                                        value={editingStaff.branch || ''}
-                                        onChange={e => setEditingStaff({ ...editingStaff, branch: e.target.value })}
-                                        className="w-full mt-1 bg-neu-base rounded-xl shadow-neu-pressed-sm px-4 py-3 outline-none focus:shadow-neu-pressed transition-all"
-                                        aria-label="Assigned Branch"
-                                        title="Assigned Branch"
-                                    >
-                                        <option value="">-- No Branch Assigned --</option>
-                                        {Object.entries(BRANCH_GROUPS).map(([site, branches]) => (
-                                            <optgroup key={site} label={site}>
-                                                {branches.map(b => (
-                                                    <option key={b} value={b}>{b}</option>
-                                                ))}
-                                            </optgroup>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black text-gray-400 uppercase ml-1">System Role</label>
-                                    <select
-                                        value={editingStaff.role}
-                                        onChange={e => setEditingStaff({ ...editingStaff, role: e.target.value as any })}
-                                        className="w-full mt-1 bg-neu-base rounded-xl shadow-neu-pressed-sm px-4 py-3 outline-none focus:shadow-neu-pressed transition-all"
-                                        aria-label="System Role"
-                                        title="System Role"
-                                    >
-                                        <option value="staff">Staff</option>
-                                        <option value="hod">HOD</option>
-                                        <option value="gm">General Manager</option>
-                                        <option value="admin">Admin</option>
-                                        <option value="super_admin">Super Admin</option>
-                                    </select>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-premium-muted uppercase tracking-widest ml-1">Penempatan Cawangan</label>
+                                        <select
+                                            value={editingStaff.branch || ''}
+                                            onChange={e => setEditingStaff({ ...editingStaff, branch: e.target.value })}
+                                            className="w-full bg-premium-bg border border-premium-border rounded-xl px-5 py-4 focus:outline-none focus:ring-4 focus:ring-premium-primary/5 transition-all appearance-none cursor-pointer hover:border-premium-primary/50 shadow-premium-sm text-xs font-black text-premium-primary uppercase tracking-wider"
+                                            title="Assigned Branch"
+                                        >
+                                            <option value="">-- Tiada Cawangan --</option>
+                                            {Object.entries(branchesConfig).map(([site, branches]) => (
+                                                <optgroup key={site} label={site}>
+                                                    {branches.map(b => (
+                                                        <option key={b} value={b}>{b}</option>
+                                                    ))}
+                                                </optgroup>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-premium-muted uppercase tracking-widest ml-1">Peranan Sistem</label>
+                                        <select
+                                            value={editingStaff.role}
+                                            onChange={e => setEditingStaff({ ...editingStaff, role: e.target.value as any })}
+                                            className="w-full bg-premium-bg border border-premium-border rounded-xl px-5 py-4 focus:outline-none focus:ring-4 focus:ring-premium-primary/5 transition-all appearance-none cursor-pointer hover:border-premium-primary/50 shadow-premium-sm text-xs font-black text-premium-primary uppercase tracking-wider"
+                                            title="System Role"
+                                        >
+                                            <option value="staff">Staff Biasa</option>
+                                            <option value="hod">Ketua Jabatan (HOD)</option>
+                                            <option value="gm">Pengurus Besar (GM)</option>
+                                            <option value="admin">Administrator</option>
+                                            <option value="super_admin">Super Admin</option>
+                                        </select>
+                                    </div>
                                 </div>
 
                                 <NeuButton
                                     type="submit"
                                     variant="primary"
-                                    className="w-full py-4 flex items-center justify-center gap-2 mt-4"
+                                    className="w-full py-5 flex items-center justify-center gap-3 mt-4 text-[11px] uppercase tracking-[0.3em] font-black shadow-premium-lg bg-luxury-gold text-white"
                                     disabled={isUpdating}
                                 >
-                                    {isUpdating ? <Activity className="w-5 h-5 animate-spin" /> : <><Save className="w-5 h-5" /> Commit Changes</>}
+                                    {isUpdating ? <Activity className="w-5 h-5 animate-spin" /> : <><Save className="w-5 h-5" /> Komit Perubahan Rekod</>}
                                 </NeuButton>
                             </form>
                         </NeuCard>
@@ -669,77 +1193,91 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
 
             {/* --- Log Editing Modal --- */}
             {editingLog && (
-                <div className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="max-w-md w-full animate-pop-in">
-                        <NeuCard className="relative">
+                <div className="fixed inset-0 bg-premium-primary/60 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                    <div className="max-w-xl w-full animate-premium-pop shadow-premium-2xl">
+                        <NeuCard className="relative p-10 rounded-[2.5rem] border-premium-border/50">
                             <button
                                 onClick={() => setEditingLog(null)}
-                                className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600"
-                                title="Close Modal"
-                                aria-label="Close Modal"
+                                className="absolute top-6 right-6 p-3 text-premium-muted/50 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"
+                                title="Tutup"
                             >
-                                <ArrowLeft className="w-5 h-5" />
+                                <ArrowLeft className="w-6 h-6" />
                             </button>
 
-                            <h3 className="text-xl font-bold text-gray-700 mb-8 pt-2">Edit Leave Application</h3>
-                            <p className="text-xs font-bold text-gray-400 uppercase mb-6 flex items-center gap-2">
-                                <Activity className="w-4 h-4" /> System Record Correction
-                            </p>
-
-                            <form onSubmit={handleUpdateLog} className="space-y-6">
+                            <div className="flex items-center gap-4 mb-10">
+                                <div className="p-3 bg-stone-100 rounded-2xl border border-premium-border/30">
+                                    <Activity className="w-8 h-8 text-premium-accent" />
+                                </div>
                                 <div>
-                                    <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Staff Member</label>
-                                    <p className="p-4 bg-gray-100 rounded-xl font-bold text-gray-500 mt-1">{editingLog.staffName}</p>
+                                    <h3 className="text-2xl font-bold text-premium-primary uppercase tracking-tight font-luxury">Penyelarasan Rekod Cuti</h3>
+                                    <p className="text-[10px] font-black text-premium-accent uppercase tracking-[0.2em] mt-1 flex items-center gap-2">
+                                        <ShieldCheck className="w-3.5 h-3.5" /> Mod Audit Sistem
+                                    </p>
+                                </div>
+                            </div>
+
+                            <form onSubmit={handleUpdateLog} className="space-y-8">
+                                <div className="bg-slate-50/50 p-6 rounded-2xl border border-premium-border/20">
+                                    <label className="text-[10px] font-black text-premium-muted uppercase tracking-widest ml-1 mb-2 block">Kakitangan Terlibat</label>
+                                    <p className="px-5 py-4 bg-white rounded-xl font-black text-premium-primary text-sm uppercase shadow-inner border border-premium-border/30">{editingLog.staffName}</p>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-2 gap-6">
                                     <NeuInput
-                                        label="Start Date"
+                                        label="Tarikh Mula"
                                         type="date"
                                         value={editingLog.startDate}
                                         onChange={e => setEditingLog({ ...editingLog, startDate: e.target.value })}
+                                        className="text-xs font-bold"
                                     />
                                     <NeuInput
-                                        label="End Date"
+                                        label="Tarikh Akhir"
                                         type="date"
                                         value={editingLog.endDate}
                                         onChange={e => setEditingLog({ ...editingLog, endDate: e.target.value })}
+                                        className="text-xs font-bold"
                                     />
                                 </div>
 
                                 <NeuTextArea
-                                    label="Reason for leave"
+                                    label="Justifikasi / Catatan Cuti"
                                     value={editingLog.reason}
                                     onChange={e => setEditingLog({ ...editingLog, reason: e.target.value })}
+                                    className="text-xs font-medium min-h-[100px]"
                                 />
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Category</label>
+                                <div className="grid grid-cols-2 gap-6">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-premium-muted uppercase tracking-widest ml-1">Kategori Cuti</label>
                                         <select
                                             value={editingLog.type}
                                             onChange={e => setEditingLog({ ...editingLog, type: e.target.value as any })}
-                                            className="w-full mt-1 bg-neu-base rounded-xl shadow-neu-pressed-sm px-4 py-3 outline-none"
-                                            aria-label="Category"
-                                            title="Category"
+                                            className="w-full bg-premium-bg border border-premium-border rounded-xl px-5 py-4 focus:outline-none focus:ring-4 focus:ring-premium-primary/5 transition-all appearance-none cursor-pointer hover:border-premium-primary/50 shadow-premium-sm text-xs font-black text-premium-primary uppercase tracking-wider"
+                                            title="Kategori"
                                         >
-                                            <option value="AL">Annual (AL)</option>
-                                            <option value="ML">Medical (ML)</option>
+                                            <option value="AL">Tahunan (AL)</option>
+                                            <option value="MC">Sakit (MC)</option>
+                                            <option value="HL">Hosp (HL)</option>
+                                            <option value="RL">Ganti (RL)</option>
+                                            <option value="ML">Bersalin (ML)</option>
+                                            <option value="PL">Isteri (PL)</option>
+                                            <option value="EL">Kecemasan (EL)</option>
+                                            <option value="BL">Ihsan (BL)</option>
+                                            <option value="UL">Tanpa Gaji (UL)</option>
                                         </select>
                                     </div>
-                                    <div>
-                                        <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Status</label>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-premium-muted uppercase tracking-widest ml-1">Status Cuti</label>
                                         <select
                                             value={editingLog.status}
                                             onChange={e => setEditingLog({ ...editingLog, status: e.target.value as any })}
-                                            className="w-full mt-1 bg-neu-base rounded-xl shadow-neu-pressed-sm px-4 py-3 outline-none"
-                                            aria-label="Status"
+                                            className="w-full bg-slate-50 border border-premium-border rounded-xl px-5 py-4 focus:outline-none focus:ring-4 focus:ring-premium-primary/5 transition-all appearance-none cursor-pointer hover:border-premium-primary/50 shadow-premium-sm text-xs font-black text-premium-primary uppercase tracking-wider"
                                             title="Status"
                                         >
-                                            <option value="pending">Pending</option>
-                                            <option value="hod_approved">HOD Approved</option>
-                                            <option value="approved">Approved</option>
-                                            <option value="rejected">Rejected</option>
+                                            <option value="pending">Menunggu (Pending)</option>
+                                            <option value="hod_approved">Disokong (HOD)</option>
+                                            <option value="approved">Diluluskan (Approved)</option>
+                                            <option value="rejected">Ditolak (Rejected)</option>
                                         </select>
                                     </div>
                                 </div>
@@ -747,10 +1285,10 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
                                 <NeuButton
                                     type="submit"
                                     variant="primary"
-                                    className="w-full py-4 flex items-center justify-center gap-2 mt-4"
+                                    className="w-full py-5 flex items-center justify-center gap-3 mt-4 text-[11px] uppercase tracking-[0.3em] font-black shadow-premium-lg bg-luxury-gold text-white"
                                     disabled={isUpdating}
                                 >
-                                    {isUpdating ? <Activity className="w-5 h-5 animate-spin" /> : <><Save className="w-5 h-5" /> Save Changes</>}
+                                    {isUpdating ? <Activity className="w-5 h-5 animate-spin" /> : <><Save className="w-5 h-5" /> Simpan Arkib</>}
                                 </NeuButton>
                             </form>
                         </NeuCard>
@@ -793,19 +1331,19 @@ export const ManagementView: React.FC<ManagementViewProps> = ({ user, staffList,
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-5 h-5 border-2 border-black flex items-center justify-center">
-                                {printingLog.type === 'Paid' && <div className="w-3 h-3 bg-black"></div>}
+                                {(printingLog.type === 'HL' || printingLog.type === 'RL' || printingLog.type === 'PL' || printingLog.type === 'ML') && <div className="w-3 h-3 bg-black"></div>}
                             </div>
                             Cuti Berbayar
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-5 h-5 border-2 border-black flex items-center justify-center">
-                                {printingLog.type === 'Compassionate' && <div className="w-3 h-3 bg-black"></div>}
+                                {printingLog.type === 'BL' && <div className="w-3 h-3 bg-black"></div>}
                             </div>
                             Cuti Ehsan
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-5 h-5 border-2 border-black flex items-center justify-center">
-                                {printingLog.type === 'Unpaid' && <div className="w-3 h-3 bg-black"></div>}
+                                {printingLog.type === 'UL' && <div className="w-3 h-3 bg-black"></div>}
                             </div>
                             Tanpa Gaji
                         </div>

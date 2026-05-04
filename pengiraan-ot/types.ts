@@ -5,14 +5,9 @@ export interface Staff {
   email?: string; // Email for notifications (mandatory in UI)
   phone?: string;
   balanceAL: number; // Annual Leave
-  balanceMC: number; // Medical Leave (Sakit)
+  balanceMC: number; // Medical Leave
   balanceHL?: number; // Hospitalization Leave
-  balanceRL?: number; // Replacement Leave (Ganti)
-  balanceML?: number; // Maternity Leave (Bersalin)
-  balancePL?: number; // Paternity Leave (Isteri Bersalin)
-  balanceEL?: number; // Emergency Leave (Kecemasan)
-  balanceBL?: number; // Bereavement/Compassionate Leave (Ihsan)
-  balanceUL?: number; // Unpaid Leave (Tanpa Gaji)
+  balanceRL?: number; // Replacement Leave
   password?: string;
   role?: 'admin' | 'staff' | 'hod' | 'gm' | 'hr' | 'super_admin';
   address?: string;
@@ -22,11 +17,6 @@ export interface Staff {
   entitlementMC?: number;
   entitlementHL?: number;
   entitlementRL?: number;
-  entitlementML?: number;
-  entitlementPL?: number;
-  entitlementEL?: number;
-  entitlementBL?: number;
-  entitlementUL?: number;
   branch?: string;
   active?: boolean;
   prevYearBalance?: number;
@@ -44,8 +34,7 @@ export const PAHANG_BRANCHES = [
   "Klinik Syed Badaruddin Gebeng",
   "Klinik Syed Badaruddin Kempadang",
   "Uni Klinik Bentong",
-  "Klinik Syed Badaruddin MCKIP",
-  "Klinik Syed Badaruddin RPCM"
+  "Klinik Syed Badaruddin MCKIP"
 ];
 
 export const TERENGGANU_BRANCHES = [
@@ -53,25 +42,6 @@ export const TERENGGANU_BRANCHES = [
   "Klinik Syed Badaruddin Paka",
   "Klinik Rakyat dan X-Ray Dungun",
   "Klinik Syed Badaruddin Utama"
-];
-
-export const MALAYSIA_STATES = [
-  "Johor",
-  "Kedah",
-  "Kelantan",
-  "Melaka",
-  "Negeri Sembilan",
-  "Pahang",
-  "Perak",
-  "Perlis",
-  "Pulau Pinang",
-  "Sabah",
-  "Sarawak",
-  "Selangor",
-  "Terengganu",
-  "Wilayah Persekutuan Kuala Lumpur",
-  "Wilayah Persekutuan Labuan",
-  "Wilayah Persekutuan Putrajaya"
 ];
 
 export const BRANCH_GROUPS = {
@@ -83,15 +53,6 @@ export const BRANCHES = [
   ...PAHANG_BRANCHES,
   ...TERENGGANU_BRANCHES
 ];
-
-export interface PublicHoliday {
-  id: string;
-  date: string;     // YYYY-MM-DD
-  name: string;     // e.g. "Hari Raya Aidilfitri"
-  days: number;     // number of days for display
-  site?: 'Pahang' | 'Terengganu' | 'Both'; // which branch applies
-  year: number;     // e.g. 2026
-}
 
 export type LeaveStatus = 'pending' | 'hod_approved' | 'hr_approved' | 'approved' | 'rejected';
 

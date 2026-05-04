@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Lock, User, Activity, AlertCircle, MapPin, ArrowLeft, Building2 } from 'lucide-react';
-import { NeuCard, NeuButton, NeuInput } from './NeuElements';
-import { registerStaff } from '../services/firebase';
-import { Staff, BRANCHES, BRANCH_GROUPS } from '../types';
+import { Lock, User, Activity, AlertCircle, MapPin, ArrowLeft, Building2, Mail, ShieldCheck } from 'lucide-react';
+import { NeuCard, NeuButton, NeuInput, NeuTextArea } from './NeuElements';
+import { registerStaff, subscribeToBranches } from '../services/firebase';
+import { validateRegistration } from '../services/validation';
+import { Staff } from '../types';
 
 interface RegistrationPageProps {
     onRegister: (user: Staff) => void;
@@ -12,26 +13,47 @@ interface RegistrationPageProps {
 export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onRegister, onBack }) => {
     const [ic, setIc] = useState('');
     const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
     const [address, setAddress] = useState('');
-    const [branch, setBranch] = useState(BRANCHES[0]);
+    const [branch, setBranch] = useState('');
     const [joinDate, setJoinDate] = useState(''); // Empty to force user selection
     const [staffType, setStaffType] = useState<'admin_staff' | 'operation_staff' | 'doctor'>('operation_staff');
     const [gender, setGender] = useState<'male' | 'female'>('male');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [branchConfig, setBranchConfig] = useState<Record<string, string[]>>({});
+
+    React.useEffect(() => {
+        return subscribeToBranches((config) => {
+            setBranchConfig(config);
+            setBranch(prev => {
+                const allBranches = Object.values(config).flat();
+                if (!prev || !allBranches.includes(prev)) {
+                    return allBranches.length > 0 ? allBranches[0] : '';
+                }
+                return prev;
+            });
+        });
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!ic || !name || !address || !password || !branch || !joinDate) return;
-
-        setLoading(true);
         setError(null);
 
+        const sanitizedIc = ic.replace(/-/g, '').trim();
+
+        const regError = validateRegistration(name, sanitizedIc, password);
+        if (regError) { setError(regError); return; }
+        if (!email || !address || !branch || !joinDate) return;
+
+        setLoading(true);
+
         try {
-            const sanitizedIc = ic.replace(/-/g, '').trim();
-            const user = await registerStaff(sanitizedIc, name, address, password, branch, joinDate, staffType, gender);
-            onRegister(user);
+            const user = await registerStaff(sanitizedIc, name.trim(), address, password, branch, joinDate, staffType, gender);
+            // Save email separately
+            await import('../services/firebase').then(m => m.updateStaffData(sanitizedIc, { email }));
+            onRegister({ ...user, email });
         } catch (err: any) {
             setError(err.message || 'Registration failed. Please try again.');
         } finally {
@@ -40,224 +62,204 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onRegister, 
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-[#e0e5ec] p-4 text-gray-700">
-            <div className="w-full max-w-md">
-                <div className="text-center mb-10 relative">
-                    <button
-                        onClick={onBack}
-                        className="absolute left-0 top-1/2 -translate-y-1/2 p-3 bg-neu-base rounded-full shadow-neu-flat hover:shadow-neu-pressed transition-all duration-300 transform active:scale-90"
-                        title="Go Back"
-                        aria-label="Go Back"
-                    >
-                        <ArrowLeft className="w-5 h-5 text-gray-500" />
-                    </button>
+        <div className="min-h-screen py-12 px-4 flex items-center justify-center">
+            <div className="w-full max-w-2xl animate-fade-in">
+                {/* Navigation Back */}
+                <button
+                    onClick={onBack}
+                    className="mb-8 flex items-center gap-2 text-premium-muted hover:text-premium-accent transition-colors font-black uppercase tracking-[0.3em] text-[10px]"
+                >
+                    <ArrowLeft className="w-4 h-4" />
+                    Kembali Ke Arkib
+                </button>
 
-                    <div className="inline-block p-4 bg-neu-base rounded-full shadow-neu-flat mb-4">
-                        <img src="/logo.jpg" alt="Logo" className="w-16 h-16 rounded-full object-cover" />
+                <div className="text-center mb-12">
+                    <div className="flex justify-center items-center gap-4 mb-8">
+                        <div className="h-0.5 w-12 bg-luxury-gold/20"></div>
+                        <div className="p-3 bg-white rounded-3xl shadow-premium-md border border-premium-border/50">
+                            <ShieldCheck className="w-6 h-6 text-premium-accent" />
+                        </div>
+                        <div className="h-0.5 w-12 bg-luxury-gold/20"></div>
                     </div>
-                    <h1 className="text-4xl font-extrabold tracking-tight">Klinik Syed Badaruddin</h1>
-                    <p className="text-gray-500 mt-2 font-medium">Leave Tracking System</p>
+                    
+                    <h1 className="text-4xl font-black tracking-tight text-premium-primary font-luxury uppercase mb-3">
+                        Pendaftaran <span className="text-premium-accent">Ahli Baru</span>
+                    </h1>
+                    <p className="text-xs text-premium-muted font-bold uppercase tracking-[0.4em]">Sertai Keluarga Klinik Syed Badaruddin</p>
                 </div>
 
-                <NeuCard className="p-8">
-                    <h2 className="text-xl font-bold mb-8 text-center uppercase tracking-widest text-gray-500">Registration</h2>
-
-                    <form onSubmit={handleSubmit} className="space-y-6">
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
-                            <div className="relative">
-                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                                    <User className="w-5 h-5" />
-                                </div>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. John Doe"
+                <NeuCard className="p-10 bg-white/80 backdrop-blur-3xl border-white/50 shadow-premium-lg">
+                    <form onSubmit={handleSubmit} className="space-y-10">
+                        {/* Personal Information Section */}
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-3 border-b border-premium-border/50 pb-4">
+                                <User className="w-4 h-4 text-premium-accent" />
+                                <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-premium-primary">Maklumat Peribadi</h3>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <NeuInput 
+                                    label="Nama Penuh (Seperti Dalam IC)"
+                                    placeholder="Contoh: AHMAD BIN ALI"
                                     value={name}
                                     onChange={(e) => {
-                                        const newName = e.target.value;
+                                        const newName = e.target.value.toUpperCase();
                                         setName(newName);
-                                        // Auto-detect gender: BIN -> Male, else -> Female
-                                        const upper = newName.toUpperCase().split(/\s+/);
-                                        if (upper.includes('BIN')) {
-                                            setGender('male');
-                                        } else {
-                                            // Only flip to female if they've typed enough to potentially have 'BIN'
-                                            // or just follow the rule strictly.
-                                            setGender('female');
-                                        }
+                                        if (newName.includes('BIN')) setGender('male');
+                                        else if (newName.includes('BINTI')) setGender('female');
                                     }}
-                                    className="w-full bg-neu-base rounded-[16px] shadow-neu-pressed-sm px-12 py-4 outline-none focus:shadow-neu-pressed transition-all duration-300"
                                     required
                                 />
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">IC Number</label>
-                            <div className="relative">
-                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-lg leading-none">#</div>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. 611021065069 (No Hyphens)"
+                                <NeuInput 
+                                    label="Nombor Kad Pengenalan"
+                                    placeholder="900101065069"
                                     value={ic}
                                     onChange={(e) => setIc(e.target.value)}
-                                    className="w-full bg-neu-base rounded-[16px] shadow-neu-pressed-sm px-12 py-4 outline-none focus:shadow-neu-pressed transition-all duration-300 font-mono"
+                                    maxLength={14}
                                     required
                                 />
                             </div>
-                        </div>
 
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Residential Address</label>
-                            <div className="relative">
-                                <div className="absolute left-4 top-4 text-gray-400">
-                                    <MapPin className="w-5 h-5" />
-                                </div>
-                                <textarea
-                                    placeholder="Street, City, Postcode"
-                                    value={address}
-                                    onChange={(e) => setAddress(e.target.value)}
-                                    className="w-full bg-neu-base rounded-[16px] shadow-neu-pressed-sm px-12 py-4 outline-none focus:shadow-neu-pressed transition-all duration-300 min-h-[100px] resize-none"
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <NeuInput 
+                                    label="Email Rasmi"
+                                    type="email"
+                                    placeholder="ahmad@ksb.com"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
                                     required
                                 />
-                            </div>
-                        </div>
-
-
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Branch</label>
-                            <div className="relative">
-                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                                    <Building2 className="w-5 h-5" />
-                                </div>
-                                <select
-                                    value={branch}
-                                    onChange={(e) => setBranch(e.target.value)}
-                                    className="w-full bg-neu-base rounded-[16px] shadow-neu-pressed-sm px-12 py-4 outline-none focus:shadow-neu-pressed transition-all duration-300 appearance-none cursor-pointer"
-                                    required
-                                    aria-label="Select Branch"
-                                    title="Select Branch"
-                                >
-                                    {Object.entries(BRANCH_GROUPS).map(([site, branches]) => (
-                                        <optgroup key={site} label={site}>
-                                            {branches.map(b => (
-                                                <option key={b} value={b}>{b}</option>
-                                            ))}
-                                        </optgroup>
-                                    ))}
-                                </select>
-                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
-                                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
+                                <div className="space-y-2">
+                                    <label className="ml-1 text-[11px] font-black text-premium-muted uppercase tracking-[0.2em]">Jantina</label>
+                                    <div className="flex gap-3 h-[58px]">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setGender('male')}
+                                            className={`flex-1 rounded-2xl border transition-all duration-300 text-[10px] font-black uppercase tracking-widest ${gender === 'male' ? 'bg-premium-primary text-white border-premium-primary shadow-premium-md' : 'bg-white text-premium-muted border-premium-border hover:bg-premium-bg'}`}
+                                        >
+                                            Lelaki
+                                        </button>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setGender('female')}
+                                            className={`flex-1 rounded-2xl border transition-all duration-300 text-[10px] font-black uppercase tracking-widest ${gender === 'female' ? 'bg-premium-primary text-white border-premium-primary shadow-premium-md' : 'bg-white text-premium-muted border-premium-border hover:bg-premium-bg'}`}
+                                        >
+                                            Perempuan
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
+
+                            <NeuTextArea 
+                                label="Alamat Kediaman"
+                                placeholder="No 123, Jalan Mewah, 25000 Kuantan, Pahang"
+                                value={address}
+                                onChange={(e) => setAddress(e.target.value)}
+                                required
+                            />
                         </div>
 
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Kategori Staff</label>
-                            <div className="relative">
-                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                                    <User className="w-5 h-5" />
-                                </div>
-                                <select
-                                    value={staffType}
-                                    onChange={(e) => setStaffType(e.target.value as any)}
-                                    className="w-full bg-neu-base rounded-[16px] shadow-neu-pressed-sm px-12 py-4 outline-none focus:shadow-neu-pressed transition-all duration-300 appearance-none cursor-pointer"
-                                    required
-                                    aria-label="Select Kategori Staff"
-                                    title="Select Kategori Staff"
-                                >
-                                    <option value="operation_staff">Staff Operasi (Operation Staff)</option>
-                                    <option value="admin_staff">Staff Pentadbiran (Admin Staff)</option>
-                                    <option value="doctor">Doktor (Doctor)</option>
-                                </select>
-                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
-                                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
-                                </div>
+                        {/* Professional Information Section */}
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-3 border-b border-premium-border/50 pb-4">
+                                <Building2 className="w-4 h-4 text-premium-accent" />
+                                <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-premium-primary">Maklumat Perjawatan</h3>
                             </div>
-                        </div>
-                        
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Jantina (Gender)</label>
-                            <div className="flex gap-4">
-                                <NeuButton 
-                                    type="button" 
-                                    onClick={() => setGender('male')} 
-                                    active={gender === 'male'}
-                                    className="flex-1 py-3 text-xs font-bold"
-                                >
-                                    LELAKI (MALE)
-                                </NeuButton>
-                                <NeuButton 
-                                    type="button" 
-                                    onClick={() => setGender('female')} 
-                                    active={gender === 'female'}
-                                    className="flex-1 py-3 text-xs font-bold"
-                                >
-                                    PEREMPUAN (FEMALE)
-                                </NeuButton>
-                            </div>
-                        </div>
 
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Date Joined</label>
-                            <div className="relative">
-                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                                    <Activity className="w-5 h-5" />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="ml-1 text-[11px] font-black text-premium-muted uppercase tracking-[0.2em]">Cawangan Bertugas</label>
+                                    <select
+                                        value={branch}
+                                        onChange={(e) => setBranch(e.target.value)}
+                                        className="w-full bg-white rounded-2xl border border-premium-border px-5 py-4 text-sm font-medium text-premium-primary focus:outline-none focus:ring-4 focus:ring-premium-accent/5 focus:border-premium-accent transition-all appearance-none cursor-pointer"
+                                        title="Pilih Cawangan"
+                                        required
+                                    >
+                                        <option value="" disabled>Pilih Cawangan</option>
+                                        {Object.entries(branchConfig).map(([site, branches]) => branches.length > 0 && (
+                                            <optgroup key={site} label={site.toUpperCase()} className="font-black text-[10px] tracking-widest">
+                                                {branches.map(b => (
+                                                    <option key={b} value={b}>{b}</option>
+                                                ))}
+                                            </optgroup>
+                                        ))}
+                                    </select>
                                 </div>
-                                <input
+
+                                <div className="space-y-2">
+                                    <label className="ml-1 text-[11px] font-black text-premium-muted uppercase tracking-[0.2em]">Kategori Perjawatan</label>
+                                    <select
+                                        value={staffType}
+                                        onChange={(e) => setStaffType(e.target.value as any)}
+                                        className="w-full bg-white rounded-2xl border border-premium-border px-5 py-4 text-sm font-medium text-premium-primary focus:outline-none focus:ring-4 focus:ring-premium-accent/5 focus:border-premium-accent transition-all appearance-none cursor-pointer"
+                                        title="Kategori Staff"
+                                        required
+                                    >
+                                        <option value="operation_staff">STAFF OPERASI</option>
+                                        <option value="admin_staff">STAFF PENTADBIRAN</option>
+                                        <option value="doctor">DOKTOR RASMI</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <NeuInput 
+                                    label="Tarikh Mula Berkhidmat"
                                     type="date"
                                     value={joinDate}
                                     onChange={(e) => setJoinDate(e.target.value)}
-                                    className="w-full bg-neu-base rounded-[16px] shadow-neu-pressed-sm px-12 py-4 outline-none focus:shadow-neu-pressed transition-all duration-300"
                                     required
-                                    title="Date Joined"
-                                    aria-label="Date Joined"
                                 />
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Password</label>
-                            <div className="relative">
-                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                                    <Lock className="w-5 h-5" />
-                                </div>
-                                <input
+                                <NeuInput 
+                                    label="Kata Laluan Keselamatan"
                                     type="password"
                                     placeholder="••••••••"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full bg-neu-base rounded-[16px] shadow-neu-pressed-sm px-12 py-4 outline-none focus:shadow-neu-pressed transition-all duration-300"
                                     required
                                 />
                             </div>
                         </div>
 
                         {error && (
-                            <div className="flex items-center gap-2 p-4 bg-red-100/50 text-red-600 rounded-xl text-sm font-bold animate-shake">
+                            <div className="flex items-center gap-3 p-5 bg-red-50 text-red-600 rounded-[1.5rem] text-[11px] font-black uppercase tracking-wider border border-red-100 animate-shake shadow-premium-sm">
                                 <AlertCircle className="w-5 h-5 shrink-0" />
                                 {error}
                             </div>
                         )}
 
-                        <NeuButton
-                            type="submit"
-                            variant="primary"
-                            className="w-full py-4 text-lg font-bold uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 mt-4"
-                            disabled={loading}
-                        >
-                            {loading ? (
-                                <Activity className="w-6 h-6 animate-spin" />
-                            ) : (
-                                'Create Account'
-                            )}
-                        </NeuButton>
+                        <div className="pt-4">
+                            <NeuButton
+                                type="submit"
+                                variant="gold"
+                                className="w-full py-5 text-sm font-black uppercase tracking-[0.4em] rounded-[1.5rem] shadow-luxury-gold/20 flex items-center justify-center gap-4"
+                                disabled={loading}
+                            >
+                                {loading ? (
+                                    <Activity className="w-6 h-6 animate-spin" />
+                                ) : (
+                                    <>
+                                        Daftar Keahlian Rasmi
+                                        <ShieldCheck className="w-5 h-5" />
+                                    </>
+                                )}
+                            </NeuButton>
+                            <p className="text-center mt-6 text-[9px] font-bold text-premium-muted uppercase tracking-widest leading-relaxed">
+                                Dengan mendaftar, anda bersetuju dengan segala <br /> terma dan syarat pengurusan data Klinik Syed Badaruddin.
+                            </p>
+                        </div>
                     </form>
                 </NeuCard>
 
-                <p className="mt-8 text-center text-xs text-gray-400 font-bold uppercase tracking-widest">
-                    Secure Profile Management
-                </p>
+                {/* Footer Brand */}
+                <div className="text-center mt-12 space-y-4">
+                    <div className="flex items-center justify-center gap-3">
+                        <div className="w-8 h-[1px] bg-premium-border"></div>
+                        <p className="text-[10px] font-black text-premium-muted uppercase tracking-[0.2em]">KSB Luxury System v2.0</p>
+                        <div className="w-8 h-[1px] bg-premium-border"></div>
+                    </div>
+                </div>
             </div>
         </div>
     );

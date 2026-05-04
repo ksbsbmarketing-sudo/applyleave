@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
-import { Lock, User, Activity, AlertCircle } from 'lucide-react';
+import { Lock, User, Activity, AlertCircle, Shield } from 'lucide-react';
 import { NeuCard, NeuButton, NeuInput } from './NeuElements';
 import { loginStaff } from '../services/firebase';
+import { validateIC } from '../services/validation';
 import { Staff } from '../types';
 
 interface LoginPageProps {
     onLogin: (user: Staff) => void;
     onGoToRegister: () => void;
+    sessionMessage?: string | null;
+    onClearMessage?: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onGoToRegister }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onGoToRegister, sessionMessage, onClearMessage }) => {
     const [ic, setIc] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -24,6 +27,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onGoToRegister })
 
         try {
             const sanitizedIc = ic.replace(/-/g, '').trim();
+
+            const icError = validateIC(sanitizedIc);
+            if (icError) { setError(icError); setLoading(false); return; }
+
             const user = await loginStaff(sanitizedIc, password);
             onLogin(user);
         } catch (err: any) {
@@ -34,100 +41,106 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onGoToRegister })
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-[#e0e5ec] p-4 text-gray-700">
-            <div className="w-full max-w-md">
-                <div className="text-center mb-10">
-                    <div className="inline-block p-4 bg-neu-base rounded-full shadow-neu-flat mb-4">
-                        <img src="/logo.jpg" alt="Logo" className="w-16 h-16 rounded-full object-cover" />
+        <div className="min-h-screen flex items-center justify-center p-4">
+            <div className="w-full max-w-md animate-float">
+                {/* Brand Header */}
+                <div className="text-center mb-12">
+                    <div className="flex justify-center items-center gap-6 mb-10 scale-90 md:scale-100">
+                        <div className="relative group">
+                            <div className="absolute -inset-1 bg-luxury-gold rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+                            <div className="relative p-1.5 bg-white rounded-full shadow-premium-md w-24 h-24 flex items-center justify-center overflow-hidden border border-premium-border/50">
+                                <img src="/logo-ksb.jpg" alt="KSB" className="w-full h-full object-cover" />
+                            </div>
+                        </div>
                     </div>
-                    <h1 className="text-4xl font-extrabold tracking-tight">Klinik Syed Badaruddin</h1>
-                    <p className="text-gray-500 mt-2 font-medium">Leave Tracking System</p>
+                    
+                    <h1 className="text-4xl md:text-5xl font-black tracking-tight text-premium-primary mb-3 font-luxury">
+                        KSB <span className="text-premium-accent">Smart</span> Leave
+                    </h1>
+                    
+                    <div className="flex items-center justify-center gap-4">
+                        <div className="h-[1px] w-12 bg-luxury-gold/30"></div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.4em] text-premium-muted">
+                            Internal Luxury Management
+                        </p>
+                        <div className="h-[1px] w-12 bg-luxury-gold/30"></div>
+                    </div>
                 </div>
 
-                <NeuCard className="p-8">
-                    <h2 className="text-xl font-bold mb-8 text-center uppercase tracking-widest text-gray-500">Secure access</h2>
+                {sessionMessage && (
+                    <div className="mb-6 flex items-start gap-3 p-4 bg-amber-50 text-amber-700 rounded-2xl text-[11px] font-bold border border-amber-200">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span className="flex-1">{sessionMessage}</span>
+                        <button onClick={onClearMessage} className="shrink-0 text-amber-400 hover:text-amber-600 transition-colors text-sm font-black leading-none">×</button>
+                    </div>
+                )}
+
+                <NeuCard className="p-10 bg-white/70 backdrop-blur-2xl border-white/50 shadow-premium-lg">
+                    <div className="flex items-center justify-center gap-2 mb-10">
+                        <Shield className="w-4 h-4 text-premium-accent" />
+                        <h2 className="text-xs font-black uppercase tracking-[0.4em] text-premium-accent">Secure Gateway</h2>
+                    </div>
 
                     <form onSubmit={handleSubmit} className="space-y-8">
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Staff IC Number</label>
-                            <div className="relative">
-                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                                    <User className="w-5 h-5" />
-                                </div>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. 611021065069 (No Hyphens)"
-                                    value={ic}
-                                    onChange={(e) => setIc(e.target.value)}
-                                    className="w-full bg-neu-base rounded-[16px] shadow-neu-pressed-sm px-12 py-4 outline-none focus:shadow-neu-pressed transition-all duration-300"
-                                    required
-                                />
-                            </div>
-                        </div>
+                        <NeuInput 
+                            label="Staff Identity (IC)"
+                            placeholder="611021065069"
+                            value={ic}
+                            onChange={(e) => setIc(e.target.value)}
+                            required
+                        />
 
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Password</label>
-                            <div className="relative">
-                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                                    <Lock className="w-5 h-5" />
-                                </div>
-                                <input
-                                    type="password"
-                                    placeholder="••••••••"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full bg-neu-base rounded-[16px] shadow-neu-pressed-sm px-12 py-4 outline-none focus:shadow-neu-pressed transition-all duration-300"
-                                    required
-                                />
-                            </div>
-                        </div>
+                        <NeuInput 
+                            label="Security Password"
+                            type="password"
+                            placeholder="••••••••"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required
+                        />
 
                         {error && (
-                            <div className="flex items-center gap-2 p-4 bg-red-100/50 text-red-600 rounded-xl text-sm font-bold animate-shake">
-                                <AlertCircle className="w-5 h-5 shrink-0" />
+                            <div className="flex items-center gap-3 p-4 bg-red-50 text-red-600 rounded-2xl text-[11px] font-black uppercase tracking-wider border border-red-100 animate-shake">
+                                <AlertCircle className="w-4 h-4 shrink-0" />
                                 {error}
                             </div>
                         )}
 
                         <NeuButton
                             type="submit"
-                            variant="primary"
-                            className="w-full py-4 text-lg font-bold uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3"
+                            variant="gold"
+                            className="w-full py-5 text-sm font-black uppercase tracking-[0.3em] rounded-2xl shadow-luxury-gold/20"
                             disabled={loading}
                         >
                             {loading ? (
                                 <Activity className="w-6 h-6 animate-spin" />
                             ) : (
-                                'Authenticate'
+                                'Proceed to Dashboard'
                             )}
                         </NeuButton>
                     </form>
 
-                    <div className="mt-8 text-center space-y-4">
+                    <div className="mt-10 text-center">
                         <button
                             onClick={onGoToRegister}
-                            className="text-xs font-black text-blue-500 uppercase tracking-widest hover:underline"
+                            className="text-[10px] font-black text-premium-muted uppercase tracking-widest hover:text-premium-accent transition-colors"
                         >
-                            New here? Register Now
+                            New membership? <span className="text-premium-accent border-b border-premium-accent/30 pb-0.5">Register Here</span>
                         </button>
                     </div>
                 </NeuCard>
 
-                <p className="mt-10 text-center text-xs text-gray-400 font-bold uppercase tracking-widest">
-                    Powered by Gemini & Firebase
-                </p>
-                <div className="mt-4 text-center">
-                    <button
-                        onClick={() => {
-                            if (window.confirm("Are you sure you want to completely reset all data? This will clear all staff, logs, and sessions.")) {
-                                localStorage.clear();
-                                window.location.reload();
-                            }
-                        }}
-                        className="text-[10px] text-red-300 hover:text-red-500 uppercase tracking-widest font-black transition-colors"
-                    >
-                        [ Reset Application Data ]
-                    </button>
+                {/* Footer */}
+                <div className="text-center mt-12 space-y-3">
+                    <p className="text-[10px] font-black text-premium-muted uppercase tracking-[0.2em]">
+                        © 2026 Klinik Syed Badaruddin
+                    </p>
+                    <div className="flex items-center justify-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-luxury-gold animate-pulse"></div>
+                        <p className="text-[9px] font-bold text-premium-muted italic">
+                            Crafted by <span className="not-italic text-premium-primary">Kembara Senja</span>
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>

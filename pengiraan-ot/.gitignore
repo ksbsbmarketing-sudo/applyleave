@@ -22,11 +22,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-# Firebase CLI artifacts
-.firebase/
-sites.txt
-
-# Temp/backup files
-*.broken
-*.head

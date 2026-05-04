@@ -18,11 +18,9 @@ import {
   addDoc
 } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
-import { Staff, LeaveLog, LeaveStatus, OvertimeLog, PublicHoliday, PAHANG_BRANCHES, TERENGGANU_BRANCHES, BRANCH_GROUPS } from '../types';
+import { Staff, LeaveLog, LeaveStatus, OvertimeLog, PAHANG_BRANCHES, TERENGGANU_BRANCHES } from '../types';
 import { notifyHOD, notifyAdmin, notifyApplicant, notifyHODRejected } from './emailService';
 import { waNotifyHOD, waNotifyAdmin, waNotifyApplicant, waNotifyApplicantHODApproved } from './whatsappService';
-import { hashPassword, verifyPassword } from './crypto';
-import { validateLeaveApplication } from './validation';
 
 
 const isDemo = !import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY === "AIzaSyDummyKey";
@@ -53,7 +51,6 @@ const BASE_PATH = `artifacts/${APP_ID}/public/data`;
 const STAFF_COLLECTION = `${BASE_PATH}/staff_records`;
 const LOGS_COLLECTION = `${BASE_PATH}/logs`;
 const SESSIONS_COLLECTION = `${BASE_PATH}/sessions`;
-const HOLIDAYS_COLLECTION = `${BASE_PATH}/public_holidays`;
 
 // ── Detect public IP of the connecting device ─────────────
 // Uses ipapi.co (free, no key needed, 1000 req/day)
@@ -85,18 +82,13 @@ class MockStore {
   private logs: LeaveLog[] = [];
   private sessions: any[] = [];
   private overtime: OvertimeLog[] = [];
-  private holidays: PublicHoliday[] = [];
-  private branchConfig: Record<string, string[]> = {};
   private staffListeners: ((staff: Staff[]) => void)[] = [];
   private logsListeners: ((logs: LeaveLog[]) => void)[] = [];
   private sessionsListeners: ((sessions: any[]) => void)[] = [];
   private overtimeListeners: ((overtime: OvertimeLog[]) => void)[] = [];
-  private holidaysListeners: ((holidays: PublicHoliday[]) => void)[] = [];
-  private branchListeners: ((config: Record<string, string[]>) => void)[] = [];
 
   constructor() {
     this.load();
-    this.runTaxonomyMigration();
   }
 
   getGenderFromName(name: string): 'male' | 'female' {
@@ -110,72 +102,11 @@ class MockStore {
       const l = localStorage.getItem('neuhr_logs');
       const ses = localStorage.getItem('neuhr_sessions');
       const ot = localStorage.getItem('neuhr_overtime');
-      const hol = localStorage.getItem('neuhr_holidays');
-      const br = localStorage.getItem('neuhr_branches');
       if (s) this.staff = JSON.parse(s);
       if (l) this.logs = JSON.parse(l);
       if (ses) this.sessions = JSON.parse(ses);
       if (ot) this.overtime = JSON.parse(ot);
-      if (hol) this.holidays = JSON.parse(hol);
-      if (br) {
-        this.branchConfig = JSON.parse(br);
-      } else {
-        this.branchConfig = { "Pahang": BRANCH_GROUPS["Pahang Site"], "Terengganu": BRANCH_GROUPS["Terengganu Site"] };
-      }
     } catch (e) { console.error("Mock load error", e); }
-  }
-
-  private runTaxonomyMigration() {
-    const isMigrated = localStorage.getItem('neuhr_taxonomy_migrated_v1');
-    if (isMigrated) return;
-
-    let changed = false;
-
-    this.staff.forEach(s => {
-      // @ts-ignore
-      if (s.balanceML !== undefined) {
-         // @ts-ignore
-         s.balanceMC = s.balanceML;
-         // @ts-ignore
-         delete s.balanceML;
-         changed = true;
-      }
-      // @ts-ignore
-      if (s.entitlementML !== undefined) {
-         // @ts-ignore
-         s.entitlementMC = s.entitlementML;
-         // @ts-ignore
-         delete s.entitlementML;
-         changed = true;
-      }
-
-      if (s.balanceHL === undefined) { s.balanceHL = 0; changed = true; }
-      if (s.balanceRL === undefined) { s.balanceRL = 0; changed = true; }
-    });
-
-    this.logs.forEach(log => {
-      // @ts-ignore
-      if (log.type === 'Compassionate') { log.type = 'BL'; changed = true; }
-      // @ts-ignore
-      else if (log.type === 'Emergency') { log.type = 'EL'; changed = true; }
-      // @ts-ignore
-      else if (log.type === 'Unpaid') { log.type = 'UL'; changed = true; }
-      // @ts-ignore
-      else if (log.type === 'Paternity') { 
-        const st = this.staff.find(s => s.id === log.staffId);
-        log.type = st?.gender === 'female' ? 'ML' : 'PL';
-        changed = true; 
-      }
-      // @ts-ignore
-      else if (log.type === 'ML') { 
-        log.type = 'MC'; 
-        changed = true; 
-      }
-    });
-
-    if (changed) this.save();
-    localStorage.setItem('neuhr_taxonomy_migrated_v1', 'true');
-    console.log("Taxonomy Migration Completed.");
   }
 
   private save() {
@@ -183,8 +114,6 @@ class MockStore {
     localStorage.setItem('neuhr_logs', JSON.stringify(this.logs));
     localStorage.setItem('neuhr_sessions', JSON.stringify(this.sessions));
     localStorage.setItem('neuhr_overtime', JSON.stringify(this.overtime));
-    localStorage.setItem('neuhr_holidays', JSON.stringify(this.holidays));
-    localStorage.setItem('neuhr_branches', JSON.stringify(this.branchConfig));
     this.notify();
   }
 
@@ -193,8 +122,6 @@ class MockStore {
     this.logsListeners.forEach(cb => cb([...this.logs].sort((a, b) => b.timestamp - a.timestamp)));
     this.sessionsListeners.forEach(cb => cb([...this.sessions].sort((a, b) => b.loginTime - a.loginTime)));
     this.overtimeListeners.forEach(cb => cb([...this.overtime].sort((a, b) => b.timestamp - a.timestamp)));
-    this.holidaysListeners.forEach(cb => cb([...this.holidays].sort((a, b) => a.date.localeCompare(b.date))));
-    this.branchListeners.forEach(cb => cb({ ...this.branchConfig }));
   }
 
   subscribeStaff(cb: (staff: Staff[]) => void) {
@@ -219,55 +146,6 @@ class MockStore {
     this.overtimeListeners.push(cb);
     cb([...this.overtime].sort((a, b) => b.timestamp - a.timestamp));
     return () => { this.overtimeListeners = this.overtimeListeners.filter(l => l !== cb); };
-  }
-
-  subscribeHolidays(cb: (holidays: PublicHoliday[]) => void) {
-    this.holidaysListeners.push(cb);
-    cb([...this.holidays].sort((a, b) => a.date.localeCompare(b.date)));
-    return () => { this.holidaysListeners = this.holidaysListeners.filter(l => l !== cb); };
-  }
-
-  subscribeBranches(cb: (config: Record<string, string[]>) => void) {
-    this.branchListeners.push(cb);
-    cb({ ...this.branchConfig });
-    return () => { this.branchListeners = this.branchListeners.filter(l => l !== cb); };
-  }
-
-  getBranchesSync() {
-    return { ...this.branchConfig };
-  }
-
-  addBranch(state: string, branchName: string) {
-    if (!this.branchConfig[state]) this.branchConfig[state] = [];
-    if (!this.branchConfig[state].includes(branchName)) {
-      this.branchConfig[state] = [...this.branchConfig[state], branchName].sort();
-      this.save();
-    }
-  }
-
-  deleteBranch(state: string, branchName: string) {
-    if (this.branchConfig[state]) {
-      this.branchConfig[state] = this.branchConfig[state].filter(b => b !== branchName);
-      this.save();
-    }
-  }
-
-  async addHoliday(holiday: Omit<PublicHoliday, 'id'>) {
-    const newHoliday: PublicHoliday = { ...holiday, id: crypto.randomUUID() };
-    this.holidays.push(newHoliday);
-    this.save();
-    return newHoliday;
-  }
-
-  async updateHoliday(id: string, update: Partial<PublicHoliday>) {
-    const idx = this.holidays.findIndex(h => h.id === id);
-    if (idx !== -1) this.holidays[idx] = { ...this.holidays[idx], ...update };
-    this.save();
-  }
-
-  async deleteHoliday(id: string) {
-    this.holidays = this.holidays.filter(h => h.id !== id);
-    this.save();
   }
 
 
@@ -316,14 +194,12 @@ class MockStore {
 
       const index = this.staff.findIndex(s => s.id === sanitizedNewItem.id);
       if (index === -1) {
-        // Hash password before storing new staff
-        const hashed = await hashPassword(sanitizedNewItem.password ?? '');
-        this.staff.push({ ...sanitizedNewItem, password: hashed });
+        this.staff.push(sanitizedNewItem);
         changed = true;
       } else {
-        // Update existing staff if properties changed, but preserve their existing password
+        // Update existing staff if properties changed (e.g. department added)
         const current = this.staff[index];
-        const updated = { ...current, ...sanitizedNewItem, password: current.password };
+        const updated = { ...current, ...sanitizedNewItem }; // Merge new seed data over old data
 
         if (JSON.stringify(current) !== JSON.stringify(updated)) {
           this.staff[index] = updated;
@@ -419,12 +295,12 @@ class MockStore {
       }
     }
 
-    // AL/EL Check (Split to Unpaid if insufficient)
+    // Pro-rated AL Check (For AL and Emergency)
     if (type === 'AL' || type === 'EL') {
-      const available = staff.balanceAL;
-      if (duration > available) {
-        const alDays = available;
-        const unpaidDays = duration - available;
+      const proRatedAvailable = calculateProRatedALForStaff(staff, this.logs);
+      if (duration > proRatedAvailable) {
+        const alDays = proRatedAvailable;
+        const unpaidDays = duration - proRatedAvailable;
 
         if (alDays > 0) {
           this.logs.push({
@@ -442,15 +318,8 @@ class MockStore {
       }
     }
 
-    let balance = 999;
-    if (type === 'AL' || type === 'EL') balance = staff.balanceAL;
-    else if (type === 'CME') balance = 5;
-    else if (type === 'HL') balance = staff.balanceHL ?? 0;
-    else if (type === 'RL') balance = staff.balanceRL ?? 0;
-
-    if (balance < duration && (type === 'AL' || type === 'EL' || type === 'HL' || type === 'RL')) {
-      throw new Error(`Insufficient ${type} balance`);
-    }
+    const balance = type === 'AL' || type === 'EL' ? staff.balanceAL : (type === 'CME' ? 5 : 999);
+    if (balance < duration && (type === 'AL' || type === 'EL')) throw new Error(`Insufficient ${type} balance`);
 
 
     const log: LeaveLog = {
@@ -510,176 +379,65 @@ class MockStore {
     if (logIndex === -1) throw new Error("Log not found");
     const log = { ...this.logs[logIndex] };
 
-    if (role === 'hr') {
-      // ── HR is a full final approver for ALL branches ──────────────────────
-      // HR effectively replaces Admin for routine final approvals.
-      const applicantStaff = this.staff.find(s => s.id === log.staffId);
-      const approver = this.staff.find(s => s.id === approverId);
-
-      log.status = 'approved';
+    if (role === 'hod' || role === 'hr') {
+      // HR = pengganti HOD — kedua-duanya menghasilkan status yang sama
+      log.status = 'hod_approved';
       log.hodApprovedBy = approverId;
       log.hodApprovedTime = Date.now();
-      log.gmApprovedBy = approverId; // Marks as fully finalised, removes from Admin queue
-      log.gmApprovedTime = Date.now();
-
-      // Deduct balance
-      const staffIndex = this.staff.findIndex(s => s.id === log.staffId);
-      if (staffIndex !== -1) {
-        const staff = { ...this.staff[staffIndex] };
-        if (log.type === 'AL' || log.type === 'EL') staff.balanceAL -= log.duration;
-        else if (log.type === 'MC') staff.balanceMC -= log.duration;
-        else if (log.type === 'HL' && staff.balanceHL !== undefined) staff.balanceHL -= log.duration;
-        else if (log.type === 'RL' && staff.balanceRL !== undefined) staff.balanceRL -= log.duration;
-        this.staff[staffIndex] = staff;
+      if (locumData) {
+        log.locumDoctor = locumData.locumDoctor;
+        log.locumDate = locumData.locumDate;
+        log.locumBranch = locumData.locumBranch;
+        log.locumStartTime = locumData.locumStartTime;
+        log.locumEndTime = locumData.locumEndTime;
       }
 
-      // Notify applicant — approved by HR
-      if (applicantStaff?.email) {
-        notifyApplicant({
-          applicantEmail: applicantStaff.email,
-          applicantName: applicantStaff.name,
-          leaveType: log.type,
-          duration: log.duration,
-          startDate: log.startDate,
-          endDate: log.endDate,
-          status: 'approved',
-          approvedBy: approver?.name ?? approverId,
-        }).catch(console.error);
-      }
-      if (applicantStaff?.phone) {
-        waNotifyApplicant({
-          applicantPhone: applicantStaff.phone,
-          applicantWaKey: applicantStaff.waApiKey,
-          applicantName: applicantStaff.name,
-          leaveType: log.type,
-          duration: log.duration,
-          startDate: log.startDate,
-          endDate: log.endDate,
-          status: 'approved',
-          approvedBy: approver?.name ?? approverId,
-          remainingBalance: (log.type === 'AL' || log.type === 'EL') ? applicantStaff.balanceAL : (log.type === 'MC' ? applicantStaff.balanceMC : (log.type === 'HL' ? applicantStaff.balanceHL : (log.type === 'RL' ? applicantStaff.balanceRL : undefined)))
-        }).catch(console.error);
-      }
-
-    } else if (role === 'hod') {
-      const applicantStaff = this.staff.find(s => s.id === log.staffId);
-      const isBalok = applicantStaff?.branch?.toLowerCase().includes('balok');
+      // ━ Email + WhatsApp: Notify ALL admins / super_admin about HOD approval
       const approver = this.staff.find(s => s.id === approverId);
-
-      if (!isBalok) {
-        // --- NON-BALOK BRANCH (Full Bypass to Approved) ---
-        log.status = 'approved';
-        log.hodApprovedBy = approverId;
-        log.hodApprovedTime = Date.now();
-        // Set gm (admin) approved to essentially bypass Admin queue
-        log.gmApprovedBy = approverId;
-        log.gmApprovedTime = Date.now();
-
-        if (locumData) {
-          log.locumDoctor = locumData.locumDoctor;
-          log.locumDate = locumData.locumDate;
-          log.locumBranch = locumData.locumBranch;
-          log.locumStartTime = locumData.locumStartTime;
-          log.locumEndTime = locumData.locumEndTime;
-        }
-
-        // Deduct balance on final approval
-        const staffIndex = this.staff.findIndex(s => s.id === log.staffId);
-        if (staffIndex !== -1) {
-          const staff = { ...this.staff[staffIndex] };
-          if (log.type === 'AL' || log.type === 'EL') staff.balanceAL -= log.duration;
-          else if (log.type === 'MC') staff.balanceMC -= log.duration;
-          else if (log.type === 'HL' && staff.balanceHL !== undefined) staff.balanceHL -= log.duration;
-          else if (log.type === 'RL' && staff.balanceRL !== undefined) staff.balanceRL -= log.duration;
-          this.staff[staffIndex] = staff;
-        }
-
-        // Notify Applicant — leave finally approved
-        if (applicantStaff?.email) {
-          notifyApplicant({
-            applicantEmail: applicantStaff.email,
-            applicantName: applicantStaff.name,
-            leaveType: log.type,
-            duration: log.duration,
-            startDate: log.startDate,
-            endDate: log.endDate,
-            status: 'approved',
-            approvedBy: approver?.name ?? approverId,
-          }).catch(console.error);
-        }
-        if (applicantStaff?.phone) {
-          waNotifyApplicant({
-            applicantPhone: applicantStaff.phone,
-            applicantWaKey: applicantStaff.waApiKey,
-            applicantName: applicantStaff.name,
-            leaveType: log.type,
-            duration: log.duration,
-            startDate: log.startDate,
-            endDate: log.endDate,
-            status: 'approved',
-            approvedBy: approver?.name ?? approverId,
-            remainingBalance: (log.type === 'AL' || log.type === 'EL') ? applicantStaff.balanceAL : (log.type === 'MC' ? applicantStaff.balanceMC : (log.type === 'HL' ? applicantStaff.balanceHL : (log.type === 'RL' ? applicantStaff.balanceRL : undefined)))
-          }).catch(console.error);
-        }
-
-      } else {
-        // --- BALOK BRANCH (Requires normal Admin final approval) ---
-        log.status = 'hod_approved';
-        log.hodApprovedBy = approverId;
-        log.hodApprovedTime = Date.now();
-        if (locumData) {
-          log.locumDoctor = locumData.locumDoctor;
-          log.locumDate = locumData.locumDate;
-          log.locumBranch = locumData.locumBranch;
-          log.locumStartTime = locumData.locumStartTime;
-          log.locumEndTime = locumData.locumEndTime;
-        }
-
-        // Notify ALL admins / super_admin about HOD approval
-        const admins = this.staff.filter(s =>
-          (s.role === 'admin' || s.role === 'super_admin')
-        );
-        admins.forEach(admin => {
-          if (admin.email) {
-            notifyAdmin({
-              adminEmail: admin.email,
-              adminName: admin.name,
-              applicantName: log.staffName,
-              leaveType: log.type,
-              duration: log.duration,
-              startDate: log.startDate,
-              endDate: log.endDate,
-              hodName: approver?.name ?? approverId,
-              branch: applicantStaff?.branch ?? '-',
-            }).catch(console.error);
-          }
-          if (admin.phone) {
-            waNotifyAdmin({
-              adminPhone: admin.phone,
-              adminName: admin.name,
-              applicantName: log.staffName,
-              leaveType: log.type,
-              duration: log.duration,
-              startDate: log.startDate,
-              endDate: log.endDate,
-              hodName: approver?.name ?? approverId,
-              branch: applicantStaff?.branch ?? '-',
-            }).catch(console.error);
-          }
-        });
-
-        // Notify APPLICANT bahawa HOD sudah lulus (tunggu Admin)
-        if (applicantStaff?.phone) {
-          waNotifyApplicantHODApproved({
-            applicantPhone: applicantStaff.phone,
-            applicantName: applicantStaff.name,
+      const applicantStaff = this.staff.find(s => s.id === log.staffId);
+      const admins = this.staff.filter(s =>
+        (s.role === 'admin' || s.role === 'super_admin')
+      );
+      admins.forEach(admin => {
+        if (admin.email) {
+          notifyAdmin({
+            adminEmail: admin.email,
+            adminName: admin.name,
+            applicantName: log.staffName,
             leaveType: log.type,
             duration: log.duration,
             startDate: log.startDate,
             endDate: log.endDate,
             hodName: approver?.name ?? approverId,
+            branch: applicantStaff?.branch ?? '-',
           }).catch(console.error);
         }
+        if (admin.phone) {
+          waNotifyAdmin({
+            adminPhone: admin.phone,
+            adminName: admin.name,
+            applicantName: log.staffName,
+            leaveType: log.type,
+            duration: log.duration,
+            startDate: log.startDate,
+            endDate: log.endDate,
+            hodName: approver?.name ?? approverId,
+            branch: applicantStaff?.branch ?? '-',
+          }).catch(console.error);
+        }
+      });
+
+      // ━ BARU: Juga notify APPLICANT bahawa HOD sudah lulus (tunggu Admin)
+      if (applicantStaff?.phone) {
+        waNotifyApplicantHODApproved({
+          applicantPhone: applicantStaff.phone,
+          applicantName: applicantStaff.name,
+          leaveType: log.type,
+          duration: log.duration,
+          startDate: log.startDate,
+          endDate: log.endDate,
+          hodName: approver?.name ?? approverId,
+        }).catch(console.error);
       }
 
     } else if (role === 'gm' || role === 'admin' || role === 'super_admin') {
@@ -694,8 +452,6 @@ class MockStore {
         const staff = { ...this.staff[staffIndex] };
         if (log.type === 'AL' || log.type === 'EL') staff.balanceAL -= log.duration;
         else if (log.type === 'MC') staff.balanceMC -= log.duration;
-        else if (log.type === 'HL' && staff.balanceHL !== undefined) staff.balanceHL -= log.duration;
-        else if (log.type === 'RL' && staff.balanceRL !== undefined) staff.balanceRL -= log.duration;
         this.staff[staffIndex] = staff;
       }
 
@@ -725,7 +481,7 @@ class MockStore {
           endDate: log.endDate,
           status: 'approved',
           approvedBy: approver?.name ?? approverId,
-          remainingBalance: (log.type === 'AL' || log.type === 'EL') ? applicant.balanceAL : (log.type === 'MC' ? applicant.balanceMC : (log.type === 'HL' ? applicant.balanceHL : (log.type === 'RL' ? applicant.balanceRL : undefined)))
+          remainingBalance: (log.type === 'AL' || log.type === 'EL') ? applicant.balanceAL : (log.type === 'MC' ? applicant.balanceMC : undefined)
         }).catch(console.error);
       }
     }
@@ -807,8 +563,6 @@ class MockStore {
         const staff = this.staff[staffIdx];
         if (oldLog.type === 'AL' || oldLog.type === 'EL') staff.balanceAL += oldLog.duration;
         else if (oldLog.type === 'MC') staff.balanceMC += oldLog.duration;
-        else if (oldLog.type === 'HL' && staff.balanceHL !== undefined) staff.balanceHL += oldLog.duration;
-        else if (oldLog.type === 'RL' && staff.balanceRL !== undefined) staff.balanceRL += oldLog.duration;
         this.staff[staffIdx] = staff;
       }
 
@@ -832,8 +586,6 @@ class MockStore {
         const staff = this.staff[staffIdx];
         if (log.type === 'AL' || log.type === 'EL') staff.balanceAL += log.duration;
         else if (log.type === 'MC') staff.balanceMC += log.duration;
-        else if (log.type === 'HL' && staff.balanceHL !== undefined) staff.balanceHL += log.duration;
-        else if (log.type === 'RL' && staff.balanceRL !== undefined) staff.balanceRL += log.duration;
         this.staff[staffIdx] = staff;
       }
     }
@@ -845,13 +597,11 @@ class MockStore {
   async login(ic: string, password: string) {
     const staff = this.staff.find(s => s.ic === ic);
     if (!staff) throw new Error("Staff not found");
+    if (staff.password && staff.password !== password) throw new Error("Invalid password");
 
-    if (staff.password) {
-      const valid = await verifyPassword(password, staff.password);
-      if (!valid) throw new Error("Invalid password");
-    }
-
+    // Get IP (non-blocking — fallback to N/A)
     const ip = await getClientIP();
+
     const sessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
     const session = {
       id: Math.random().toString(36).substr(2, 9),
@@ -861,15 +611,11 @@ class MockStore {
       ipAddress: ip,
       device: navigator.userAgent,
     };
-
+    
+    // Update staff with current session ID
     const staffIdx = this.staff.findIndex(s => s.id === staff.id);
     if (staffIdx !== -1) {
-      const updates: Partial<Staff> = { sessionId };
-      // Upgrade legacy plaintext password to hashed on first successful login
-      if (staff.password && !staff.password.startsWith('pbkdf2:')) {
-        updates.password = await hashPassword(password);
-      }
-      this.staff[staffIdx] = { ...this.staff[staffIdx], ...updates };
+      this.staff[staffIdx] = { ...this.staff[staffIdx], sessionId };
     }
 
     this.sessions.push(session);
@@ -1055,8 +801,8 @@ export const seedInitialData = async () => {
 
       if (!existingData) {
         const ref = doc(db, STAFF_COLLECTION, staff.id);
-        const hashedPw = await hashPassword(staff.password ?? '');
-        currentBatch.set(ref, { ...staff, gender: calculatedGender, password: hashedPw });
+        staff.gender = calculatedGender;
+        currentBatch.set(ref, staff);
         operationCount++;
       } else {
         const updates: any = {};
@@ -1133,8 +879,9 @@ export const submitLeaveApplication = async (
   hodId?: string,
   attachmentUrl?: string
 ): Promise<{ success: boolean; message?: string; error?: string }> => {
-  const validationError = validateLeaveApplication({ staffId, staffName, type, duration, startDate, endDate, reason, attachmentUrl });
-  if (validationError) return { success: false, error: validationError };
+  if (type === 'BL' && !attachmentUrl) {
+    return { success: false, error: "Sila muat naik surat kematian sebagai bukti untuk Cuti Ehsan." };
+  }
 
   if (isDemo || !db) {
     try { return await mockStore.submitLeave(staffId, staffName, type, duration, startDate, endDate, reason, dutyHandover, hodId, attachmentUrl); }
@@ -1216,21 +963,18 @@ export const submitLeaveApplication = async (
       const hodSnap = await getDoc(hodRef);
       if (hodSnap.exists()) {
         const hod = hodSnap.data() as Staff;
-        const notifParams = {
-          hodName: hod.name,
-          applicantName: staffName,
-          leaveType: type,
-          duration,
-          startDate,
-          endDate,
-          reason,
-          branch: staff.branch ?? '-',
-        };
-        if (hod.email) {
-          notifyHOD({ hodEmail: hod.email, ...notifParams }).catch(console.error);
-        }
         if (hod.phone) {
-          waNotifyHOD({ hodPhone: hod.phone, ...notifParams }).catch(console.error);
+          waNotifyHOD({
+            hodPhone: hod.phone,
+            hodName: hod.name,
+            applicantName: staffName,
+            leaveType: type,
+            duration,
+            startDate,
+            endDate,
+            reason,
+            branch: staff.branch ?? '-',
+          }).catch(console.error);
         }
       }
     }
@@ -1288,17 +1032,11 @@ export const calculateProRatedALForStaff = (staff: Staff, logs: LeaveLog[]) => {
 
 
 export const calculateEntitlement = (staff: Staff) => {
-  if (staff.entitlementAL !== undefined && staff.entitlementAL !== null && staff.entitlementAL > 0) return Number(staff.entitlementAL);
-  
-  // Specific Senior Doctor Rule (25 Days)
-  const seniorDoctorNames = ['DR ZAINAL BIN SULIAN', 'DR ROHANA BINTI MOHD ZAIN', 'DR ABDUL WAHID BIN MOHAMMAD WAZIR'];
-  const staffName = (staff.name || '').toUpperCase().trim();
-  if (seniorDoctorNames.includes(staffName)) return 25;
-
+  if (staff.entitlementAL !== undefined && staff.entitlementAL !== null) return Number(staff.entitlementAL);
   const { years } = calculateYearsOfService(staff.joinDate || new Date().toISOString());
-  if (years < 1) return 14; // Safer fallback than 0
-  if (years < 2) return 14;
-  if (years < 5) return 16;
+  if (years < 1) return 0;
+  if (years < 2) return 8;
+  if (years < 5) return 12;
 
   // 5+ Years: Pahang = 20, Terengganu = 16
   const staffBranch = (staff.branch || '').trim();
@@ -1382,58 +1120,49 @@ export const approveLeave = async (logId: string, role: 'hod' | 'hr' | 'gm' | 'a
         const approver = approverSnap.data() as Staff;
 
         if (role === 'hod' || role === 'hr') {
-            const hodName = approver?.name || 'HOD/HR';
+            // Admin notification
             const adminsSnap = await getDocs(query(collection(db, STAFF_COLLECTION), where("role", "in", ["admin", "super_admin"])));
-            adminsSnap.docs.forEach(adminDoc => {
-                const admin = adminDoc.data() as Staff;
-                const adminParams = {
-                    adminName: admin.name,
-                    applicantName: finalLog.staffName,
+            adminsSnap.docs.forEach(doc => {
+                const admin = doc.data() as Staff;
+                if (admin.phone) {
+                    waNotifyAdmin({
+                        adminPhone: admin.phone,
+                        adminName: admin.name,
+                        applicantName: finalLog.staffName,
+                        leaveType: finalLog.type,
+                        duration: finalLog.duration,
+                        startDate: finalLog.startDate,
+                        endDate: finalLog.endDate,
+                        hodName: approver?.name || 'HOD/HR',
+                        branch: applicant?.branch || '-'
+                    }).catch(console.error);
+                }
+            });
+            // Applicant notification
+            if (applicant?.phone) {
+                waNotifyApplicantHODApproved({
+                    applicantPhone: applicant.phone,
+                    applicantName: applicant.name,
                     leaveType: finalLog.type,
                     duration: finalLog.duration,
                     startDate: finalLog.startDate,
                     endDate: finalLog.endDate,
-                    hodName,
-                    branch: applicant?.branch || '-',
-                };
-                if (admin.email) {
-                    notifyAdmin({ adminEmail: admin.email, ...adminParams }).catch(console.error);
-                }
-                if (admin.phone) {
-                    waNotifyAdmin({ adminPhone: admin.phone, ...adminParams }).catch(console.error);
-                }
-            });
-            // Notify applicant that HOD approved — waiting for admin
-            const hodApprovedParams = {
-                applicantName: applicant.name,
-                leaveType: finalLog.type,
-                duration: finalLog.duration,
-                startDate: finalLog.startDate,
-                endDate: finalLog.endDate,
-                hodName,
-            };
-            if (applicant?.phone) {
-                waNotifyApplicantHODApproved({ applicantPhone: applicant.phone, ...hodApprovedParams }).catch(console.error);
+                    hodName: approver?.name || 'HOD/HR'
+                }).catch(console.error);
             }
         } else if (role === 'admin' || role === 'super_admin' || role === 'gm') {
-            const approvedBy = approver?.name || 'Admin';
-            const remainingBalance = (finalLog.type === 'AL' || finalLog.type === 'EL')
-                ? applicant.balanceAL
-                : finalLog.type === 'MC' ? applicant.balanceMC : undefined;
-            const approvedParams = {
-                applicantName: applicant.name,
-                leaveType: finalLog.type,
-                duration: finalLog.duration,
-                startDate: finalLog.startDate,
-                endDate: finalLog.endDate,
-                status: 'approved' as const,
-                approvedBy,
-            };
-            if (applicant?.email) {
-                notifyApplicant({ applicantEmail: applicant.email, ...approvedParams }).catch(console.error);
-            }
             if (applicant?.phone) {
-                waNotifyApplicant({ applicantPhone: applicant.phone, ...approvedParams, remainingBalance }).catch(console.error);
+                waNotifyApplicant({
+                    applicantPhone: applicant.phone,
+                    applicantName: applicant.name,
+                    leaveType: finalLog.type,
+                    duration: finalLog.duration,
+                    startDate: finalLog.startDate,
+                    endDate: finalLog.endDate,
+                    status: 'approved',
+                    approvedBy: approver?.name || 'Admin',
+                    remainingBalance: (finalLog.type === 'AL' || finalLog.type === 'EL') ? applicant.balanceAL : (finalLog.type === 'MC' ? applicant.balanceMC : undefined)
+                }).catch(console.error);
             }
         }
     }
@@ -1456,21 +1185,18 @@ export const rejectLeave = async (logId: string, reason: string) => {
       const applicantSnap = await getDoc(doc(db, STAFF_COLLECTION, log.staffId));
       if (applicantSnap.exists()) {
           const applicant = applicantSnap.data() as Staff;
-          const rejectedParams = {
-              applicantName: applicant.name,
-              leaveType: log.type,
-              duration: log.duration,
-              startDate: log.startDate,
-              endDate: log.endDate,
-              status: 'rejected' as const,
-              approvedBy: 'Admin',
-              rejectionReason: reason,
-          };
-          if (applicant.email) {
-              notifyApplicant({ applicantEmail: applicant.email, ...rejectedParams }).catch(console.error);
-          }
           if (applicant.phone) {
-              waNotifyApplicant({ applicantPhone: applicant.phone, ...rejectedParams }).catch(console.error);
+              waNotifyApplicant({
+                  applicantPhone: applicant.phone,
+                  applicantName: applicant.name,
+                  leaveType: log.type,
+                  duration: log.duration,
+                  startDate: log.startDate,
+                  endDate: log.endDate,
+                  status: 'rejected',
+                  approvedBy: 'Admin',
+                  rejectionReason: reason
+              }).catch(console.error);
           }
       }
   }
@@ -1483,8 +1209,7 @@ export const updateStaffData = async (staffId: string, updates: Partial<Staff>) 
 
   const batch = writeBatch(db);
   const staffRef = doc(db, STAFF_COLLECTION, staffId);
-  const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([_, v]) => v !== undefined));
-  batch.update(staffRef, cleanUpdates);
+  batch.update(staffRef, updates);
 
   if (updates.name) {
     // Update related logs
@@ -1618,48 +1343,18 @@ export const recalculateAllBalances = async (): Promise<{ fixed: number; errors:
     let fixed = 0;
 
     for (const staff of allStaff) {
-      const entAL = staff.entitlementAL ?? calculateEntitlement(staff);
-      const entMC = staff.entitlementMC ?? 14;
-      const entHL = staff.entitlementHL ?? 60;
-      const entML = staff.entitlementML ?? (staff.gender === 'female' ? 98 : 0);
-      const entPL = staff.entitlementPL ?? (staff.gender === 'male' ? 7 : 0);
-      const entRL = staff.entitlementRL ?? 0;
-      const entEL = staff.entitlementEL ?? 0;
-      const entBL = staff.entitlementBL ?? 0;
-      const entUL = staff.entitlementUL ?? 0;
-
-      const carryFwd = staff.prevYearBalance ?? 0;
+      const entAL = staff.entitlementAL ?? 14;
+      const entML = (staff as any).entitlementMC ?? 14;
+      const carryFwd = (staff as any).prevYearBalance ?? 0;
 
       const usedAL = alUsed[staff.id] || 0;
-      const usedMC = mlUsed[staff.id] || 0;
+      const usedML = mlUsed[staff.id] || 0;
 
       const newBalanceAL = Math.max(0, entAL + carryFwd - usedAL);
-      const newBalanceMC = Math.max(0, entMC - usedMC);
+      const newBalanceML = Math.max(0, entML - usedML);
 
       const staffRef = doc(db, STAFF_COLLECTION, staff.id);
-      
-      const updatePayload: Partial<Staff> = { 
-        entitlementAL: entAL,
-        entitlementMC: entMC,
-        entitlementHL: entHL,
-        entitlementML: entML,
-        entitlementPL: entPL,
-        entitlementRL: entRL,
-        entitlementEL: entEL,
-        entitlementBL: entBL,
-        entitlementUL: entUL,
-        balanceAL: newBalanceAL, 
-        balanceMC: newBalanceMC,
-        balanceHL: staff.balanceHL ?? entHL,
-        balanceML: staff.balanceML ?? entML,
-        balancePL: staff.balancePL ?? entPL,
-        balanceRL: staff.balanceRL ?? entRL,
-        balanceEL: staff.balanceEL ?? entEL,
-        balanceBL: staff.balanceBL ?? entBL,
-        balanceUL: staff.balanceUL ?? entUL,
-      };
-
-      batch.update(staffRef, updatePayload);
+      batch.update(staffRef, { balanceAL: newBalanceAL, balanceMC: newBalanceML });
       opCount++;
       fixed++;
 
@@ -1730,37 +1425,13 @@ export const resetForNewYear = async (): Promise<{ deletedLogs: number; resetSta
 
     for (const d of staffSnap.docs) {
       const s = d.data() as Staff;
-      const entAL = s.entitlementAL ?? calculateEntitlement(s);
-      const entMC = s.entitlementMC ?? 14;
-      const entHL = s.entitlementHL ?? 60;
-      const entML = s.entitlementML ?? (s.gender === 'female' ? 98 : 0);
-      const entPL = s.entitlementPL ?? (s.gender === 'male' ? 7 : 0);
-      const entRL = s.entitlementRL ?? 0;
-      const entEL = s.entitlementEL ?? 0;
-      const entBL = s.entitlementBL ?? 0;
-      const entUL = s.entitlementUL ?? 0;
-
-      const carryFwd = s.prevYearBalance ?? 0;
+      const entAL = s.entitlementAL ?? 14;
+      const entML = (s as any).entitlementMC ?? 14;
+      const carryFwd = (s as any).prevYearBalance ?? 0;
 
       staffBatch.update(d.ref, {
-        entitlementAL: entAL,
-        entitlementMC: entMC,
-        entitlementHL: entHL,
-        entitlementML: entML,
-        entitlementPL: entPL,
-        entitlementRL: entRL,
-        entitlementEL: entEL,
-        entitlementBL: entBL,
-        entitlementUL: entUL,
         balanceAL: entAL + carryFwd,
-        balanceMC: entMC,
-        balanceHL: entHL,
-        balanceML: entML,
-        balancePL: entPL,
-        balanceRL: entRL,
-        balanceEL: entEL,
-        balanceBL: entBL,
-        balanceUL: entUL,
+        balanceMC: entML,
       });
       staffOps++;
       resetStaff++;
@@ -1780,39 +1451,6 @@ export const resetForNewYear = async (): Promise<{ deletedLogs: number; resetSta
   }
 };
 
-/**
- * Resets ALL application data. 
- * This is the ultimate "Reset System Cache" requested by the Super Admin.
- */
-export const resetApplicationData = async (): Promise<void> => {
-  if (isDemo || !db) {
-    localStorage.clear();
-    return;
-  }
-
-  try {
-    const collections = [STAFF_COLLECTION, LOGS_COLLECTION, SESSIONS_COLLECTION, OVERTIME_COLLECTION, HOLIDAYS_COLLECTION];
-    for (const colName of collections) {
-      const snap = await getDocs(collection(db, colName));
-      let batch = writeBatch(db);
-      let ops = 0;
-      for (const d of snap.docs) {
-        batch.delete(d.ref);
-        ops++;
-        if (ops >= 400) {
-          await batch.commit();
-          batch = writeBatch(db);
-          ops = 0;
-        }
-      }
-      if (ops > 0) await batch.commit();
-    }
-  } catch (e) {
-    console.error('[resetApplicationData] Error:', e);
-    throw e;
-  }
-};
-
 export const loginStaff = async (ic: string, password: string): Promise<Staff> => {
   if (isDemo || !db) return await mockStore.login(ic, password);
 
@@ -1822,23 +1460,15 @@ export const loginStaff = async (ic: string, password: string): Promise<Staff> =
   if (snap.empty) throw new Error("Staff not found");
 
   const data = snap.docs[0].data() as Staff;
+  if (data.password && data.password !== password) throw new Error("Invalid password");
 
-  if (data.password) {
-    const valid = await verifyPassword(password, data.password);
-    if (!valid) throw new Error("Invalid password");
-  }
-
+  // Capture IP address
   const ip = await getClientIP();
   const sessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
 
+  // Update staff record with new sessionId
   const staffRef = doc(db, STAFF_COLLECTION, data.id);
-  // Upgrade legacy plaintext password and set sessionId in one write
-  if (data.password && !data.password.startsWith('pbkdf2:')) {
-    const hashed = await hashPassword(password);
-    await updateDoc(staffRef, { sessionId, password: hashed });
-  } else {
-    await updateDoc(staffRef, { sessionId });
-  }
+  await updateDoc(staffRef, { sessionId });
 
   const sessionRef = doc(collection(db, SESSIONS_COLLECTION));
   await setDoc(sessionRef, {
@@ -1853,9 +1483,7 @@ export const loginStaff = async (ic: string, password: string): Promise<Staff> =
 };
 
 export const registerStaff = async (ic: string, name: string, address: string, password: string, branch: string, joinDate: string, staffType: 'admin_staff' | 'operation_staff' | 'doctor', gender: 'male' | 'female'): Promise<Staff> => {
-  const sanitizedBranch = branch.trim();
-  const hashedPassword = await hashPassword(password);
-  const newStaff: Staff = { id: ic, name, ic, address, password: hashedPassword, balanceAL: 14, balanceMC: 14, role: 'staff', branch: sanitizedBranch, joinDate, active: true, staffType, gender };
+  const newStaff: Staff = { id: ic, name, ic, address, password, balanceAL: 14, balanceMC: 14, role: 'staff', branch, joinDate, active: true, staffType, gender };
   if (isDemo || !db) return await mockStore.register(newStaff);
   const staffRef = doc(db, STAFF_COLLECTION, ic);
   if ((await getDoc(staffRef)).exists()) throw new Error("Staff already exists");
@@ -1929,52 +1557,3 @@ export const updateOvertime = async (id: string, updates: Partial<OvertimeLog>) 
   const docRef = doc(db, OVERTIME_COLLECTION, id);
   return await updateDoc(docRef, updates);
 }
-
-// ─── Public Holiday Management Functions ────────────────────────────────────
-
-export const subscribeHolidays = (callback: (holidays: PublicHoliday[]) => void): (() => void) => {
-  if (isDemo || !db) return mockStore.subscribeHolidays(callback);
-  return onSnapshot(query(collection(db, HOLIDAYS_COLLECTION), orderBy('date', 'asc')), (snapshot) => {
-    const holidays: PublicHoliday[] = [];
-    snapshot.forEach((d) => holidays.push({ id: d.id, ...d.data() } as PublicHoliday));
-    callback(holidays);
-  });
-};
-
-export const addHoliday = async (holiday: Omit<PublicHoliday, 'id'>) => {
-  if (isDemo || !db) return mockStore.addHoliday(holiday);
-  return await addDoc(collection(db, HOLIDAYS_COLLECTION), holiday as any);
-};
-
-export const updateHoliday = async (id: string, updates: Partial<PublicHoliday>) => {
-  if (isDemo || !db) return mockStore.updateHoliday(id, updates);
-  return await updateDoc(doc(db, HOLIDAYS_COLLECTION, id), updates);
-};
-
-export const deleteHoliday = async (id: string) => {
-  if (isDemo || !db) return mockStore.deleteHoliday(id);
-  return await deleteDoc(doc(db, HOLIDAYS_COLLECTION, id));
-};
-
-// ─── Dynamic Branches Management Functions ────────────────────────────────────
-
-export const subscribeToBranches = (callback: (config: Record<string, string[]>) => void): (() => void) => {
-  if (isDemo || !db) return mockStore.subscribeBranches(callback);
-  // Real firebase not implemented for branches config yet - fallback to local storage emulation
-  return mockStore.subscribeBranches(callback);
-};
-
-export const getBranchesSync = () => {
-   return mockStore.getBranchesSync();
-};
-
-export const addBranch = async (state: string, branchName: string) => {
-  if (isDemo || !db) return mockStore.addBranch(state, branchName);
-  return mockStore.addBranch(state, branchName);
-};
-
-export const deleteBranch = async (state: string, branchName: string) => {
-  if (isDemo || !db) return mockStore.deleteBranch(state, branchName);
-  return mockStore.deleteBranch(state, branchName);
-};
-
