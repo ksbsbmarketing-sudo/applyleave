@@ -504,7 +504,7 @@ const App: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-modern-bg text-modern-muted">
+      <div className="min-h-screen flex items-center justify-center bg-transparent text-white/60">
         <div className="animate-pulse flex flex-col items-center gap-4">
           <Activity className="w-12 h-12 animate-spin text-modern-accent" />
           <p className="font-bold tracking-[0.3em] text-[10px] uppercase">Initializing KSB HR</p>
@@ -521,7 +521,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-modern-base p-4 md:p-8 overflow-x-hidden flex flex-col items-center selection:bg-indigo-100 selection:text-modern-primary">
+    <div className="min-h-screen bg-transparent p-4 md:p-8 overflow-x-hidden flex flex-col items-center selection:bg-indigo-300/30 selection:text-white">
 
       {/* ── Auto-Logout Warning Modal ────────────────────── */}
       {isWarning && (
