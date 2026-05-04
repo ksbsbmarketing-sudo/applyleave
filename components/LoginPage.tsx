@@ -23,7 +23,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onGoToRegister })
         setError(null);
 
         try {
-            const user = await loginStaff(ic, password);
+            const sanitizedIc = ic.replace(/-/g, '').trim();
+            const user = await loginStaff(sanitizedIc, password);
             onLogin(user);
         } catch (err: any) {
             setError(err.message || 'Login failed. Please check your credentials.');
@@ -55,7 +56,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onGoToRegister })
                                 </div>
                                 <input
                                     type="text"
-                                    placeholder="e.g. 880101-10-1234"
+                                    placeholder="e.g. 611021065069 (No Hyphens)"
                                     value={ic}
                                     onChange={(e) => setIc(e.target.value)}
                                     className="w-full bg-neu-base rounded-[16px] shadow-neu-pressed-sm px-12 py-4 outline-none focus:shadow-neu-pressed transition-all duration-300"
@@ -109,10 +110,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onGoToRegister })
                         >
                             New here? Register Now
                         </button>
-                        <p className="text-xs text-gray-400 font-bold uppercase tracking-tighter">
-                            Demo Credentials: <br />
-                            <span className="text-gray-500">IC: 880101-10-1234 / Pass: password123</span>
-                        </p>
                     </div>
                 </NeuCard>
 

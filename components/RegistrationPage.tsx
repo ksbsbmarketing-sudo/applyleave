@@ -14,7 +14,9 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onRegister, 
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
     const [branch, setBranch] = useState(BRANCHES[0]);
-    const [joinDate, setJoinDate] = useState(new Date().toISOString().split('T')[0]);
+    const [joinDate, setJoinDate] = useState(''); // Empty to force user selection
+    const [staffType, setStaffType] = useState<'admin_staff' | 'operation_staff' | 'doctor'>('operation_staff');
+    const [gender, setGender] = useState<'male' | 'female'>('male');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -27,7 +29,8 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onRegister, 
         setError(null);
 
         try {
-            const user = await registerStaff(ic, name, address, password, branch, joinDate);
+            const sanitizedIc = ic.replace(/-/g, '').trim();
+            const user = await registerStaff(sanitizedIc, name, address, password, branch, joinDate, staffType, gender);
             onRegister(user);
         } catch (err: any) {
             setError(err.message || 'Registration failed. Please try again.');
@@ -70,7 +73,19 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onRegister, 
                                     type="text"
                                     placeholder="e.g. John Doe"
                                     value={name}
-                                    onChange={(e) => setName(e.target.value)}
+                                    onChange={(e) => {
+                                        const newName = e.target.value;
+                                        setName(newName);
+                                        // Auto-detect gender: BIN -> Male, else -> Female
+                                        const upper = newName.toUpperCase().split(/\s+/);
+                                        if (upper.includes('BIN')) {
+                                            setGender('male');
+                                        } else {
+                                            // Only flip to female if they've typed enough to potentially have 'BIN'
+                                            // or just follow the rule strictly.
+                                            setGender('female');
+                                        }
+                                    }}
                                     className="w-full bg-neu-base rounded-[16px] shadow-neu-pressed-sm px-12 py-4 outline-none focus:shadow-neu-pressed transition-all duration-300"
                                     required
                                 />
@@ -83,7 +98,7 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onRegister, 
                                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-lg leading-none">#</div>
                                 <input
                                     type="text"
-                                    placeholder="e.g. 880101-10-1234"
+                                    placeholder="e.g. 611021065069 (No Hyphens)"
                                     value={ic}
                                     onChange={(e) => setIc(e.target.value)}
                                     className="w-full bg-neu-base rounded-[16px] shadow-neu-pressed-sm px-12 py-4 outline-none focus:shadow-neu-pressed transition-all duration-300 font-mono"
@@ -134,6 +149,52 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onRegister, 
                                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
                                     <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Kategori Staff</label>
+                            <div className="relative">
+                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                                    <User className="w-5 h-5" />
+                                </div>
+                                <select
+                                    value={staffType}
+                                    onChange={(e) => setStaffType(e.target.value as any)}
+                                    className="w-full bg-neu-base rounded-[16px] shadow-neu-pressed-sm px-12 py-4 outline-none focus:shadow-neu-pressed transition-all duration-300 appearance-none cursor-pointer"
+                                    required
+                                    aria-label="Select Kategori Staff"
+                                    title="Select Kategori Staff"
+                                >
+                                    <option value="operation_staff">Staff Operasi (Operation Staff)</option>
+                                    <option value="admin_staff">Staff Pentadbiran (Admin Staff)</option>
+                                    <option value="doctor">Doktor (Doctor)</option>
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
+                                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Jantina (Gender)</label>
+                            <div className="flex gap-4">
+                                <NeuButton 
+                                    type="button" 
+                                    onClick={() => setGender('male')} 
+                                    active={gender === 'male'}
+                                    className="flex-1 py-3 text-xs font-bold"
+                                >
+                                    LELAKI (MALE)
+                                </NeuButton>
+                                <NeuButton 
+                                    type="button" 
+                                    onClick={() => setGender('female')} 
+                                    active={gender === 'female'}
+                                    className="flex-1 py-3 text-xs font-bold"
+                                >
+                                    PEREMPUAN (FEMALE)
+                                </NeuButton>
                             </div>
                         </div>
 

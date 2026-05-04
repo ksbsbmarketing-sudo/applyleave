@@ -15,6 +15,8 @@ export interface Staff {
   branch?: string;
   active?: boolean;
   prevYearBalance?: number; // Balance remaining from previous year
+  staffType?: 'admin_staff' | 'operation_staff' | 'doctor';
+  gender?: 'male' | 'female';
 }
 
 export const PAHANG_BRANCHES = [
@@ -49,7 +51,7 @@ export interface LeaveLog {
   id: string;
   staffId: string;
   staffName: string;
-  type: 'AL' | 'ML' | 'CME' | 'Paid' | 'Compassionate' | 'Unpaid';
+  type: 'AL' | 'ML' | 'CME' | 'Paid' | 'Compassionate' | 'Unpaid' | 'Paternity';
   duration: number;
   timestamp: number; // Unix timestamp
   dateString: string; // Human readable date for easy filtering
@@ -57,12 +59,17 @@ export interface LeaveLog {
   endDate: string; // YYYY-MM-DD
   reason: string;
   dutyHandover?: string;
+  attachmentUrl?: string; // Base64 or URL for compassionate leave proof
   status: LeaveStatus;
   hodApprovedBy?: string;
   hodApprovedTime?: number;
+  locumDoctor?: string; // Appointed locum doctor (only for pahang doctors)
+  locumDate?: string; // Date of the locum
+  locumBranch?: string; // Branch where locum takes place
   gmApprovedBy?: string;
   gmApprovedTime?: number;
   rejectionReason?: string;
+  hodToApprove?: string; // Specify which HOD should approve
 }
 
 export interface UserSession {

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { User, Clock, Shield, LogOut, History, Zap, Edit3, Save, X, Lock } from 'lucide-react';
+import { User, Clock, Shield, LogOut, History, Edit3, Save, Lock, Trash2 } from 'lucide-react';
 import { NeuCard, NeuButton, NeuInput, NeuBadge } from './NeuElements';
 import { Staff, LeaveLog } from '../types';
-import { subscribeToSessions, updateStaffData, calculateYearsOfService } from '../services/firebase';
+import { subscribeToSessions, updateStaffData, calculateYearsOfService, deleteLeaveLog, updateLeaveLog } from '../services/firebase';
 
 interface UserSettingsProps {
     user: Staff;
@@ -135,7 +135,7 @@ export const UserSettings: React.FC<UserSettingsProps> = ({ user, logs, onLogout
                             </div>
                             <div className="flex justify-between items-center border-b border-gray-300/20 pb-4">
                                 <span className="text-sm font-bold text-gray-400 uppercase">IC Number</span>
-                                <span className="font-bold text-gray-700">{user.ic}</span>
+                                <span className="font-bold text-gray-700">{user.ic.replace(/-/g, '')}</span>
                             </div>
                             <div className="flex justify-between items-center border-b border-gray-300/20 pb-4">
                                 <span className="text-sm font-bold text-gray-400 uppercase">Phone</span>
@@ -225,117 +225,144 @@ export const UserSettings: React.FC<UserSettingsProps> = ({ user, logs, onLogout
                     </NeuCard>
 
 
-                    {/* Leave Balances */}
-                    <NeuCard className="relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-4">
-                            <Zap className="w-12 h-12 text-green-500/10" />
-                        </div>
-                        <h3 className="text-xl font-bold text-gray-700 mb-6 flex items-center gap-2">
-                            <Zap className="w-5 h-5 text-green-500" />
-                            Quick Balances
-                        </h3>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-neu-base rounded-2xl p-6 shadow-neu-pressed text-center">
-                                <span className="block text-2xl font-black text-blue-500">{user.balanceAL}</span>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Annual Leave</span>
-                            </div>
-                            <div className="bg-neu-base rounded-2xl p-6 shadow-neu-pressed text-center">
-                                <span className="block text-2xl font-black text-green-500">{user.balanceML}</span>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Medical Leave</span>
-                            </div>
-                        </div>
-
-                        <div className="mt-6 p-4 bg-blue-50 rounded-xl border border-blue-100 text-[11px] text-blue-500 font-medium">
-                            Note: Balances are updated in real-time as applications are approved.
-                        </div>
-                    </NeuCard>
                 </div>
-
-                {/* Transaction Ledger (Leave History) */}
-                <NeuCard className="overflow-hidden">
-                    <h3 className="text-xl font-bold text-gray-700 mb-6 flex items-center gap-2">
-                        <History className="w-5 h-5 text-blue-500" />
-                        Transaction Ledger
-                    </h3>
-
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-200">
-                                    <th className="pb-4 pl-2">Period</th>
-                                    <th className="pb-4">Category</th>
-                                    <th className="pb-4 text-center">Duration</th>
-                                    <th className="pb-4">Reason</th>
-                                    <th className="pb-4 text-right pr-2">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody className="text-sm">
-                                {myLogs.length === 0 ? (
-                                    <tr><td colSpan={5} className="py-8 text-center text-gray-400 italic text-xs">No leave transactions found.</td></tr>
-                                ) : (
-                                    myLogs.map(log => (
-                                        <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                                            <td className="py-4 pl-2 font-bold text-gray-600">
-                                                {log.startDate}
-                                                <span className="text-[9px] text-gray-400 block font-normal mt-0.5">to {log.endDate}</span>
-                                            </td>
-                                            <td className="py-4">
-                                                <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${log.type === 'AL' ? 'bg-blue-50 text-blue-500' : 'bg-green-50 text-green-500'}`}>
-                                                    {log.type}
-                                                </span>
-                                            </td>
-                                            <td className="py-4 text-center font-bold text-gray-700">
-                                                {log.duration}d
-                                            </td>
-                                            <td className="py-4 text-xs text-gray-500 italic max-w-[200px] truncate">
-                                                {log.reason}
-                                            </td>
-                                            <td className="py-4 text-right pr-2">
-                                                <NeuBadge variant={
-                                                    log.status === 'approved' ? 'green' :
-                                                        log.status === 'rejected' ? 'red' :
-                                                            log.status === 'hod_approved' ? 'purple' : 'yellow'
-                                                }>
-                                                    {log.status.replace('_', ' ')}
-                                                </NeuBadge>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </NeuCard>
-
-                {/* Login History */}
-                <NeuCard>
-                    <h3 className="text-xl font-bold text-gray-700 mb-6 flex items-center gap-2">
-                        <History className="w-5 h-5 text-purple-500" />
-                        Session Tracking
-                    </h3>
-
-                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                        {mySessions.length === 0 ? (
-                            <p className="text-center text-gray-400 py-10 italic">No recent login activity found.</p>
-                        ) : (
-                            mySessions.map((session, i) => (
-                                <div key={session.id || i} className="flex items-center gap-4 p-4 hover:shadow-neu-pressed-sm rounded-xl transition-all duration-300">
-                                    <div className="p-3 bg-neu-base rounded-full shadow-neu-flat">
-                                        <Clock className="w-4 h-4 text-gray-400" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className="text-sm font-bold text-gray-600">Authenticated Session</p>
-                                        <p className="text-xs text-gray-400">{new Date(session.loginTime).toLocaleString()}</p>
-                                    </div>
-                                    <div className="text-[10px] font-black text-green-500 uppercase px-2 py-1 bg-green-50 rounded border border-green-100">
-                                        Active
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </NeuCard>
             </div>
-            );
+
+            {/* My Applications (Interactive) */}
+            <NeuCard className="overflow-hidden">
+                <h3 className="text-xl font-bold text-gray-700 mb-6 flex items-center gap-2">
+                    <History className="w-5 h-5 text-blue-500" />
+                    My Applications
+                </h3>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-200">
+                                <th className="pb-4 pl-2">Period</th>
+                                <th className="pb-4">Category</th>
+                                <th className="pb-4 text-center">Duration</th>
+                                <th className="pb-4">Reason</th>
+                                <th className="pb-4 text-center">Status</th>
+                                <th className="pb-4 text-right pr-2">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="text-sm">
+                            {myLogs.length === 0 ? (
+                                <tr><td colSpan={6} className="py-8 text-center text-gray-400 italic text-xs">No leave transactions found.</td></tr>
+                            ) : (
+                                myLogs.map(log => (
+                                    <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors group">
+                                        <td className="py-4 pl-2 font-bold text-gray-600">
+                                            {log.startDate}
+                                            <span className="text-[9px] text-gray-400 block font-normal mt-0.5">to {log.endDate}</span>
+                                        </td>
+                                        <td className="py-4">
+                                            <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${log.type === 'AL' ? 'bg-blue-50 text-blue-500' : 'bg-green-50 text-green-500'}`}>
+                                                {log.type}
+                                            </span>
+                                        </td>
+                                        <td className="py-4 text-center font-bold text-gray-700">
+                                            {log.duration}d
+                                        </td>
+                                        <td className="py-4 text-xs text-gray-500 italic max-w-[200px] truncate">
+                                            {log.reason}
+                                        </td>
+                                        <td className="py-4 text-center">
+                                            <NeuBadge variant={
+                                                log.status === 'approved' ? 'green' :
+                                                    log.status === 'rejected' ? 'red' :
+                                                        log.status === 'hod_approved' ? 'purple' : 'yellow'
+                                            }>
+                                                {log.status === 'hod_approved' ? 'Auth' : log.status}
+                                            </NeuBadge>
+                                        </td>
+                                        <td className="py-4 text-right pr-2">
+                                            {log.status !== 'rejected' && (
+                                                <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        onClick={async () => {
+                                                            const newStart = prompt("Enter new Start Date (YYYY-MM-DD):", log.startDate);
+                                                            const newEnd = prompt("Enter new End Date (YYYY-MM-DD):", log.endDate);
+                                                            if (newStart && newEnd) {
+                                                                try {
+                                                                    // Recalculate duration
+                                                                    const start = new Date(newStart);
+                                                                    const end = new Date(newEnd);
+                                                                    const diffTime = end.getTime() - start.getTime();
+                                                                    const calcDuration = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+                                                                    if (calcDuration > 0) {
+                                                                        await updateLeaveLog(log.id, {
+                                                                            startDate: newStart,
+                                                                            endDate: newEnd,
+                                                                            duration: calcDuration,
+                                                                            status: 'pending' // Force re-approval if edited
+                                                                        });
+                                                                        alert("Dates updated successfully. Please note: This request will now require re-approval.");
+                                                                    } else {
+                                                                        alert("Invalid dates.");
+                                                                    }
+                                                                } catch (e: any) {
+                                                                    alert("Failed to update: " + e.message);
+                                                                }
+                                                            }
+                                                        }}
+                                                        className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                        title="Change Dates (Requires Re-approval)"
+                                                    >
+                                                        <Edit3 className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={async () => {
+                                                            if (window.confirm("Are you sure you want to cancel this application? If it was approved, your balance will be refunded.")) {
+                                                                await deleteLeaveLog(log.id);
+                                                            }
+                                                        }}
+                                                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                        title="Cancel Application"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </NeuCard>
+
+            {/* Login History */}
+            <NeuCard>
+                <h3 className="text-xl font-bold text-gray-700 mb-6 flex items-center gap-2">
+                    <History className="w-5 h-5 text-purple-500" />
+                    Session Tracking
+                </h3>
+
+                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                    {mySessions.length === 0 ? (
+                        <p className="text-center text-gray-400 py-10 italic">No recent login activity found.</p>
+                    ) : (
+                        mySessions.map((session, i) => (
+                            <div key={session.id || i} className="flex items-center gap-4 p-4 hover:shadow-neu-pressed-sm rounded-xl transition-all duration-300">
+                                <div className="p-3 bg-neu-base rounded-full shadow-neu-flat">
+                                    <Clock className="w-4 h-4 text-gray-400" />
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-sm font-bold text-gray-600">Authenticated Session</p>
+                                    <p className="text-xs text-gray-400">{new Date(session.loginTime).toLocaleString()}</p>
+                                </div>
+                                <div className="text-[10px] font-black text-green-500 uppercase px-2 py-1 bg-green-50 rounded border border-green-100">
+                                    Active
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </NeuCard>
+        </div>
+    );
 };
