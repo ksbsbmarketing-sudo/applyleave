@@ -62,6 +62,43 @@ window.saveWAToken = function(token) {
   alert('✅ Token WhatsApp berjaya disimpan!');
 };
 
+window.forgotPassword = async function() {
+  if (!selectedLoginBranch) {
+    alert('Sila pilih cawangan anda terlebih dahulu.');
+    return;
+  }
+  if (!selectedLoginStaffIC) {
+    alert('Sila pilih nama anda dari senarai dropdown sebelum meneruskan.');
+    return;
+  }
+
+  const staff = staffList.find(s => s.ic === selectedLoginStaffIC && !s.inactive);
+  if (!staff) {
+    alert('Ralat: Rekod staf tidak ditemui. Sila hubungi HR/Admin.');
+    return;
+  }
+
+  if (!staff.phone) {
+    alert('Maaf, nombor WhatsApp anda belum didaftarkan dalam sistem.\n\nSila hubungi HR/Admin untuk mendapatkan kata laluan anda.');
+    return;
+  }
+
+  if (!WHATSAPP_ENABLED()) {
+    alert('Sistem WhatsApp belum dikonfigurasi oleh Admin.\n\nSila hubungi HR/Admin terus untuk mendapatkan kata laluan anda.');
+    return;
+  }
+
+  const pwd = staff.password || staff.ic;
+  const msg = `🔐 *PEMULIHAN KATA LALUAN — KSB Leave Apply*\n\nSalam ${staff.name},\n\nKata laluan akaun anda adalah:\n\n📌 *${pwd}*\n\nSila log masuk ke sistem menggunakan kata laluan di atas.\n\n⚠️ Demi keselamatan, sila tukar kata laluan anda selepas berjaya masuk melalui Settings → Security.\n\n_— KSB Leave System_`;
+
+  try {
+    await window.sendWhatsApp(staff.phone, msg);
+    alert(`✅ Kata laluan telah dihantar ke nombor WhatsApp anda.\n\nSila semak mesej WhatsApp anda.`);
+  } catch (err) {
+    alert('Ralat menghantar mesej WhatsApp. Sila hubungi HR/Admin terus.');
+  }
+};
+
 window.testWANotification = async function() {
   const phone = document.getElementById('wa-test-phone')?.value;
   if (!phone) return alert('Sila masukkan nombor telefon untuk ujian.');
@@ -920,14 +957,26 @@ function renderLogin() {
 
           <div class="form-group">
             <label>Password</label>
-            <input type="password" id="password" placeholder="••••••••" required>
+            <div style="position: relative;">
+              <input type="password" id="password" placeholder="••••••••" required style="width: 100%;">
+            </div>
+            <div style="text-align: right; margin-top: 0.5rem;">
+              <button type="button" onclick="window.forgotPassword()" style="background: none; border: none; cursor: pointer; color: var(--primary); font-size: 0.75rem; font-weight: 600; text-decoration: underline; padding: 0; display: inline-flex; align-items: center; gap: 0.3rem;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                Lupa Kata Laluan?
+              </button>
+            </div>
           </div>
           <button type="submit" class="btn-primary">Login</button>
         </form>
-        
+
         <div style="margin-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
            <p style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.4;">
              Sila pilih cawangan dan nama anda untuk log masuk. Admin boleh setkan password anda dalam bahagian Management.
+           </p>
+           <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.5rem; line-height: 1.4; display: flex; align-items: flex-start; gap: 0.4rem;">
+             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+             Klik <strong style="color: var(--primary);">Lupa Kata Laluan?</strong> untuk hantar kata laluan ke WhatsApp anda. Pastikan nombor telefon anda telah didaftarkan oleh HR/Admin.
            </p>
         </div>
       </div>
