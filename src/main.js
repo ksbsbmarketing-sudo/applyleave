@@ -37,13 +37,13 @@ let WHATSAPP_TOKEN = localStorage.getItem('ksb_wa_token') || '';
 const WHATSAPP_SENDER = '60129444295'; // No. penghantar
 const WHATSAPP_ENABLED = () => !!WHATSAPP_TOKEN;
 
-window.sendWhatsApp = async function(toPhone, message) {
+window.sendWhatsApp = async function(toPhone, message, throwOnError = false) {
   if (!WHATSAPP_ENABLED() || !toPhone) return;
   // Normalize phone: remove leading 0, add country code 60
   let phone = toPhone.replace(/\D/g, '');
   if (phone.startsWith('0')) phone = '6' + phone;
   try {
-    await fetch('https://api.fonnte.com/send', {
+    const res = await fetch('https://api.fonnte.com/send', {
       method: 'POST',
       headers: {
         'Authorization': WHATSAPP_TOKEN,
@@ -51,7 +51,9 @@ window.sendWhatsApp = async function(toPhone, message) {
       },
       body: JSON.stringify({ target: phone, message, countryCode: '60' })
     });
+    if (throwOnError && !res.ok) throw new Error(`Fonnte error: ${res.status}`);
   } catch(err) {
+    if (throwOnError) throw err;
     console.warn('WhatsApp notification failed:', err);
   }
 };
@@ -92,10 +94,11 @@ window.forgotPassword = async function() {
   const msg = `🔐 *PEMULIHAN KATA LALUAN — KSB Leave Apply*\n\nSalam ${staff.name},\n\nKata laluan akaun anda adalah:\n\n📌 *${pwd}*\n\nSila log masuk ke sistem menggunakan kata laluan di atas.\n\n⚠️ Demi keselamatan, sila tukar kata laluan anda selepas berjaya masuk melalui Settings → Security.\n\n_— KSB Leave System_`;
 
   try {
-    await window.sendWhatsApp(staff.phone, msg);
+    await window.sendWhatsApp(staff.phone, msg, true);
     alert(`✅ Kata laluan telah dihantar ke nombor WhatsApp anda.\n\nSila semak mesej WhatsApp anda.`);
   } catch (err) {
-    alert('Ralat menghantar mesej WhatsApp. Sila hubungi HR/Admin terus.');
+    console.error('forgotPassword WA send failed:', err);
+    alert('Ralat menghantar mesej WhatsApp. Sila pastikan token Fonnte betul atau hubungi HR/Admin terus.');
   }
 };
 
@@ -368,6 +371,38 @@ window.setProfileSettings = function(state) {
   render();
 };
 
+window.changePassword = async function(event) {
+  event.preventDefault();
+  const current = document.getElementById('pwd-current')?.value;
+  const next    = document.getElementById('pwd-new')?.value;
+  const confirm = document.getElementById('pwd-confirm')?.value;
+
+  if (!user) { alert('Sesi tidak sah. Sila log masuk semula.'); return; }
+  if (current !== (user.password || user.ic)) {
+    alert('❌ Kata laluan semasa tidak betul. Sila cuba lagi.'); return;
+  }
+  if (next !== confirm) {
+    alert('❌ Kata laluan baharu tidak sepadan. Sila cuba lagi.'); return;
+  }
+  if (next.length < 4) {
+    alert('❌ Kata laluan baharu mesti sekurang-kurangnya 4 aksara.'); return;
+  }
+
+  try {
+    await updateDoc(doc(db, 'staff', user.ic), { password: next });
+    user.password = next;
+    const s = staffList.find(i => i.ic === user.ic);
+    if (s) s.password = next;
+    alert('✅ Kata laluan berjaya ditukar!');
+    document.getElementById('pwd-current').value = '';
+    document.getElementById('pwd-new').value = '';
+    document.getElementById('pwd-confirm').value = '';
+  } catch (err) {
+    console.error('changePassword error:', err);
+    alert('Ralat menyimpan kata laluan. Sila cuba lagi.');
+  }
+};
+
 window.saveSelfProfile = async function(event) {
     if (event) event.preventDefault();
     const phone = document.getElementById('self-phone')?.value;
@@ -401,6 +436,43 @@ window.saveSelfProfile = async function(event) {
 window.setManageTab = function(tab) {
   managementTab = tab;
   render();
+};
+
+let showAddStaffModal = false;
+window.openAddStaff = function() { showAddStaffModal = true; render(); };
+window.closeAddStaff = function() { showAddStaffModal = false; render(); };
+
+window.submitAddStaff = async function(event) {
+  event.preventDefault();
+  const form = event.target;
+  const name     = form.querySelector('#as-name').value.trim().toUpperCase();
+  const ic       = form.querySelector('#as-ic').value.trim();
+  const branch   = form.querySelector('#as-branch').value;
+  const category = form.querySelector('#as-category').value;
+  const role     = form.querySelector('#as-role').value;
+  const phone    = form.querySelector('#as-phone').value.trim();
+  const password = form.querySelector('#as-password').value || ic;
+
+  if (!name || !ic || !branch) {
+    alert('Sila lengkapkan Nama, No. IC, dan Cawangan.');
+    return;
+  }
+  if (staffList.find(s => s.ic === ic)) {
+    alert('No. IC ini sudah wujud dalam sistem. Sila semak semula.');
+    return;
+  }
+
+  const newStaff = { name, ic, branch, category, role, phone, password, inactive: false, startDate: new Date().toISOString().split('T')[0] };
+
+  try {
+    await setDoc(doc(db, 'staff', ic), newStaff);
+    window.logSystemActivity(`Added new staff: ${name}`);
+    alert(`✅ Staf baharu "${name}" berjaya ditambah!`);
+    window.closeAddStaff();
+  } catch (err) {
+    console.error('submitAddStaff error:', err);
+    alert('Ralat menyimpan staf. Sila cuba lagi.');
+  }
 };
 
 window.toggleInactive = function() {
@@ -1293,6 +1365,7 @@ function renderDashboard() {
     ${renderModal()}
     ${renderLeaveModal()}
     ${renderSelfProfileModal()}
+    ${renderAddStaffModal()}
   `;
 
   // Logout Listener
@@ -2712,7 +2785,7 @@ function renderView() {
         ${managementTab === 'staff' ? `
         <header class="top-bar">
           <h1>Management Hub</h1>
-          <button class="btn-primary" style="width: auto; padding: 0.75rem 1.5rem;">+ Add Staff</button>
+          <button class="btn-primary" onclick="window.openAddStaff()" style="width: auto; padding: 0.75rem 1.5rem;">+ Tambah Staf</button>
         </header>
 
         <section class="glass-card">
@@ -3386,20 +3459,25 @@ function renderView() {
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(249, 115, 22, 0.2)" stroke-width="1"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                 </div>
                 
-                <form style="display: flex; flex-direction: column; gap: 1.5rem;" onsubmit="event.preventDefault(); alert('Katalaluan (Password) telah berjaya ditukar!');">
+                <form style="display: flex; flex-direction: column; gap: 1.5rem;" onsubmit="window.changePassword(event)">
                     <div>
                         <label style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px; margin-bottom: 0.5rem; display: block;">Current Password</label>
-                        <input type="password" required class="neu-inset" placeholder="Enter current password" style="width: 100%; padding: 1rem; color-scheme: dark;">
+                        <input type="password" id="pwd-current" required class="neu-inset" placeholder="Masukkan kata laluan semasa" style="width: 100%; padding: 1rem; color-scheme: dark;">
                     </div>
-                    
-                    <div style="margin-bottom: 1rem;">
+
+                    <div>
                         <label style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px; margin-bottom: 0.5rem; display: block;">New Password</label>
-                        <input type="password" required class="neu-inset" placeholder="Enter new password" style="width: 100%; padding: 1rem; color-scheme: dark;">
+                        <input type="password" id="pwd-new" required minlength="4" class="neu-inset" placeholder="Masukkan kata laluan baharu" style="width: 100%; padding: 1rem; color-scheme: dark;">
+                    </div>
+
+                    <div>
+                        <label style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px; margin-bottom: 0.5rem; display: block;">Confirm New Password</label>
+                        <input type="password" id="pwd-confirm" required minlength="4" class="neu-inset" placeholder="Ulang kata laluan baharu" style="width: 100%; padding: 1rem; color-scheme: dark;">
                     </div>
 
                     <button type="submit" class="neu-btn" style="width: 100%; padding: 1rem; display: flex; justify-content: center; align-items: center; gap: 0.5rem; color: var(--primary); font-weight: 600; font-size: 1rem;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                        Update Password
+                        Tukar Kata Laluan
                     </button>
                 </form>
             </div>
@@ -3700,4 +3778,81 @@ function renderSelfProfileModal() {
       </div>
     </div>
     `;
+}
+
+function renderAddStaffModal() {
+  if (!showAddStaffModal) return '';
+  return `
+  <div class="modal-overlay" id="add-staff-backdrop" onclick="if(event.target===this)window.closeAddStaff()">
+    <div class="glass-card modal-content fade-in" style="background:rgba(30,41,59,0.97);padding:2.5rem;border:1px solid rgba(255,255,255,0.1);max-width:540px;width:100%;max-height:90vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem;">
+        <h2 style="font-size:1.25rem;">Tambah Staf Baharu</h2>
+        <button onclick="window.closeAddStaff()" style="background:transparent;border:none;color:white;font-size:2rem;cursor:pointer;line-height:1;">&times;</button>
+      </div>
+      <form onsubmit="window.submitAddStaff(event)" style="display:flex;flex-direction:column;gap:1.25rem;">
+        <div>
+          <label style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:1px;display:block;margin-bottom:0.4rem;">Nama Penuh <span style="color:var(--danger);">*</span></label>
+          <input id="as-name" type="text" class="neu-inset" required placeholder="Cth: AHMAD BIN ALI" style="width:100%;text-transform:uppercase;">
+        </div>
+        <div>
+          <label style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:1px;display:block;margin-bottom:0.4rem;">No. IC / ID <span style="color:var(--danger);">*</span></label>
+          <input id="as-ic" type="text" class="neu-inset" required placeholder="Cth: 900101101234">
+        </div>
+        <div>
+          <label style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:1px;display:block;margin-bottom:0.4rem;">Cawangan <span style="color:var(--danger);">*</span></label>
+          <select id="as-branch" class="neu-inset" required style="appearance:none;cursor:pointer;color-scheme:dark;">
+            <option value="">-- Pilih Cawangan --</option>
+            ${branches.map(b => `<option value="${b.name}">${b.name}</option>`).join('')}
+          </select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+          <div>
+            <label style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:1px;display:block;margin-bottom:0.4rem;">Kategori</label>
+            <select id="as-category" class="neu-inset" style="appearance:none;cursor:pointer;color-scheme:dark;">
+              <option value="Admin Staff">Staff Admin</option>
+              <option value="Operation Staff">Staff Operasi</option>
+              <option value="Doctor">Doktor</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:1px;display:block;margin-bottom:0.4rem;">Peranan (Role)</label>
+            <select id="as-role" class="neu-inset" style="appearance:none;cursor:pointer;color-scheme:dark;">
+              <option value="staff">Staff</option>
+              <option value="supervisor">Supervisor</option>
+              <option value="hod">HOD</option>
+              <option value="pic_hod">PIC/HOD</option>
+              <option value="hr">HR</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:1px;display:block;margin-bottom:0.4rem;">No. Telefon (WhatsApp)</label>
+          <input id="as-phone" type="tel" class="neu-inset" placeholder="Cth: 60123456789">
+        </div>
+        <div>
+          <label style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:1px;display:block;margin-bottom:0.4rem;">Kata Laluan Awal</label>
+          <input id="as-password" type="text" class="neu-inset" placeholder="Kosong = guna No. IC sebagai kata laluan">
+          <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.4rem;">Jika dibiarkan kosong, kata laluan awal adalah No. IC staf.</div>
+        </div>
+        <div style="display:flex;gap:1rem;margin-top:0.5rem;">
+          <button type="button" onclick="window.closeAddStaff()" class="neu-btn" style="flex:1;padding:1rem;color:var(--danger);">Batal</button>
+          <button type="submit" class="btn-primary" style="flex:2;padding:1rem;display:flex;align-items:center;justify-content:center;gap:0.5rem;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Simpan Staf Baharu
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+  `;
+}
+
+// ── Service Worker Registration ──────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(err => {
+      console.warn('SW registration failed:', err);
+    });
+  });
 }

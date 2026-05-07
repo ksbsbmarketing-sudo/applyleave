@@ -1,0 +1,36 @@
+{
+  "name": "KSB Leave Apply",
+  "short_name": "KSB Leave",
+  "description": "Sistem Pengurusan Cuti Klinik Syed Badaruddin",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0c0e14",
+  "theme_color": "#3b82f6",
+  "lang": "ms",
+  "categories": ["productivity", "medical"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "form_factor": "narrow",
+      "label": "KSB Leave Apply Login"
+    }
+  ]
+}
