@@ -814,7 +814,6 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   display: flex; align-items: center; gap: 0.5rem;
   padding: 0.35rem 0;
   margin-top: 0.1rem;
-  overflow: hidden;
 }
 .msg-online-chips-scroll {
   display: flex; gap: 0.4rem;
