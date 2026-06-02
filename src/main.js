@@ -3545,7 +3545,7 @@ function renderMessengerView() {
             <div class="msg-online-chips-scroll">
               ${onlineOthers.map(u => {
                 const firstName = (u.name || '?').split(' ')[0];
-                return `<button class="msg-online-chip" onclick="window.openDM('${u.ic}','${(u.name||'').replace(/'/g,"\\'")}');event.stopPropagation();" title="${u.name} — ${u.branch||''}"><span style="width:7px;height:7px;border-radius:50%;background:#22c55e;flex-shrink:0;display:inline-block;"></span>${firstName}</button>`;
+                return `<button class="msg-online-chip" onclick="window.openDM('${u.ic}','${(u.name||'').replace(/'/g,"\\'")}');event.stopPropagation();" title="${(u.name||'').replace(/"/g,'&quot;')} — ${(u.branch||'').replace(/"/g,'&quot;')}"><span style="width:7px;height:7px;border-radius:50%;background:#22c55e;flex-shrink:0;display:inline-block;"></span>${firstName}</button>`;
               }).join('')}
             </div>
           </div>`;
