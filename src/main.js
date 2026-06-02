@@ -64,9 +64,14 @@ window.sendWhatsApp = async function(toPhone, message, throwOnError = false) {
   }
 };
 
-window.saveWAToken = function(token) {
+window.saveWAToken = async function(token) {
   WHATSAPP_TOKEN = token;
   localStorage.setItem('ksb_wa_token', token);
+  try {
+    await setDoc(doc(db, 'system_config', 'whatsapp'), { token });
+  } catch(e) {
+    console.warn('Failed to save WA token to Firestore:', e);
+  }
   alert('✅ Token WhatsApp berjaya disimpan!');
 };
 
@@ -149,7 +154,7 @@ window.checkOverduePendingReminders = async function() {
   const ONE_DAY    = 24 * 60 * 60 * 1000;
 
   const overdue = leaveRecords.filter(r => {
-    if (r.status !== 'PENDING' && r.status !== 'HOD APPROVED') return false;
+    if (r.status !== 'PENDING' && r.status !== 'TL APPROVED' && r.status !== 'HOD APPROVED') return false;
     const age = now - (r.id || 0);
     if (age < SEVEN_DAYS) return false;
     const lastSent = r.lastReminderSent || 0;
@@ -184,6 +189,17 @@ window.checkOverduePendingReminders = async function() {
                 sent.add(approver.ic);
               }
             }
+          }
+        }
+      } else if (record.status === 'TL APPROVED') {
+        // ── Peringkat 1: hantar kepada Supervisor Balok ──────────
+        const supList = staffList.filter(s =>
+          !s.inactive && s.phone && s.role === 'supervisor' && (s.branch || '').includes('Balok')
+        );
+        for (const sup of supList) {
+          if (!sent.has(sup.ic)) {
+            await window.sendWhatsApp(sup.phone, buildReminderMsg(record, ageDays, 1));
+            sent.add(sup.ic);
           }
         }
       } else if (record.status === 'HOD APPROVED') {
@@ -278,6 +294,8 @@ let attendanceReportMonth = String(new Date().getMonth() + 1);
 let attendanceReportYear = new Date().getFullYear().toString();
 let attendanceReportBranch = 'SEMUA';
 let manageSearchQuery = '';
+let manageRoleFilter = 'SEMUA';
+let manageCategoryFilter = 'SEMUA';
 let showInactiveStaff = false;
 let editingLeaveId = null;
 let dashboardTab = null; // 'personal' or 'analytics'
@@ -289,6 +307,9 @@ let analyticsBranchFilter = 'SEMUA'; // 'SEMUA' or branch name
 let branchDashboardMonth = 0; // 0 = all months, 1-12 = specific month for HOD/PIC branch view
 let selectedLoginBranch = '';
 let selectedLoginStaffIC = '';
+let showRegisterModal = false;
+let showFirstLoginWarning = false;
+let registrationRequests = [];
 let leaveStartDate = '';
 let leaveEndDate = '';
 let applyHalfDay = false;
@@ -328,43 +349,67 @@ const leaveCategories = [
 window.rbacMatrix = {
     super_admin: {
         dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: true, messenger: true,
-        manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: true, manage_reports: true, manage_routing: true, manage_access: true,
+        manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: true, manage_reports: true, manage_routing: true, manage_access: true, manage_roles_categories: true,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
     },
     admin: {
         dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: true, manage_reports: true, manage_routing: true, manage_access: true,
+        manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: true, manage_reports: true, manage_routing: true, manage_access: true, manage_roles_categories: true,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
     },
     hr: {
         dashboard: 'staff', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false,
+        manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: true,
         report_kuantan_only: true, report_own_branch_only: false, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
     },
     hod: {
         dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false,
+        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false,
         report_kuantan_only: false, report_own_branch_only: true, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: false
     },
     pic_hod: {
         dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false,
+        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: false
     },
     supervisor: {
         dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false,
+        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
     },
+    team_leader: {
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
+        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false,
+        report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
+        can_cancel: false, os_balok: true, os_pahang: false, locum_records: false
+    },
     staff: {
         dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false,
+        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false,
+        report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
+        can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
+    },
+    juru_xray: {
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
+        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false,
+        report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
+        can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
+    },
+    sonographer: {
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
+        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false,
+        report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
+        can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
+    },
+    juru_audio: {
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
+        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
     }
@@ -392,6 +437,15 @@ window.saveRbac = async function() {
 };
 
 const _rbacCodeDefaults = JSON.parse(JSON.stringify(window.rbacMatrix));
+
+// Staff config — categories & role labels loaded from Firestore
+const CORE_CATEGORIES = ['Admin Staff', 'Operation Staff', 'Doctor'];
+const CORE_ROLES = ['super_admin', 'admin', 'hr', 'hod', 'pic_hod', 'supervisor', 'team_leader', 'staff', 'juru_xray', 'sonographer', 'juru_audio'];
+window.staffConfig = {
+    staffCategories: [...CORE_CATEGORIES],
+    roleLabels: { super_admin:'Super Admin', admin:'Admin', hr:'HR', hod:'HOD', pic_hod:'PIC HOD', supervisor:'Supervisor', team_leader:'Team Leader', staff:'Staff', juru_xray:'Juru X-Ray', sonographer:'Sonographer', juru_audio:'Juru Audio' },
+    customRoles: []
+};
 window.resetRbac = function() {
     if (!confirm('Reset semua kebenaran ke nilai lalai kod? Perubahan yang belum disimpan akan hilang.')) return;
     window.rbacMatrix = JSON.parse(JSON.stringify(_rbacCodeDefaults));
@@ -458,7 +512,37 @@ window.canManageRequest = function(user, req) {
         const reqBranchObj = branches.find(b => b.name === req.branch);
         return !reqBranchObj || reqBranchObj.state === 'Pahang';
     }
+    // Team Leader: hanya urus PENDING staf operasi Balok yang memilih TL ini (jika needs_tl aktif)
+    if (user.role === 'team_leader') {
+        if (!(approvalRouting['operation_balok'] || {}).needs_tl) return false;
+        if (req.status !== 'PENDING') return false;
+        const applicant = staffList.find(s => s.ic === req.ic);
+        if (!applicant) return false;
+        if (window.getStaffGroup(applicant) !== 'operation_balok') return false;
+        if (!(user.branch || '').includes('Balok')) return false;
+        // Jika rekod ada tlIC, hanya TL yang dipilih boleh urus
+        if (req.tlIC) return req.tlIC === user.ic;
+        return true; // rekod lama tanpa tlIC — semua TL Balok boleh urus
+    }
+
     if (!['hod', 'pic_hod', 'supervisor'].includes(user.role)) return false;
+
+    // Supervisor: jangan urus PENDING staf operasi Balok jika needs_tl aktif — mesti TL approve dulu
+    if (user.role === 'supervisor' && req.status === 'PENDING') {
+        const _ap = staffList.find(s => s.ic === req.ic);
+        if (_ap && window.getStaffGroup(_ap) === 'operation_balok' &&
+            (approvalRouting['operation_balok'] || {}).needs_tl) {
+            return false;
+        }
+    }
+
+    // Supervisor Balok: boleh urus TL APPROVED jika needs_tl aktif
+    if (user.role === 'supervisor' && req.status === 'TL APPROVED') {
+        if (!(approvalRouting['operation_balok'] || {}).needs_tl) return false;
+        const applicant = staffList.find(s => s.ic === req.ic);
+        if (!applicant) return false;
+        return window.getStaffGroup(applicant) === 'operation_balok' && (user.branch || '').includes('Balok');
+    }
 
     // Permohonan dengan pelulus spesifik — hanya pelulus itu sahaja
     if (req.hodIC) return req.hodIC === user.ic;
@@ -532,10 +616,12 @@ window.printLocumForm = function(id) {
             <title>Locum Assignment Form - ${r.name}</title>
             <style>
                 body { font-family: 'Arial', sans-serif; padding: 40px; color: #333; line-height: 1.6; }
-                .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
-                .logo { width: 100px; margin-bottom: 10px; }
-                .title { font-size: 24px; font-weight: bold; text-transform: uppercase; margin: 0; }
-                .subtitle { font-size: 14px; color: #666; margin-top: 5px; }
+                .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 420px; opacity: 0.15; pointer-events: none; z-index: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+                .header { display: flex; align-items: center; gap: 18px; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
+                .header-center { flex: 1; text-align: center; }
+                .logo { width: 72px; height: 72px; border-radius: 12px; object-fit: contain; box-shadow: 0 2px 8px rgba(0,0,0,0.12); flex-shrink: 0; }
+                .title { font-size: 22px; font-weight: bold; text-transform: uppercase; margin: 0; }
+                .subtitle { font-size: 13px; color: #666; margin-top: 5px; }
                 .content { margin-top: 30px; }
                 .row { display: flex; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
                 .label { width: 200px; font-weight: bold; color: #555; }
@@ -546,13 +632,17 @@ window.printLocumForm = function(id) {
             </style>
         </head>
         <body>
+            <img src="${logos.ksb}" class="watermark" alt="">
             <div class="no-print" style="margin-bottom: 20px; text-align: right;">
-                <button onclick="window.print()" style="padding: 10px 20px; background: #3b82f6; color: var(--text); border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">PRINT FORM</button>
+                <button onclick="window.print()" style="padding: 10px 20px; background: #3b82f6; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">PRINT FORM</button>
             </div>
             <div class="header">
                 <img src="${logos.ksb}" class="logo" alt="KSB Logo">
-                <h1 class="title">BORANG PELANTIKAN DOKTOR LOCUM</h1>
-                <p class="subtitle">KLINIK SYED BADARUDDIN GROUP</p>
+                <div class="header-center">
+                    <h1 class="title">BORANG PELANTIKAN DOKTOR LOCUM</h1>
+                    <p class="subtitle">KLINIK SYED BADARUDDIN GROUP</p>
+                </div>
+                <img src="${logos.ksb}" class="logo" alt="KSB Logo">
             </div>
             <div class="content">
                 <div class="row"><div class="label">Doktor Bercuti:</div><div class="value">${(r.name || '').toUpperCase()}</div></div>
@@ -732,6 +822,96 @@ let showAddStaffModal = false;
 window.openAddStaff = function() { showAddStaffModal = true; render(); };
 window.closeAddStaff = function() { showAddStaffModal = false; render(); };
 
+window.openRegisterModal = function() { showRegisterModal = true; render(); };
+window.closeRegisterModal = function() { showRegisterModal = false; render(); };
+
+window.submitRegister = async function(event) {
+  event.preventDefault();
+  const form = event.target;
+  const name     = form.querySelector('#reg-name').value.trim().toUpperCase();
+  const ic       = form.querySelector('#reg-ic').value.trim();
+  const branch   = form.querySelector('#reg-branch').value;
+  const category = form.querySelector('#reg-category').value;
+  let phone = form.querySelector('#reg-phone').value.trim().replace(/\D/g, '');
+  if (phone.startsWith('0')) phone = '6' + phone;
+  else if (!phone.startsWith('6')) phone = '60' + phone;
+
+  if (!name || !ic || !branch || !category || !phone) {
+    alert('Sila lengkapkan semua maklumat yang diperlukan.');
+    return;
+  }
+  if (staffList.find(s => s.ic === ic)) {
+    alert('No. IC ini sudah berdaftar dalam sistem. Sila log masuk atau hubungi HR/Admin.');
+    return;
+  }
+  const existing = registrationRequests.find(r => r.ic === ic && r.status === 'pending');
+  if (existing) {
+    alert('Permohonan anda sedang dalam semakan. Sila tunggu kelulusan daripada HR/Admin.');
+    return;
+  }
+
+  const reqId = `reg_${ic}_${Date.now()}`;
+  const reqData = { name, ic, branch, category, phone, status: 'pending', submittedAt: Date.now() };
+
+  try {
+    await setDoc(doc(db, 'registration_requests', reqId), reqData);
+
+    // Notify admins via WhatsApp
+    const admins = staffList.filter(s => ['admin', 'hr', 'super_admin'].includes(s.role) && s.phone);
+    const msg = `📋 *PERMOHONAN DAFTAR BAHARU*\n\nNama: ${name}\nNo. IC: ${ic}\nCawangan: ${branch}\nKategori: ${category}\nNo. Tel: ${phone}\n\nSila log masuk ke sistem untuk meluluskan atau menolak permohonan ini.`;
+    for (const admin of admins) {
+      await window.sendWhatsApp(admin.phone, msg);
+    }
+
+    alert('✅ Permohonan anda telah dihantar!\n\nHR/Admin akan menyemak dan meluluskan akaun anda tidak lama lagi. Anda akan dihubungi melalui WhatsApp.');
+    window.closeRegisterModal();
+  } catch (err) {
+    console.error('submitRegister error:', err);
+    alert('Ralat menghantar permohonan. Sila cuba lagi.');
+  }
+};
+
+window.approveRegistration = async function(docId) {
+  const req = registrationRequests.find(r => r.docId === docId);
+  if (!req) return;
+  if (staffList.find(s => s.ic === req.ic)) {
+    alert('No. IC ini sudah wujud dalam sistem.');
+    await updateDoc(doc(db, 'registration_requests', docId), { status: 'rejected', rejectedAt: Date.now(), rejectedReason: 'IC sudah wujud' });
+    return;
+  }
+  try {
+    const newStaff = {
+      name: req.name, ic: req.ic, branch: req.branch, category: req.category,
+      role: 'staff', phone: req.phone, password: req.ic, inactive: false,
+      startDate: new Date().toISOString().split('T')[0]
+    };
+    await setDoc(doc(db, 'staff', req.ic), newStaff);
+    await updateDoc(doc(db, 'registration_requests', docId), { status: 'approved', approvedAt: Date.now() });
+    window.logSystemActivity(`Approved registration: ${req.name} (${req.ic})`);
+    await window.sendWhatsApp(req.phone, `✅ *Selamat datang ke KSB Leave System!*\n\nNama: ${req.name}\nKata Laluan: ${req.ic}\n\nSila log masuk dan tukar kata laluan anda.`);
+    alert(`✅ Permohonan ${req.name} telah diluluskan!\nAkaun telah dibuat. Kata laluan awal: ${req.ic}`);
+  } catch (err) {
+    console.error('approveRegistration error:', err);
+    alert('Ralat meluluskan permohonan.');
+  }
+};
+
+window.rejectRegistration = async function(docId) {
+  const req = registrationRequests.find(r => r.docId === docId);
+  if (!req) return;
+  const reason = prompt(`Sebab penolakan untuk ${req.name} (boleh kosongkan):`);
+  if (reason === null) return; // user cancelled
+  try {
+    await updateDoc(doc(db, 'registration_requests', docId), { status: 'rejected', rejectedAt: Date.now(), rejectedReason: reason || 'Tidak dinyatakan' });
+    window.logSystemActivity(`Rejected registration: ${req.name} (${req.ic})`);
+    await window.sendWhatsApp(req.phone, `❌ *Permohonan Daftar Ditolak*\n\nNama: ${req.name}\nSebab: ${reason || 'Tidak dinyatakan'}\n\nSila hubungi HR/Admin untuk maklumat lanjut.`);
+    alert(`Permohonan ${req.name} telah ditolak.`);
+  } catch (err) {
+    console.error('rejectRegistration error:', err);
+    alert('Ralat menolak permohonan.');
+  }
+};
+
 window.submitAddStaff = async function(event) {
   event.preventDefault();
   const form = event.target;
@@ -793,14 +973,16 @@ const STATE_DAERAH = { Pahang: PAHANG_DAERAH, Terengganu: TERENGGANU_DAERAH };
 // APPROVAL ROUTING CONFIG
 // ============================================================
 const ROUTING_DEFAULTS = {
-  doctor_kuantan:    { p1_hod: false, p1_pic_hod: false, p1_supervisor: true,  needs_p2: true  },
-  doctor_bentong:    { p1_hod: true,  p1_pic_hod: true,  p1_supervisor: false, needs_p2: true  },
-  doctor_mckip:      { p1_hod: true,  p1_pic_hod: true,  p1_supervisor: false, needs_p2: true  },
-  doctor_terengganu: { p1_hod: true,  p1_pic_hod: true,  p1_supervisor: false, needs_p2: false },
-  admin_staff_pahang:     { p1_hod: true,  p1_pic_hod: false, p1_supervisor: false, needs_p2: true  },
-  admin_staff_terengganu: { p1_hod: true,  p1_pic_hod: false, p1_supervisor: false, needs_p2: false },
-  operation_balok:   { p1_hod: false, p1_pic_hod: false, p1_supervisor: true,  needs_p2: true  },
-  operation_other:   { p1_hod: false, p1_pic_hod: true,  p1_supervisor: false, needs_p2: true  },
+  doctor_kuantan:    { needs_tl: false, p1_hod: false, p1_pic_hod: false, p1_supervisor: true,  needs_p2: true  },
+  doctor_bentong:    { needs_tl: false, p1_hod: true,  p1_pic_hod: true,  p1_supervisor: false, needs_p2: true  },
+  doctor_mckip:      { needs_tl: false, p1_hod: true,  p1_pic_hod: true,  p1_supervisor: false, needs_p2: true  },
+  doctor_terengganu: { needs_tl: false, p1_hod: true,  p1_pic_hod: true,  p1_supervisor: false, needs_p2: false },
+  admin_staff_pahang:     { needs_tl: false, p1_hod: true,  p1_pic_hod: false, p1_supervisor: false, needs_p2: true  },
+  admin_staff_terengganu: { needs_tl: false, p1_hod: true,  p1_pic_hod: false, p1_supervisor: false, needs_p2: false },
+  operation_balok:   { needs_tl: true,  p1_hod: false, p1_pic_hod: false, p1_supervisor: true,  needs_p2: true  },
+  operation_other:   { needs_tl: false, p1_hod: false, p1_pic_hod: true,  p1_supervisor: false, needs_p2: true  },
+  xray_sono_balok:   { needs_tl: false, p1_hod: false, p1_pic_hod: false, p1_supervisor: true,  needs_p2: true  },
+  juru_audio_balok:  { needs_tl: false, p1_hod: true,  p1_pic_hod: false, p1_supervisor: false, needs_p2: true  },
 };
 let approvalRouting = JSON.parse(JSON.stringify(ROUTING_DEFAULTS));
 
@@ -810,6 +992,11 @@ window.getStaffGroup = function(s) {
   const isBentong    = (s.branch || '').includes('Bentong');
   const isMCKIP      = (s.branch || '').includes('MCKIP');
   const isBalok      = (s.branch || '').includes('Balok');
+
+  // Peranan paramedik — laluan kelulusan khusus, hanya di Balok
+  if (['juru_xray', 'sonographer'].includes(s.role) && isBalok) return 'xray_sono_balok';
+  if (s.role === 'juru_audio' && isBalok) return 'juru_audio_balok';
+
   if (s.category === 'Doctor') {
     if (isTerengganu) return 'doctor_terengganu';
     if (isBentong)    return 'doctor_bentong';
@@ -926,6 +1113,67 @@ window.setManageSearch = function(val) {
   render();
 };
 
+window.setManageRoleFilter = function(val) {
+  manageRoleFilter = val;
+  render();
+};
+
+window.setManageCategoryFilter = function(val) {
+  manageCategoryFilter = val;
+  render();
+};
+
+async function saveStaffConfig() {
+  await setDoc(doc(db, 'settings', 'staff_config'), {
+    staffCategories: window.staffConfig.staffCategories,
+    roleLabels: window.staffConfig.roleLabels,
+    customRoles: window.staffConfig.customRoles
+  });
+}
+
+window.addStaffCategory = async function() {
+  const name = (prompt('Nama kategori baru:') || '').trim();
+  if (!name) return;
+  if (window.staffConfig.staffCategories.includes(name)) { alert('Kategori sudah wujud.'); return; }
+  window.staffConfig.staffCategories.push(name);
+  await saveStaffConfig();
+  render();
+};
+
+window.deleteStaffCategory = async function(name) {
+  if (CORE_CATEGORIES.includes(name)) { alert('Kategori teras tidak boleh dipadam.'); return; }
+  if (!confirm('Padam kategori "' + name + '"?')) return;
+  window.staffConfig.staffCategories = window.staffConfig.staffCategories.filter(c => c !== name);
+  await saveStaffConfig();
+  render();
+};
+
+window.addCustomRole = async function() {
+  const key = (prompt('Kunci peranan (huruf kecil, tiada ruang, contoh: ketua_unit):') || '').trim().toLowerCase().replace(/\s+/g, '_');
+  if (!key) return;
+  if (window.rbacMatrix[key]) { alert('Peranan sudah wujud.'); return; }
+  const label = (prompt('Nama paparan peranan (contoh: Ketua Unit):') || '').trim();
+  if (!label) return;
+  // Add to rbacMatrix with zeroed permissions
+  window.rbacMatrix[key] = { ...JSON.parse(JSON.stringify(_rbacCodeDefaults.staff)), manage_roles_categories: false };
+  window.staffConfig.roleLabels[key] = label;
+  window.staffConfig.customRoles.push({ key, label });
+  await saveStaffConfig();
+  await setDoc(doc(db, 'settings', 'rbac'), window.rbacMatrix);
+  render();
+};
+
+window.deleteCustomRole = async function(key) {
+  if (CORE_ROLES.includes(key)) { alert('Peranan teras tidak boleh dipadam.'); return; }
+  if (!confirm('Padam peranan "' + key + '"? Staff dengan peranan ini perlu dikemas kini secara manual.')) return;
+  delete window.rbacMatrix[key];
+  delete window.staffConfig.roleLabels[key];
+  window.staffConfig.customRoles = window.staffConfig.customRoles.filter(r => r.key !== key);
+  await saveStaffConfig();
+  await setDoc(doc(db, 'settings', 'rbac'), window.rbacMatrix);
+  render();
+};
+
 window.setLoginBranch = function(branch) {
   selectedLoginBranch = branch;
   selectedLoginStaffIC = ''; // Reset staff selection when branch changes
@@ -997,8 +1245,22 @@ window.calculateYears = function(dateStr) {
 window._updateAlTotal = function() {
     const cf = parseFloat(document.getElementById('ent-CF')?.value || 0);
     const al = parseFloat(document.getElementById('ent-AL')?.value || 0);
+    const total = cf + al;
     const totalEl = document.getElementById('al-total-display');
-    if (totalEl) totalEl.value = (cf + al).toFixed(0);
+    if (totalEl) totalEl.value = total.toFixed(0);
+    // Kemaskini baki sebenar
+    const adj = parseFloat(document.getElementById('al-adj-input')?.value || 0);
+    const sysUsed = parseFloat(document.getElementById('al-sys-used-display')?.dataset.used || 0);
+    const balEl = document.getElementById('al-balance-display');
+    if (balEl) balEl.value = Math.max(0, total - sysUsed - adj).toFixed(1);
+};
+
+window._updateAlBalance = function() {
+    const total = parseFloat(document.getElementById('al-total-display')?.value || 0);
+    const adj = parseFloat(document.getElementById('al-adj-input')?.value || 0);
+    const sysUsed = parseFloat(document.getElementById('al-sys-used-display')?.dataset.used || 0);
+    const balEl = document.getElementById('al-balance-display');
+    if (balEl) balEl.value = Math.max(0, total - sysUsed - adj).toFixed(1);
 };
 
 let systemAuditLogs = [];
@@ -1038,10 +1300,15 @@ window.printLeave = function(id) {
 
     let printHTML = `
     <div id="print-container" style="font-family: Arial, sans-serif; padding: 40px; color: #841824;">
-        <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #9b2c2c; font-size: 28px; font-weight: bold; margin: 0;">KLINIK SYED BADARUDDIN</h1>
-            <p style="color: #4a5568; font-size: 11px; letter-spacing: 1px; margin-top: 5px; text-transform: uppercase;">- SERVICING COMMUNITY SINCE 1991 -</p>
-            <div style="border: 1px solid #e2e8f0; width: 60%; margin: 15px auto; padding: 5px; font-weight: bold; letter-spacing: 2px;">BORANG PERMOHONAN CUTI</div>
+        <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.15;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
+        <div style="display:flex;align-items:center;gap:18px;border-bottom:2px solid #9b2c2c;padding-bottom:16px;margin-bottom:24px;">
+            <img src="${logos.ksb}" style="width:64px;height:64px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
+            <div style="flex:1;text-align:center;">
+                <h1 style="color: #9b2c2c; font-size: 22px; font-weight: bold; margin: 0;">KLINIK SYED BADARUDDIN</h1>
+                <p style="color: #4a5568; font-size: 10px; letter-spacing: 1px; margin: 4px 0 0; text-transform: uppercase;">- SERVICING COMMUNITY SINCE 1991 -</p>
+                <div style="border: 1px solid #9b2c2c; display:inline-block; margin-top:8px; padding: 4px 24px; font-weight: bold; letter-spacing: 2px; font-size:12px; color:#9b2c2c;">BORANG PERMOHONAN CUTI</div>
+            </div>
+            <img src="${logos.ksb}" style="width:64px;height:64px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
         </div>
         
         <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 11px; font-weight: bold;">
@@ -1154,42 +1421,90 @@ window.finalizeLeave = async function(id) {
         const isFullBoss = ['admin', 'hr', 'super_admin'].includes(user.role);
         const isHODApproved = record.status === 'HOD APPROVED' || record.status === 'HOD RECOMMENDED';
         let newStatus = "";
+        let tlWaFeedback = '';
+        let waFinalFeedback = '';
 
-        if (isFullBoss) {
+        if (user.role === 'team_leader') {
+            // Peringkat 0: Team Leader sokong → TL APPROVED, notify Supervisor Balok
+            newStatus = 'TL APPROVED';
+            const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
+            const supervisors = staffList.filter(s =>
+                s.role === 'supervisor' && (s.branch || '').includes('Balok') && s.phone && !s.inactive
+            );
+            const supMsg = `📋 *SOKONGAN TEAM LEADER — PERLU NILAI SUPERVISOR (Peringkat 1)*\n\nPermohonan cuti telah disokong oleh *${user.name} (TEAM LEADER)* dan menunggu penilaian anda.\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\nSila log masuk ke KSB Leave Apply untuk menilai permohonan ini.\n_— KSB Leave System_`;
+            supervisors.forEach(sup => window.sendWhatsApp(sup.phone, supMsg));
+            if (applicant && applicant.phone) {
+                const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *disokong oleh Team Leader*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini menunggu *penilaian Supervisor*. Anda akan dimaklumkan selepas kelulusan akhir.\n_— KSB Leave System_`;
+                window.sendWhatsApp(applicant.phone, staffMsg);
+            }
+            if (!WHATSAPP_ENABLED()) {
+                tlWaFeedback = '\n\n⚠️ Token WhatsApp belum dikonfigurasi — Supervisor TIDAK dapat notifikasi WA. Sila hubungi Super Admin untuk tetapkan token Fonnte.';
+            } else if (supervisors.length === 0) {
+                tlWaFeedback = '\n\n⚠️ Tiada Supervisor (dengan nombor telefon) dijumpai di cawangan Balok.\nNotifikasi WA KE SUPERVISOR TIDAK DIHANTAR.\nSila pastikan akaun Supervisor telah didaftarkan dengan nombor telefon dalam sistem.';
+            } else {
+                tlWaFeedback = `\n\n📲 Notifikasi WA dihantar kepada Supervisor:\n${supervisors.map(s => s.name).join(', ')}`;
+            }
+        } else if (isFullBoss) {
             // Peringkat 2: HR/Admin beri kelulusan akhir
-            // Jika PENDING (bypass HOD), minta pengesahan
+            // Blok bypass TL APPROVED op-balok jika needs_tl aktif — mesti Supervisor lulus dulu
+            if (record.status === 'TL APPROVED' && (approvalRouting['operation_balok'] || {}).needs_tl) {
+                const _ap = applicant || staffList.find(s => s.ic === record.ic);
+                if (_ap && window.getStaffGroup(_ap) === 'operation_balok') {
+                    alert('⛔ Permohonan ini masih menunggu kelulusan Supervisor (Peringkat 1). HR/Admin hanya boleh luluskan selepas Supervisor lulus.');
+                    return;
+                }
+            }
+            // Jika PENDING (bypass), minta pengesahan
             if (record.status === 'PENDING') {
-                if (!confirm(`⚠️ Permohonan ini BELUM disokong oleh HOD/PIC_HOD.\n\nAdakah anda pasti mahu luluskan terus (bypass peringkat HOD) bagi ${record.name}?`)) return;
+                if (!confirm(`⚠️ Permohonan ini BELUM dinilai oleh HOD/Supervisor.\n\nAdakah anda pasti mahu luluskan terus (bypass) bagi ${record.name}?`)) return;
             }
             newStatus = "APPROVED";
             const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
-            if (applicant && applicant.phone) {
-                const msg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *DILULUSKAN SEPENUHNYA* oleh HR/Admin.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n_— KSB Leave System_`;
-                window.sendWhatsApp(applicant.phone, msg);
+            const approvedName = (applicant || {}).name || record.name;
+            const approvedMsg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${approvedName},\n\nPermohonan cuti anda telah *DILULUSKAN SEPENUHNYA* oleh HR/Admin.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n_— KSB Leave System_`;
+            if (!WHATSAPP_ENABLED()) {
+                waFinalFeedback = `\n\n⚠️ Token WhatsApp belum dikonfigurasi — ${approvedName} TIDAK dapat notifikasi WA. Sila hubungi Super Admin untuk tetapkan token Fonnte.`;
+            } else if (!applicant || !applicant.phone) {
+                waFinalFeedback = `\n\n⚠️ Notifikasi WA TIDAK dihantar — ${approvedName} tiada nombor telefon dalam sistem. Sila kemaskini profil staf.`;
+            } else {
+                window.sendWhatsApp(applicant.phone, approvedMsg);
+                waFinalFeedback = `\n\n📲 Notifikasi WA dihantar kepada ${approvedName} (${applicant.phone}).`;
             }
         } else {
             // Peringkat 1: HOD/PIC_HOD/Supervisor sokong
             const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
             const p2Required = window.staffNeedsP2(applicant || { branch: record.branch, category: record.category });
 
-            if (!p2Required) {
-                // Tiada Peringkat 2 — terus APPROVED
-                newStatus = "APPROVED";
-                if (applicant && applicant.phone) {
-                    const msg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *DILULUSKAN* oleh *${user.name}* (${(user.role || '').toUpperCase()}).\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n_— KSB Leave System_`;
-                    window.sendWhatsApp(applicant.phone, msg);
-                }
-            } else {
+            // Supervisor menilai TL APPROVED untuk staf operasi Balok (Peringkat 1 selepas TL)
+            const tlActive = !!(approvalRouting['operation_balok'] || {}).needs_tl;
+            const isTLApprovedOperationBalok = tlActive && record.status === 'TL APPROVED' &&
+                applicant && window.getStaffGroup(applicant) === 'operation_balok';
+
+            if (isTLApprovedOperationBalok || p2Required) {
                 // Perlu Peringkat 2 — notify HR/Admin
                 newStatus = "HOD APPROVED";
                 const admins = staffList.filter(s =>
                     ['admin', 'hr', 'super_admin'].includes(s.role) && s.phone && !s.inactive
                 );
-                const msg = `📋 *SOKONGAN HOD — PERLU KELULUSAN HR/ADMIN (Peringkat 2)*\n\nPermohonan cuti telah disokong oleh *${user.name} (${(user.role || '').toUpperCase()})* dan menunggu kelulusan akhir anda.\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${record.type}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\nSila log masuk ke KSB Leave Apply untuk kelulusan akhir.\n_— KSB Leave System_`;
+                const p1Label = isTLApprovedOperationBalok ? 'SUPERVISOR (selepas Team Leader)' : (user.role || '').toUpperCase();
+                const msg = `📋 *SOKONGAN SUPERVISOR — PERLU KELULUSAN HR/ADMIN (Peringkat 2)*\n\nPermohonan cuti telah dinilai dan disokong oleh *${user.name} (${p1Label})* dan menunggu kelulusan akhir anda.\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\nSila log masuk ke KSB Leave Apply untuk kelulusan akhir.\n_— KSB Leave System_`;
                 admins.forEach(admin => window.sendWhatsApp(admin.phone, msg));
                 if (applicant && applicant.phone) {
-                    const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *disokong oleh Pelulus Peringkat 1*.\n\n• Jenis: ${record.type}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini sedang menunggu *kelulusan akhir HR/Admin*. Anda akan dimaklumkan selepas kelulusan akhir.\n_— KSB Leave System_`;
+                    const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *dinilai dan disokong oleh Supervisor*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini sedang menunggu *kelulusan akhir HR/Admin*. Anda akan dimaklumkan selepas kelulusan akhir.\n_— KSB Leave System_`;
                     window.sendWhatsApp(applicant.phone, staffMsg);
+                }
+            } else {
+                // Tiada Peringkat 2 — terus APPROVED
+                newStatus = "APPROVED";
+                const hodApprovedName = (applicant || {}).name || record.name;
+                const hodApprovedMsg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${hodApprovedName},\n\nPermohonan cuti anda telah *DILULUSKAN* oleh *${user.name}* (${(user.role || '').toUpperCase()}).\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n_— KSB Leave System_`;
+                if (!WHATSAPP_ENABLED()) {
+                    waFinalFeedback = `\n\n⚠️ Token WhatsApp belum dikonfigurasi — ${hodApprovedName} TIDAK dapat notifikasi WA. Sila hubungi Super Admin untuk tetapkan token Fonnte.`;
+                } else if (!applicant || !applicant.phone) {
+                    waFinalFeedback = `\n\n⚠️ Notifikasi WA TIDAK dihantar — ${hodApprovedName} tiada nombor telefon dalam sistem. Sila kemaskini profil staf.`;
+                } else {
+                    window.sendWhatsApp(applicant.phone, hodApprovedMsg);
+                    waFinalFeedback = `\n\n📲 Notifikasi WA dihantar kepada ${hodApprovedName} (${applicant.phone}).`;
                 }
             }
         }
@@ -1209,12 +1524,17 @@ window.finalizeLeave = async function(id) {
 
             await updateDoc(doc(db, "leaves", id.toString()), updateData);
             const isFinalApproval = newStatus === 'APPROVED';
+            const isTLApproval = newStatus === 'TL APPROVED';
             window.logSystemActivity(
-                (isFinalApproval ? `Approved Leave (Final)` : `HOD Supported Leave (Peringkat 1)`) + ` for ${record.name}`
+                isFinalApproval ? `Approved Leave (Final) for ${record.name}`
+                : isTLApproval  ? `Team Leader Supported Leave (Peringkat 0) for ${record.name}`
+                : `Supervisor Supported Leave (Peringkat 1) for ${record.name}`
             );
             alert(isFinalApproval
-                ? '✅ Cuti Diluluskan! Notifikasi telah dihantar kepada pemohon.'
-                : '📋 Sokongan HOD (Peringkat 1) Berjaya! Permohonan dihantar kepada HR/Admin untuk kelulusan akhir.');
+                ? `✅ Cuti Diluluskan!${waFinalFeedback}`
+                : isTLApproval
+                ? `📋 Sokongan Team Leader (Peringkat 0) Berjaya! Permohonan dihantar kepada Supervisor untuk dinilai.${tlWaFeedback}`
+                : '📋 Sokongan Supervisor (Peringkat 1) Berjaya! Permohonan dihantar kepada HR/Admin untuk kelulusan akhir.');
         } catch (err) {
             console.error("Error updating document: ", err);
             alert("Ralat mengemaskini status cuti.");
@@ -1222,10 +1542,31 @@ window.finalizeLeave = async function(id) {
     }
 };
 
+window.resendApprovalWA = async function(id) {
+    const record = leaveRecords.find(r => r.id === id);
+    if (!record) return alert('Rekod tidak dijumpai.');
+    if (record.status !== 'APPROVED') return alert('Hanya rekod yang sudah DILULUSKAN boleh dihantar semula.');
+
+    const applicant = staffList.find(s => s.ic === record.ic);
+    if (!applicant) return alert('Maklumat staf tidak dijumpai.');
+    if (!applicant.phone) return alert(`Nombor telefon ${applicant.name} belum didaftarkan dalam sistem.\n\nSila kemaskini nombor telefon dalam profil staf.`);
+    if (!WHATSAPP_ENABLED()) return alert('Token WhatsApp belum dikonfigurasi.\n\nPergi ke Pengurusan → Tetapan WhatsApp untuk simpan token Fonnte.');
+
+    const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
+    const msg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *DILULUSKAN SEPENUHNYA* oleh HR/Admin.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n_— KSB Leave System_`;
+
+    try {
+        await window.sendWhatsApp(applicant.phone, msg, true);
+        alert(`✅ Notifikasi WhatsApp berjaya dihantar semula kepada ${applicant.name}.`);
+    } catch(err) {
+        alert(`❌ Gagal menghantar WhatsApp.\n\nRalat: ${err.message}\n\nSila pastikan token Fonnte masih sah.`);
+    }
+};
+
 window.cancelLeave = async function(id) {
     const req = leaveRecords.find(a => a.id === id);
     if (!req) return;
-    
+
     const rKey = window.rbacMatrix[user.role] ? user.role : 'staff';
     const finalRbac = window.rbacMatrix[rKey] || {};
     if (!finalRbac.can_cancel) {
@@ -1276,6 +1617,51 @@ window.rejectLeave = async function(id) {
     }
 };
 
+window.resendLeaveWA = function(id) {
+    const record = leaveRecords.find(r => r.id === id);
+    if (!record) return;
+    const applicant = staffList.find(s => s.ic === record.ic);
+    const leaveTypeName = (leaveCategories.find(c => c.id === record.type) || {}).name || record.type;
+    const info = `\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\nSila log masuk ke KSB Leave Apply → Management → Pending Approvals.\n_— KSB Leave System_`;
+
+    let recipients = [];
+    let msg = '';
+
+    if (record.status === 'PENDING') {
+        const isOpBalok = applicant && window.getStaffGroup(applicant) === 'operation_balok';
+        const tlActive = !!(approvalRouting['operation_balok'] || {}).needs_tl;
+        if (isOpBalok && tlActive && record.tlIC) {
+            // PENDING op-balok: peringatan kepada TL yang dipilih
+            recipients = staffList.filter(s => s.ic === record.tlIC && s.phone);
+            msg = `🔔 *PERINGATAN — Permohonan Cuti Menunggu Sokongan Anda (Peringkat 0)*\n\nPermohonan cuti di bawah masih menunggu sokongan *Team Leader*.${info}`;
+        } else if (record.hodIC) {
+            // PENDING dengan HOD dipilih: peringatan kepada HOD
+            recipients = staffList.filter(s => s.ic === record.hodIC && s.phone);
+            msg = `🔔 *PERINGATAN — Permohonan Cuti Menunggu Sokongan Anda (Peringkat 1)*\n\nPermohonan cuti di bawah masih menunggu sokongan anda.${info}`;
+        } else {
+            // PENDING routing auto: peringatan kepada semua P1 approver
+            recipients = window.getRoutingP1Approvers(applicant || { branch: record.branch, category: record.category }).filter(s => s.phone);
+            msg = `🔔 *PERINGATAN — Permohonan Cuti Menunggu Sokongan Anda (Peringkat 1)*\n\nPermohonan cuti di bawah masih menunggu sokongan anda.${info}`;
+        }
+    } else if (record.status === 'TL APPROVED') {
+        // TL dah sokong — peringatan kepada Supervisor Balok
+        recipients = staffList.filter(s => s.role === 'supervisor' && (s.branch || '').includes('Balok') && s.phone && !s.inactive);
+        msg = `🔔 *PERINGATAN — Permohonan Cuti Menunggu Nilai Anda (Peringkat 1)*\n\nPermohonan cuti telah disokong Team Leader dan masih menunggu penilaian *Supervisor*.${info}`;
+    } else if (record.status === 'HOD APPROVED' || record.status === 'HOD RECOMMENDED') {
+        // Supervisor dah lulus — peringatan kepada HR/Admin
+        recipients = staffList.filter(s => ['admin', 'hr', 'super_admin'].includes(s.role) && s.phone && !s.inactive);
+        msg = `🔔 *PERINGATAN — Permohonan Cuti Menunggu Kelulusan Akhir Anda (Peringkat 2)*\n\nPermohonan cuti telah disokong dan masih menunggu kelulusan akhir *HR/Admin*.${info}`;
+    }
+
+    if (!recipients.length) {
+        alert('⚠️ Tiada penerima dijumpai untuk dihantar peringatan WA.');
+        return;
+    }
+    recipients.forEach(r => window.sendWhatsApp(r.phone, msg));
+    const names = recipients.map(r => r.name).join(', ');
+    alert(`📲 Peringatan WA dihantar semula kepada:\n${names}`);
+};
+
 window.setHrReportTab = function(tab) { hrReportTab = tab; render(); };
 window.setApprovedReportBranch = function(val) { approvedReportBranch = val; render(); };
 window.setApprovedReportType = function(val) { approvedReportType = val; render(); };
@@ -1293,8 +1679,9 @@ window.generateBalanceReport = function(rows, branchName, leaveType, year) {
   const MONTHS = ['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ogo','Sep','Okt','Nov','Dis'];
   const printHTML = `
   <div id="print-container" style="font-family:Arial,sans-serif;padding:20px;color:#111;background:#fff;">
+    <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.15;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
     <div style="display:flex;align-items:center;gap:14px;border-bottom:2px solid #e2e8f0;padding-bottom:14px;margin-bottom:20px;">
-      <div style="width:44px;height:44px;background:#7c3aed;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:15px;">KSB</div>
+      <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
       <div>
         <div style="font-size:18px;font-weight:800;">Klinik Syed Badaruddin</div>
         <div style="font-size:10px;font-weight:700;letter-spacing:1px;color:#7c3aed;text-transform:uppercase;">Laporan Baki Cuti Bulanan — ${leaveType}</div>
@@ -1364,8 +1751,9 @@ window.generateApprovedReport = function() {
   const totalDays = recs.reduce((s, r) => s + parseFloat(r.days || 0), 0);
   const printHTML = `
   <div id="print-container" style="font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff;">
+    <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.15;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
     <div style="display:flex;align-items:center;gap:16px;border-bottom:2px solid #e2e8f0;padding-bottom:16px;margin-bottom:24px;">
-      <div style="width:48px;height:48px;background:#059669;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:16px;">KSB</div>
+      <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
       <div>
         <div style="font-size:20px;font-weight:800;color:#1a202c;">Klinik Syed Badaruddin</div>
         <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:#059669;text-transform:uppercase;">Laporan Cuti Diluluskan</div>
@@ -1438,7 +1826,7 @@ window.generateAttendanceReport = function() {
   const monthPrefix = attendanceReportYear + '-' + String(attendanceReportMonth).padStart(2,'0');
 
   const staffPool = staffList.filter(s => {
-    if (s.active === false) return false;
+    if (s.inactive) return false;
     if (reportBranch && s.branch !== reportBranch) return false;
     if (attendanceReportBranch !== 'SEMUA' && s.branch !== attendanceReportBranch) return false;
     const bObj = branches.find(b => b.name === s.branch);
@@ -1518,16 +1906,21 @@ window.generateAttendanceReport = function() {
     </div>`;
   };
 
-  const kakitangan = staffPool.filter(s=>s.type!=='doctor').sort((a,b)=>a.name.localeCompare(b.name));
-  const doktor = staffPool.filter(s=>s.type==='doctor').sort((a,b)=>a.name.localeCompare(b.name));
+  const kakitangan = staffPool.filter(s=>s.category!=='Doctor').sort((a,b)=>a.name.localeCompare(b.name));
+  const doktor = staffPool.filter(s=>s.category==='Doctor').sort((a,b)=>a.name.localeCompare(b.name));
   const branchLabel = attendanceReportBranch === 'SEMUA' ? 'Semua Cawangan' : attendanceReportBranch;
 
   const printHTML = `
   <div id="print-container" style="font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff;max-width:900px;margin:0 auto;">
-    <div style="text-align:center;border-bottom:2px solid #1e293b;padding-bottom:12px;margin-bottom:20px;">
-      <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;">SENARAI BILANGAN CUTI, MC DAN EL KAKITANGAN KSBSB</div>
-      <div style="font-size:11px;font-weight:700;margin-top:4px;color:#334155;">CAWANGAN: ${branchLabel.toUpperCase()}</div>
-      <div style="font-size:11px;font-weight:700;color:#334155;">BULAN: ${monthLabel.toUpperCase()}</div>
+    <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.15;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
+    <div style="display:flex;align-items:center;gap:14px;border-bottom:2px solid #1e293b;padding-bottom:14px;margin-bottom:20px;">
+      <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
+      <div style="flex:1;text-align:center;">
+        <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;">SENARAI BILANGAN CUTI, MC DAN EL KAKITANGAN KSBSB</div>
+        <div style="font-size:11px;font-weight:700;margin-top:4px;color:#334155;">CAWANGAN: ${branchLabel.toUpperCase()}</div>
+        <div style="font-size:11px;font-weight:700;color:#334155;">BULAN: ${monthLabel.toUpperCase()}</div>
+      </div>
+      <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
     </div>
     ${renderSection('KAKITANGAN', kakitangan, false)}
     ${renderSection('DOKTOR', doktor, true)}
@@ -1578,8 +1971,9 @@ window.generateJenisCutiReport = function() {
   const typeColors = { AL:'#3b82f6', MC:'#10b981', EL:'#f59e0b', EL_EMG:'#ef4444', UP:'#94a3b8', HL:'#06b6d4', ML:'#ec4899', ML_PL:'#6366f1', CME:'#8b5cf6' };
   const printHTML = `
   <div id="print-container" style="font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff;">
+    <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.15;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
     <div style="display:flex;align-items:center;gap:16px;border-bottom:2px solid #e2e8f0;padding-bottom:16px;margin-bottom:24px;">
-      <div style="width:48px;height:48px;background:#f59e0b;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:16px;">KSB</div>
+      <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
       <div>
         <div style="font-size:20px;font-weight:800;color:#1a202c;">Klinik Syed Badaruddin</div>
         <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:#d97706;text-transform:uppercase;">Laporan Ringkasan Mengikut Jenis Cuti</div>
@@ -1653,8 +2047,9 @@ window.generateJenisCutiReport = function() {
 window.generateLeaveReport = function() {
    let printHTML = `
    <div id="print-container" style="font-family: Arial, sans-serif; padding: 20px; color: black; background: white;">
+      <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.15;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
       <div style="display: flex; align-items: center; gap: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 30px;">
-          <div style="width: 50px; height: 50px; background: #e53e3e; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--text); font-weight: bold; font-size: 20px;">KSB</div>
+          <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
           <div>
               <h1 style="margin: 0; font-size: 24px; color: #1a202c;">Klinik Syed Badaruddin</h1>
               <p style="margin: 5px 0 0 0; font-size: 14px; font-weight: bold; letter-spacing: 1px; color: #4a5568; text-transform: uppercase;">Official HR Leave Ledger</p>
@@ -1714,6 +2109,15 @@ let branches = [
 
 async function initData() {
   console.log('Initializing Firestore listeners...');
+
+  // Load WhatsApp token dari Firestore — supaya semua device guna token yang sama
+  try {
+    const waSnap = await getDoc(doc(db, 'system_config', 'whatsapp'));
+    if (waSnap.exists() && waSnap.data().token) {
+      WHATSAPP_TOKEN = waSnap.data().token;
+      localStorage.setItem('ksb_wa_token', WHATSAPP_TOKEN);
+    }
+  } catch(e) { console.warn('WA token load failed:', e); }
 
   // Load approval routing config
   try {
@@ -1820,7 +2224,37 @@ async function initData() {
     render();
   });
 
+  // Real-time Registration Requests
+  onSnapshot(collection(db, "registration_requests"), (snapshot) => {
+    registrationRequests = snapshot.docs.map(d => ({ ...d.data(), docId: d.id }))
+      .sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
+    render();
+  });
+
   // Real-time RBAC Matrix
+  // Staff config: categories & role labels
+  onSnapshot(doc(db, 'settings', 'staff_config'), (snap) => {
+    if (snap.exists()) {
+      const d = snap.data();
+      if (Array.isArray(d.staffCategories)) {
+        window.staffConfig.staffCategories = [...new Set([...CORE_CATEGORIES, ...d.staffCategories])];
+      }
+      if (d.roleLabels && typeof d.roleLabels === 'object') {
+        window.staffConfig.roleLabels = { ...window.staffConfig.roleLabels, ...d.roleLabels };
+      }
+      if (Array.isArray(d.customRoles)) {
+        window.staffConfig.customRoles = d.customRoles;
+        // Ensure custom roles exist in rbacMatrix
+        d.customRoles.forEach(r => {
+          if (!window.rbacMatrix[r.key]) {
+            window.rbacMatrix[r.key] = { ...JSON.parse(JSON.stringify(_rbacCodeDefaults.staff)), manage_roles_categories: false };
+          }
+        });
+      }
+    }
+    render();
+  });
+
   onSnapshot(doc(db, "settings", "rbac"), (docSnap) => {
     if (docSnap.exists()) {
         const data = docSnap.data();
@@ -1870,6 +2304,24 @@ async function initData() {
             data.hod.manage_reports = true;
             needsMigration = true;
         }
+        // Migrate: tambah peranan baru dari code defaults jika belum ada dalam Firestore
+        for (const _role of Object.keys(_rbacCodeDefaults)) {
+            if (!data[_role]) {
+                data[_role] = JSON.parse(JSON.stringify(_rbacCodeDefaults[_role]));
+                needsMigration = true;
+            }
+        }
+        // Migrate: tambah field baru pada peranan sedia ada jika belum ada
+        for (const _role of Object.keys(data)) {
+            if (_rbacCodeDefaults[_role]) {
+                for (const _field of Object.keys(_rbacCodeDefaults[_role])) {
+                    if (data[_role][_field] === undefined) {
+                        data[_role][_field] = _rbacCodeDefaults[_role][_field];
+                        needsMigration = true;
+                    }
+                }
+            }
+        }
         window.rbacMatrix = data;
         if (needsMigration) setDoc(doc(db, "settings", "rbac"), data);
         console.log('RBAC matrix updated from Firestore');
@@ -1882,7 +2334,7 @@ async function initData() {
 }
 
 // Migration helper removed as data is now live on Firestore.
-console.log('[SYSTEM] Version 1.0.5 - Submit Handler Fix Live');
+console.log('[SYSTEM] Version 1.1.0 - First Login Warning + Policy Flow + System URL');
 
 initData();
 
@@ -1974,7 +2426,7 @@ function initCharts() {
             padding: 12,
             cornerRadius: 10,
             callbacks: {
-              title: (items) => data.monthsList[items[0].dataIndex] + ' 2026',
+              title: (items) => data.monthsList[items[0].dataIndex] + ' ' + new Date().getFullYear(),
               label: (item) => '  ' + item.raw + ' Permohonan',
             }
           }
@@ -2131,6 +2583,14 @@ function renderLogin() {
         </div>
         <h1 class="auth-title">KLINIK SYED BADARUDDIN</h1>
         <p class="auth-subtitle">Leave Tracking System</p>
+
+        <!-- System URL Badge -->
+        <div style="margin-bottom:1rem;text-align:center;">
+          <a href="https://apply-leave-89ebb.web.app" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:0.4rem;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);border-radius:999px;padding:0.35rem 0.9rem;font-size:0.78rem;color:var(--primary);font-weight:700;text-decoration:none;letter-spacing:0.3px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+            apply-leave-89ebb.web.app
+          </a>
+        </div>
         
         <form id="login-form">
           <div class="form-group">
@@ -2190,7 +2650,14 @@ function renderLogin() {
           <button type="submit" class="btn-primary">Login</button>
         </form>
 
-        <div style="margin-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
+        <div style="margin-top: 1.25rem; text-align: center;">
+          <span style="font-size: 0.9rem; color: var(--text-muted);">Staf baharu?</span>
+          <button type="button" onclick="window.openRegisterModal()" style="background: none; border: none; cursor: pointer; color: var(--primary); font-size: 0.9rem; font-weight: 700; text-decoration: underline; padding: 0 0.25rem; margin-left: 0.25rem;">
+            Daftar di sini
+          </button>
+        </div>
+
+        <div style="margin-top: 1.25rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
            <p style="font-size: 1rem; color: var(--text-muted); line-height: 1.4;">
              Sila pilih cawangan dan nama anda untuk log masuk. Admin boleh setkan password anda dalam bahagian Management.
            </p>
@@ -2198,9 +2665,71 @@ function renderLogin() {
              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
              Klik <strong style="color: var(--primary);">Lupa Kata Laluan?</strong> untuk hantar kata laluan ke WhatsApp anda. Pastikan nombor telefon anda telah didaftarkan oleh HR/Admin.
            </p>
+           <!-- First-login reminder -->
+           <div style="margin-top:0.85rem;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:0.75rem;padding:0.75rem 1rem;display:flex;align-items:flex-start;gap:0.5rem;">
+             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+             <p style="font-size:0.78rem;color:var(--text-muted);margin:0;line-height:1.5;">
+               <strong style="color:#ef4444;">Log masuk pertama?</strong> Kata laluan awal anda adalah <strong>No. IC</strong>. Sistem akan minta anda tukar kata laluan selepas log masuk pertama bagi keselamatan akaun.
+             </p>
+           </div>
         </div>
       </div>
     </div>
+
+    ${showRegisterModal ? `
+    <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 1rem;" onclick="if(event.target===this)window.closeRegisterModal()">
+      <div class="glass-pane fade-in" style="width: 100%; max-width: 480px; padding: 2rem; border-radius: 1.5rem; position: relative; max-height: 90vh; overflow-y: auto;">
+        <button onclick="window.closeRegisterModal()" style="position: absolute; top: 1rem; right: 1rem; background: rgba(255,255,255,0.08); border: none; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-muted);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem;">
+          <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary)); display: flex; align-items: center; justify-content: center;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
+          </div>
+          <div>
+            <h2 style="font-size: 1.15rem; font-weight: 700; margin: 0;">Daftar Akaun Baharu</h2>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Permohonan akan disemak oleh HR/Admin</p>
+          </div>
+        </div>
+        <form onsubmit="window.submitRegister(event)">
+          <div class="form-group">
+            <label>Nama Penuh <span style="color:#ef4444;">*</span></label>
+            <input type="text" id="reg-name" class="neu-inset" placeholder="NAMA SEPERTI DALAM IC" required style="width: 100%; text-transform: uppercase;" oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div class="form-group">
+            <label>No. Kad Pengenalan (IC) <span style="color:#ef4444;">*</span></label>
+            <input type="text" id="reg-ic" class="neu-inset" placeholder="Contoh: 901231045678" required style="width: 100%;">
+          </div>
+          <div class="form-group">
+            <label>Cawangan <span style="color:#ef4444;">*</span></label>
+            <select id="reg-branch" class="neu-inset" required style="width: 100%; appearance: none; cursor: pointer; color-scheme: light; font-weight: 600;">
+              <option value="" disabled selected>-- Pilih Cawangan --</option>
+              ${branches.filter(b => b.name !== 'Management / HQ').map(b => `<option value="${b.name}">${b.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Kategori <span style="color:#ef4444;">*</span></label>
+            <select id="reg-category" class="neu-inset" required style="width: 100%; appearance: none; cursor: pointer; color-scheme: light; font-weight: 600;">
+              <option value="" disabled selected>-- Pilih Kategori --</option>
+              ${window.staffConfig.staffCategories.map(c => `<option value="${c}">${c}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>No. WhatsApp <span style="color:#ef4444;">*</span></label>
+            <input type="tel" id="reg-phone" class="neu-inset" placeholder="Contoh: 0123456789 atau 60123456789" required style="width: 100%;">
+            <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.35rem;">Nombor akan disimpan dengan awalan 6 (contoh: 0123456789 → 60123456789)</div>
+          </div>
+          <div style="background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: 0.75rem; padding: 0.85rem 1rem; margin-bottom: 1.25rem; font-size: 0.82rem; color: var(--text-muted); line-height: 1.5;">
+            <strong style="color: var(--primary);">Nota:</strong> Setelah diluluskan, kata laluan awal anda adalah No. IC anda. Sila tukar kata laluan selepas log masuk pertama.
+          </div>
+          <button type="submit" class="btn-primary" style="width: 100%;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align: middle; margin-right: 0.4rem;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.62 3.36a2 2 0 0 1 2-2.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+            Hantar Permohonan
+          </button>
+        </form>
+      </div>
+    </div>
+    ` : ''}
   `;
 
   document.querySelector('#login-form').addEventListener('submit', (e) => {
@@ -2239,6 +2768,7 @@ function renderLogin() {
       window.initMessengerRooms();
       window.initPresence();
       window.startNewMessageListener();
+      window.requestNotifPermission();
       startReminderScheduler();
       view = 'dashboard';
       render();
@@ -2259,6 +2789,8 @@ function renderLogin() {
     if (foundUser && foundUser.password === pwd) {
       console.log(`[AUTH_SUCCESS] Login authorized for ${foundUser.name}`);
       user = foundUser;
+      // Detect if still using default password (IC number) → prompt to change
+      showFirstLoginWarning = (pwd === (foundUser.ic || '').trim());
       currentSessionId = Date.now().toString() + '_' + Math.random().toString(36).substring(2);
       duplicateSessionDetected = false;
       localStorage.setItem('ksb_session_' + user.ic, currentSessionId);
@@ -2273,6 +2805,7 @@ function renderLogin() {
       window.initMessengerRooms();
       window.initPresence();
       window.startNewMessageListener();
+      window.requestNotifPermission();
       startReminderScheduler();
       view = 'dashboard';
       render();
@@ -2457,8 +2990,10 @@ window.getEarnedAL = function(staffObj) {
 window.getLeaveStats = function(staff, type) {
   if (!staff) return { used: 0, ent: 0, bal: 0 };
 
-  const records = leaveRecords.filter(r => r.ic === staff.ic && (r.status === 'APPROVED' || r.status === 'HOD APPROVED') && r.type === type);
-  const used = records.reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
+  const records = leaveRecords.filter(r => r.ic === staff.ic && (r.status === 'APPROVED' || r.status === 'HOD APPROVED' || r.status === 'TL APPROVED') && r.type === type);
+  let usedFromRecords = records.reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
+  // al_adj: pelarasan manual HR — hari AL yang digunakan sebelum sistem atau pindahan dari HR
+  const used = type === 'AL' ? usedFromRecords + parseFloat(staff.al_adj || 0) : usedFromRecords;
 
   let ent = 0;
   if (type === 'AL') {
@@ -2475,6 +3010,8 @@ window.getLeaveStats = function(staff, type) {
 
   return {
     used: used,
+    usedFromRecords: type === 'AL' ? usedFromRecords : used,
+    adj: type === 'AL' ? parseFloat(staff.al_adj || 0) : 0,
     ent: ent,
     bal: Math.max(0, ent - used)
   };
@@ -2583,6 +3120,53 @@ window.stopPresence = async function() {
 };
 // ────────────────────────────────────────────────────────────
 
+// ── Bunyi notifikasi mesej (Web Audio API, tanpa fail audio) ──
+function playMsgSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+  } catch(e) {}
+}
+
+// ── Minta kebenaran Browser Notification ──
+window.requestNotifPermission = function() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+};
+
+// ── Tunjuk Browser Notification (muncul walaupun tab tidak aktif) ──
+function showBrowserNotif(senderName, roomName, text, roomId, roomType) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (document.visibilityState === 'visible') return; // sudah nampak toast, tak perlu double
+  const title = roomType === 'dm' ? `💬 ${senderName}` : `💬 ${senderName} @ ${roomName}`;
+  const preview = text.length > 100 ? text.slice(0, 100) + '…' : text;
+  const notif = new Notification(title, {
+    body: preview,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    tag: roomId, // grupkan notif dari room yang sama
+    renotify: true,
+  });
+  notif.onclick = function() {
+    window.focus();
+    notif.close();
+    window.setView('messenger');
+    render();
+  };
+}
+
 // ── New Message Listener (direct from messenger_messages collection) ──
 window.startNewMessageListener = function() {
   if (msgNewMsgUnsub) { msgNewMsgUnsub(); msgNewMsgUnsub = null; }
@@ -2597,7 +3181,9 @@ window.startNewMessageListener = function() {
       const roomType = roomData.type || (data.roomId.startsWith('dm_') ? 'dm' : 'group');
       const roomName = roomType === 'dm' ? data.senderName : (roomData.name || data.senderName);
       const msgText = data.text || (data.fileName ? `📎 ${data.fileName}` : '📎 Fail');
+      playMsgSound();
       showMsgToast(data.roomId, roomName, roomType, data.senderName, msgText);
+      showBrowserNotif(data.senderName, roomName, msgText, data.roomId, roomType);
     });
   });
 };
@@ -2952,17 +3538,15 @@ function renderMessengerView() {
         </h2>
         ${(function() {
           const onlineOthers = Object.values(onlineUsers).filter(u => u.ic !== user.ic);
-          const onlineCount = onlineOthers.length + (onlineUsers[user.ic] ? 1 : 0);
-          if (onlineCount === 0) return '';
-          const avatars = onlineOthers.slice(0, 5);
-          return `<div class="msg-online-bar">
-            <div style="display:flex;align-items:center;gap:0.3rem;flex:1;min-width:0;">
-              <span class="msg-online-pulse"></span>
-              <span style="font-size:0.78rem;font-weight:700;color:#16a34a;">${onlineCount} Sedang Online</span>
-            </div>
-            <div style="display:flex;gap:-4px;">
-              ${avatars.map(u => `<div class="msg-online-mini-avatar" title="${u.name}">${(u.name||'?')[0]}</div>`).join('')}
-              ${onlineOthers.length > 5 ? `<div class="msg-online-mini-avatar" style="background:rgba(163,177,198,0.3);color:var(--text-muted);font-size:0.6rem;">+${onlineOthers.length - 5}</div>` : ''}
+          if (onlineOthers.length === 0) return '';
+          return `<div class="msg-online-chips-bar">
+            <span class="msg-online-pulse" style="flex-shrink:0;"></span>
+            <span style="font-size:0.75rem;font-weight:700;color:#16a34a;flex-shrink:0;">Online:</span>
+            <div class="msg-online-chips-scroll">
+              ${onlineOthers.map(u => {
+                const firstName = (u.name || '?').split(' ')[0];
+                return `<button class="msg-online-chip" onclick="window.openDM('${u.ic}','${(u.name||'').replace(/'/g,"\\'")}');event.stopPropagation();" title="${u.name} — ${u.branch||''}"><span style="width:7px;height:7px;border-radius:50%;background:#22c55e;flex-shrink:0;display:inline-block;"></span>${firstName}</button>`;
+              }).join('')}
             </div>
           </div>`;
         })()}
@@ -3138,7 +3722,7 @@ function renderDashboard() {
       <aside class="sidebar">
         <div class="sidebar-header">
           <img src="${logos.ksb}" alt="Logo" style="width: 40px; border-radius: 50%;">
-          <span style="font-weight: 700; font-size: 1.1rem; letter-spacing: -0.5px;">KSB Leave <small style="font-size: 0.97rem; opacity: 0.5;">v1.6.10</small></span>
+          <span style="font-weight: 700; font-size: 1.1rem; letter-spacing: -0.5px;">KSB Leave <small style="font-size: 0.97rem; opacity: 0.5;">v1.7.0</small></span>
         </div>
         <nav class="nav-menu">
           ${(() => {
@@ -3148,7 +3732,7 @@ function renderDashboard() {
               ${dashboardRbac.dashboard ? `<div class="nav-item ${view === 'dashboard' ? 'active' : ''}" onclick="window.setView('dashboard')"><i data-lucide="layout-dashboard" width="18" height="18"></i> Dashboard</div>` : ''}
               ${dashboardRbac.leave_request ? `<div class="nav-item ${view === 'leave-form' ? 'active' : ''}" onclick="window.setView('leave-form')"><i data-lucide="calendar-plus" width="18" height="18"></i> Borang Cuti</div>` : ''}
               ${(dashboardRbac.management || dashboardRbac.manage_pending || dashboardRbac.manage_staff || dashboardRbac.manage_branches || dashboardRbac.manage_audit || dashboardRbac.manage_login_audit || dashboardRbac.manage_reports || dashboardRbac.manage_access) ? `<div class="nav-item ${view === 'management' ? 'active' : ''}" onclick="window.setView('management')"><i data-lucide="shield-check" width="18" height="18"></i> Management</div>` : ''}
-              ${dashboardRbac.messenger !== false ? `<div class="nav-item ${view === 'messenger' ? 'active' : ''}" onclick="window.setView('messenger')" style="position:relative;"><i data-lucide="message-circle" width="18" height="18"></i> Messenger${messengerUnreadRooms.size > 0 ? `<span style="position:absolute;top:6px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--danger);"></span>` : ''}</div>` : ''}
+              ${dashboardRbac.messenger !== false ? `<div class="nav-item ${view === 'messenger' ? 'active' : ''}" onclick="window.setView('messenger')" style="position:relative;"><i data-lucide="message-circle" width="18" height="18"></i> Messenger${messengerUnreadRooms.size > 0 ? `<span style="position:absolute;top:4px;right:6px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:var(--danger);color:#fff;font-size:0.6rem;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1;">${messengerUnreadRooms.size}</span>` : ''}</div>` : ''}
               ${dashboardRbac.policy ? `<div class="nav-item ${view === 'policy' ? 'active' : ''}" onclick="window.setView('policy')"><i data-lucide="book-open" width="18" height="18"></i> Polisi</div>` : ''}
               ${dashboardRbac.settings ? `<div class="nav-item ${view === 'settings' ? 'active' : ''}" onclick="window.setView('settings')"><i data-lucide="settings-2" width="18" height="18"></i> Tetapan</div>` : ''}
             `;
@@ -3174,6 +3758,7 @@ function renderDashboard() {
     ${renderLeaveModal()}
     ${renderSelfProfileModal()}
     ${renderAddStaffModal()}
+    ${renderFirstLoginModal()}
     ${renderActiveToasts()}
   `;
 
@@ -3233,9 +3818,22 @@ function renderDashboard() {
           }
       }
 
-      // Wajib pilih pelulus Peringkat 1
+      // Tentukan sama ada staff adalah op-balok dengan needs_tl aktif
+      const _sbmIsBalok = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
+      const _sbmIsOpBalokTL = user.category === 'Operation Staff' && _sbmIsBalok &&
+          !!(approvalRouting['operation_balok'] || {}).needs_tl;
+
+      // Wajib pilih TL (Peringkat 0) untuk op-balok
+      const selectedTL = leaveForm.querySelector('#tl-select')?.value;
+      if (_sbmIsOpBalokTL && !selectedTL) {
+          alert('🔴 WAJIB: Sila pilih Team Leader (Pelulus Peringkat 0) sebelum menghantar permohonan cuti.\n\nPermohonan tidak dapat diproses tanpa sokongan Team Leader.');
+          leaveForm.querySelector('#tl-select')?.focus();
+          return;
+      }
+
+      // Wajib pilih pelulus Peringkat 1 (kecuali op-balok — Supervisor auto)
       const selectedHODCheck = leaveForm.querySelector('#hod-select')?.value;
-      if (!selectedHODCheck) {
+      if (!_sbmIsOpBalokTL && !selectedHODCheck) {
           alert('🔴 WAJIB: Sila pilih Pelulus Peringkat 1 (HOD / PIC_HOD / Supervisor) sebelum menghantar permohonan cuti.\n\nPermohonan tidak dapat diproses tanpa kelulusan Peringkat 1.');
           leaveForm.querySelector('#hod-select')?.focus();
           return;
@@ -3265,6 +3863,7 @@ function renderDashboard() {
         reason,
         handoverName: handover,
         hodIC: selectedHOD || null,
+        tlIC: selectedTL || null,
         status: 'PENDING'
       };
 
@@ -3277,15 +3876,20 @@ function renderDashboard() {
           return;
       }
 
-      // WA Peringkat 1: notify approver via routing config
+      // WA Peringkat 0/1: notify TL yang dipilih (op-balok) atau approver biasa
       let hodToNotify = [];
-      if (selectedHOD) {
+      let hodMsg = '';
+      if (_sbmIsOpBalokTL) {
+        // Op-balok: notify hanya TL yang dipilih oleh staff (bukan semua TL)
+        hodToNotify = staffList.filter(s => s.ic === selectedTL && s.phone);
+        hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 0 (Sokongan Team Leader)*\n\nPermohonan cuti memerlukan sokongan anda (Team Leader) sebelum dihantar ke Supervisor.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\nSila log masuk ke KSB Leave Apply → Management → Pending Approvals.\n_— KSB Leave System_`;
+      } else if (selectedHOD) {
         hodToNotify = staffList.filter(s => s.ic === selectedHOD && s.phone);
+        hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\nSila log masuk ke KSB Leave Apply → Management → Pending Approvals.\n_— KSB Leave System_`;
       } else {
         hodToNotify = window.getRoutingP1Approvers(user).filter(s => s.phone);
+        hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\nSila log masuk ke KSB Leave Apply → Management → Pending Approvals.\n_— KSB Leave System_`;
       }
-
-      const hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\nSila log masuk ke KSB Leave Apply → Management → Pending Approvals.\n_— KSB Leave System_`;
 
       hodToNotify.forEach(hod => window.sendWhatsApp(hod.phone, hodMsg));
 
@@ -3298,7 +3902,9 @@ function renderDashboard() {
         if (isTerengganuLeave && s.role === 'hr') return false;
         return true;
       });
-      const adminCCMsg = `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan HOD)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan HOD/Supervisor (Peringkat 1).\n_— KSB Leave System_`;
+      const adminCCMsg = _sbmIsOpBalokTL
+        ? `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan Team Leader)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan Team Leader (Peringkat 0).\n_— KSB Leave System_`
+        : `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan HOD)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan HOD/Supervisor (Peringkat 1).\n_— KSB Leave System_`;
       adminCC.forEach(admin => window.sendWhatsApp(admin.phone, adminCCMsg));
 
       // Build status message
@@ -3308,9 +3914,11 @@ function renderDashboard() {
       if (!waEnabled) {
         statusMsg += '⚠️ AMARAN: Token WhatsApp belum dikonfigurasi. Notifikasi WA TIDAK dihantar. Sila hubungi Super Admin untuk tetapkan token Fonnte dalam WA Settings.';
       } else if (hodToNotify.length === 0) {
-        statusMsg += '⚠️ Tiada pelulus dijumpai untuk menerima notifikasi WA. Sila pastikan HOD/Supervisor telah didaftarkan dengan nombor telefon dalam sistem.';
+        const noRecipientLabel = _sbmIsOpBalokTL ? 'Team Leader' : 'HOD/Supervisor';
+        statusMsg += `⚠️ Tiada pelulus dijumpai untuk menerima notifikasi WA. Sila pastikan ${noRecipientLabel} telah didaftarkan dengan nombor telefon dalam sistem.`;
       } else {
-        statusMsg += `📲 Notifikasi WA dihantar kepada:\n${recipientNames}`;
+        const notifLabel = _sbmIsOpBalokTL ? 'Team Leader (Peringkat 0)' : 'Pelulus Peringkat 1';
+        statusMsg += `📲 Notifikasi WA dihantar kepada ${notifLabel}:\n${recipientNames}`;
       }
 
       navigator.clipboard.writeText(copyText).catch(() => {});
@@ -3407,6 +4015,10 @@ function renderDashboard() {
                       }
                   });
 
+                  // Simpan pelarasan manual HR (cuti AL sebelum sistem / pindahan dari rekod HR)
+                  const adjInput = document.getElementById('al-adj-input');
+                  if (adjInput) updates.al_adj = Math.max(0, parseFloat(adjInput.value) || 0);
+
                   try {
                       await updateDoc(doc(db, "staff", staffObj.ic), updates);
                       window.logSystemActivity(`Updated System Profile details for ${staffObj.name}`);
@@ -3471,8 +4083,8 @@ function renderAnalyticsDashboard(lockedBranch = null) {
   });
 
   const totalReqs = filteredRecords.length;
-  const approved = filteredRecords.filter(r => r.status?.includes('APPROVED')).length;
-  const pending = filteredRecords.filter(r => r.status?.includes('PENDING') || r.status?.includes('RECOM') || r.status?.includes('HOD')).length;
+  const approved = filteredRecords.filter(r => r.status === 'APPROVED').length;
+  const pending = filteredRecords.filter(r => r.status?.includes('PENDING') || r.status?.includes('RECOM') || r.status?.includes('HOD') || r.status === 'TL APPROVED').length;
   const rejected = filteredRecords.filter(r => r.status === 'REJECTED').length;
 
   const types = {};
@@ -3528,7 +4140,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
           }
           <select id="month-filter" class="neu-inset" style="padding:0.45rem 0.9rem;font-size:0.85rem;width:auto;color-scheme:light;font-weight:600;" onchange="window.setAnalyticsMonth(this.value)">
             <option value="0" ${analyticsFilterMonth === 0 ? 'selected' : ''}>Semua Bulan</option>
-            ${monthsList.map((m,i) => `<option value="${i+1}" ${analyticsFilterMonth === i+1 ? 'selected' : ''}>${m} 2026</option>`).join('')}
+            ${monthsList.map((m,i) => `<option value="${i+1}" ${analyticsFilterMonth === i+1 ? 'selected' : ''}>${m} ${new Date().getFullYear()}</option>`).join('')}
           </select>
         </div>
       </header>
@@ -3543,7 +4155,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
           <div style="font-size:2.8rem;font-weight:800;color:#fff;line-height:1;margin-bottom:0.4rem;">${totalReqs}</div>
           <div style="font-size:0.75rem;color:rgba(255,255,255,0.65);display:flex;align-items:center;gap:0.4rem;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            Tahun 2026
+            Tahun ${new Date().getFullYear()}
           </div>
         </div>
         <!-- Approved -->
@@ -3606,7 +4218,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
         <!-- Donut Chart -->
         <div class="glass-card" style="padding:1.5rem;">
           <h3 style="font-size:0.95rem;font-weight:700;margin:0 0 0.2rem;">Jenis Cuti</h3>
-          <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:1rem;">Pecahan ${analyticsFilterMonth === 0 ? '2026' : monthsList[analyticsFilterMonth-1]}</div>
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:1rem;">Pecahan ${analyticsFilterMonth === 0 ? new Date().getFullYear() : monthsList[analyticsFilterMonth-1]}</div>
           <div style="position:relative;height:160px;margin-bottom:1.1rem;">
             <canvas id="chart-types"></canvas>
           </div>
@@ -3718,7 +4330,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
           </div>
           <div>
             <h3 style="font-size:0.9rem;font-weight:700;margin:0;">Permohonan Mengikut Cawangan</h3>
-            <p style="font-size:0.72rem;color:var(--text-muted);margin:0;">${analyticsBranchFilter === 'SEMUA' ? '2026 — diisih dari tertinggi' : analyticsBranchFilter + ' — rekod dalam cawangan ini'}</p>
+            <p style="font-size:0.72rem;color:var(--text-muted);margin:0;">${analyticsBranchFilter === 'SEMUA' ? `${new Date().getFullYear()} — diisih dari tertinggi` : analyticsBranchFilter + ' — rekod dalam cawangan ini'}</p>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:0.85rem;">
@@ -3764,8 +4376,8 @@ function renderBranchDashboard() {
 
   const branchStaff = staffList.filter(s => s.branch === myBranch && !s.inactive);
   const total = branchRecords.length;
-  const approved = branchRecords.filter(r => r.status?.includes('APPROVED')).length;
-  const pending = branchRecords.filter(r => r.status?.includes('PENDING') || r.status?.includes('RECOM') || r.status?.includes('HOD')).length;
+  const approved = branchRecords.filter(r => r.status === 'APPROVED').length;
+  const pending = branchRecords.filter(r => r.status?.includes('PENDING') || r.status?.includes('RECOM') || r.status?.includes('HOD') || r.status === 'TL APPROVED').length;
   const rejected = branchRecords.filter(r => r.status === 'REJECTED').length;
   const approvalRate = total > 0 ? Math.round(approved / total * 100) : 0;
 
@@ -3790,7 +4402,7 @@ function renderBranchDashboard() {
 
   // Staff with pending leave
   const pendingByStaff = {};
-  branchRecords.filter(r => r.status?.includes('PENDING') || r.status?.includes('RECOM') || r.status?.includes('HOD')).forEach(r => {
+  branchRecords.filter(r => r.status?.includes('PENDING') || r.status?.includes('RECOM') || r.status?.includes('HOD') || r.status === 'TL APPROVED').forEach(r => {
     if (!pendingByStaff[r.ic]) pendingByStaff[r.ic] = { name: r.name, count: 0 };
     pendingByStaff[r.ic].count++;
   });
@@ -3983,10 +4595,12 @@ function renderPersonalDashboard() {
   const cmeStats = window.getLeaveStats(user, 'CME');
   const cfStats = window.getLeaveStats(user, 'CF');
 
-  const balAL = alStats.bal.toFixed(2);
-  const earnedAL = alStats.ent;
+  const fullEntAL = user.ent_AL !== undefined ? parseFloat(user.ent_AL) : window.getEntitlementAL(user);
+  const fullYearAL = fullEntAL + parseFloat(user.ent_CF || 0);
+  const balAL = Math.max(0, fullYearAL - alStats.used).toFixed(2);
+  const earnedAL = fullYearAL;
 
-  const pendingCount = myRecords.filter(r => (r.status || '').includes('PENDING') || (r.status || '').includes('RECOM') || (r.status || '').includes('HOD')).length;
+  const pendingCount = myRecords.filter(r => (r.status || '').includes('PENDING') || (r.status || '').includes('RECOM') || (r.status || '').includes('HOD') || r.status === 'TL APPROVED').length;
 
   // Cuti lain yang HR set (papar hanya jika entitlement > 0)
   // CF tidak disenaraikan di sini kerana sudah digabungkan dalam jumlah AL
@@ -4036,15 +4650,20 @@ function renderPersonalDashboard() {
 
       <section class="stats-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-bottom: 2rem;">
         <div class="glass-card" style="padding: 1.5rem; position: relative; overflow: hidden;">
-           <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 1rem;">Annual Leave (AL) Balance</div>
-           <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 1rem;">
+           <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.75rem;">Annual Leave (AL) Balance</div>
+           <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.75rem;">
               <div style="font-size: 2.5rem; font-weight: 800; color: var(--primary);">${balAL}</div>
-              <div style="font-size: 1.05rem; color: var(--text-muted); font-weight: 600;">/ ${earnedAL.toFixed(2)} days earned</div>
+              <div style="font-size: 1.05rem; color: var(--text-muted); font-weight: 600;">/ ${earnedAL.toFixed(1)} hari</div>
            </div>
-           <div style="height: 6px; background: rgba(163,177,198,0.18); border-radius: 3px; overflow: hidden;">
+           <div style="height: 6px; background: rgba(163,177,198,0.18); border-radius: 3px; overflow: hidden; margin-bottom: 0.75rem;">
               <div style="height: 100%; width: ${earnedAL > 0 ? Math.min(100, (parseFloat(balAL) / earnedAL) * 100) : 0}%; background: var(--primary); transition: width 0.5s ease;"></div>
            </div>
-           <div style="font-size: 1.05rem; color: var(--text-muted); margin-top: 0.5rem;">Cuti Terkumpul Setakat Hari Ini</div>
+           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem 0.75rem; font-size: 0.78rem; color: var(--text-muted); border-top: 1px solid rgba(163,177,198,0.15); padding-top: 0.6rem;">
+             <span>Bawa Lepas (CF):</span><span style="font-weight:700;color:var(--text-secondary);">${parseFloat(user.ent_CF||0).toFixed(0)} hari</span>
+             <span>Peruntukan ${new Date().getFullYear()}:</span><span style="font-weight:700;color:var(--text-secondary);">${(user.ent_AL !== undefined ? parseFloat(user.ent_AL) : window.getEntitlementAL(user)).toFixed(0)} hari</span>
+             <span>Digunakan:</span><span style="font-weight:700;color:#ef4444;">${alStats.used.toFixed(1)} hari</span>
+             ${alStats.adj > 0 ? `<span>Pelarasan HR:</span><span style="font-weight:700;color:#f59e0b;">${alStats.adj.toFixed(1)} hari</span>` : ''}
+           </div>
         </div>
 
         <div class="glass-card" style="padding: 1.5rem; position: relative; overflow: hidden;">
@@ -4313,7 +4932,6 @@ function renderView() {
                 </div>
                 <div style="text-align:right;">
                   <span style="font-size:1.35rem;font-weight:800;color:${selCat.color};line-height:1;">${selBal}</span>
-                  <span style="font-size:0.68rem;color:var(--text-muted);margin-left:0.25rem;">/ ${selEnt} hari tersisa</span>
                 </div>
               </div>
               ${selEnt > 0 ? `
@@ -4324,6 +4942,46 @@ function renderView() {
                 <span>Digunakan: ${selUsed} hari</span>
                 <span>${selPct}% terpakai</span>
               </div>` : '<div style="font-size:0.68rem;color:var(--text-muted);">Cuti ini tiada had — diambil mengikut keperluan.</div>'}
+
+              ${isAL ? (() => {
+                const rawEnt      = window.getEntitlementAL(user);
+                const cfEnt       = parseFloat(user.ent_CF || 0);
+                const totalPeruntukan = rawEnt + cfEnt;
+                const usedFromRec = myRecords.filter(r => r.status === 'APPROVED' && r.type === 'AL').reduce((a, r) => a + parseFloat(r.days || 0), 0);
+                const adj         = parseFloat(user.al_adj || 0);
+                const totalUsed   = usedFromRec + adj;
+                const bakiTanpaPro  = Math.max(0, totalPeruntukan - totalUsed);
+                const earnedPro     = window.getEarnedAL(user);
+                const bakiSelepas   = Math.max(0, earnedPro - totalUsed);
+                const isProRate     = user.apply_prorate !== false;
+                return `
+                <div style="margin-top:0.8rem;border-top:1px solid ${selCat.color}22;padding-top:0.75rem;display:flex;flex-direction:column;gap:0.45rem;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:0.68rem;color:var(--text-muted);display:flex;align-items:center;gap:0.35rem;">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                      Jumlah Diperuntukan
+                    </span>
+                    <span style="font-size:0.75rem;font-weight:800;color:var(--text);">${totalPeruntukan} hari
+                      ${cfEnt > 0 ? `<span style="font-size:0.6rem;font-weight:500;color:var(--text-muted);"> (AL ${rawEnt} + CF ${cfEnt})</span>` : ''}
+                    </span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:0.68rem;color:var(--text-muted);display:flex;align-items:center;gap:0.35rem;">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      Baki Tanpa Pro-Rate
+                    </span>
+                    <span style="font-size:0.75rem;font-weight:800;color:#f59e0b;">${bakiTanpaPro.toFixed(1)} hari</span>
+                  </div>
+                  ${isProRate ? `
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:0.68rem;color:var(--text-muted);display:flex;align-items:center;gap:0.35rem;">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                      Baki Selepas Pro-Rate
+                    </span>
+                    <span style="font-size:0.75rem;font-weight:800;color:#3b82f6;">${bakiSelepas.toFixed(1)} hari</span>
+                  </div>` : ''}
+                </div>`;
+              })() : ''}
             </div>
 
             ${(() => {
@@ -4471,7 +5129,42 @@ function renderView() {
                 </div>
             ` : ''}
 
-            <!-- SECTION: Pelulus Peringkat 1 -->
+            <!-- SECTION: Pelulus Peringkat 0 — TL selector untuk op-balok -->
+            ${(() => {
+              const _fIsBalok = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
+              const _fIsOpBalok = user.category === 'Operation Staff' && _fIsBalok &&
+                  !!(approvalRouting['operation_balok'] || {}).needs_tl;
+              if (!_fIsOpBalok) return '';
+              const _tlList = staffList.filter(s =>
+                  s.role === 'team_leader' && (s.branch || '').includes('Balok') && !s.inactive
+              );
+              return `
+            <div style="margin-bottom:1.5rem;">
+              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
+                <div style="width:4px;height:18px;border-radius:2px;background:linear-gradient(to bottom,#f43f5e,#fb7185);"></div>
+                <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">04 — Pelulus Peringkat 0 (Team Leader)</span>
+                <span style="font-size:0.62rem;background:rgba(244,63,94,0.12);color:#f43f5e;border:1px solid rgba(244,63,94,0.25);border-radius:5px;padding:0.1rem 0.45rem;font-weight:700;">★ WAJIB</span>
+              </div>
+              <div style="position:relative;">
+                <select id="tl-select" class="neu-inset" style="appearance:none;padding-right:2.5rem;font-weight:600;color-scheme:light;font-size:0.85rem;border:1.5px solid rgba(244,63,94,0.4);background:rgba(244,63,94,0.03);" onchange="this.style.border='1.5px solid '+(this.value?'rgba(16,185,129,0.4)':'rgba(244,63,94,0.4)');this.style.background=this.value?'rgba(16,185,129,0.03)':'rgba(244,63,94,0.03)'">
+                  <option value="">-- Pilih Team Leader (Sokongan Peringkat 0) — WAJIB --</option>
+                  ${_tlList.length ? _tlList.map(s => `<option value="${s.ic}">${s.name} (Team Leader)</option>`).join('') : '<option value="" disabled>-- Tiada Team Leader didaftarkan --</option>'}
+                </select>
+                <div style="position:absolute;right:1rem;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text-muted);">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+              </div>
+              <div style="font-size:0.7rem;color:#f43f5e;margin-top:0.5rem;font-weight:600;">⚠️ Pilih Team Leader yang akan menyokong permohonan anda sebelum dihantar ke Supervisor.</div>
+            </div>`;
+            })()}
+
+            <!-- SECTION: Pelulus Peringkat 1 — sembunyikan untuk op-balok jika needs_tl aktif -->
+            ${(() => {
+              const _isBalok = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
+              const _isOpBalokTL = user.category === 'Operation Staff' && _isBalok &&
+                  !!(approvalRouting['operation_balok'] || {}).needs_tl;
+              if (_isOpBalokTL) return ''; // P1 auto (Supervisor Balok) — pilih auto
+              return `
             <div style="margin-bottom:1.5rem;">
               <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
                 <div style="width:4px;height:18px;border-radius:2px;background:linear-gradient(to bottom,#f59e0b,#ef4444);"></div>
@@ -4492,7 +5185,8 @@ function renderView() {
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
                     </div>
               </div>
-            </div>
+            </div>`;
+            })()}
 
             ${(() => {
                 const branchObj = branches.find(b => b.name === user.branch);
@@ -4550,6 +5244,61 @@ function renderView() {
                     flowIcon = 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z';
                 }
 
+                const arrow = `<div style="padding-left:11px;color:var(--text-muted);">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                </div>`;
+
+                // 3-step flow untuk operation staff Balok jika needs_tl aktif
+                const isOpBalokTL = user.category === 'Operation Staff' && isBalokStaff &&
+                    !!(approvalRouting['operation_balok'] || {}).needs_tl;
+
+                if (isOpBalokTL) {
+                    return `
+                    <div style="border-radius:14px;border:1.5px solid #f43f5e33;background:rgba(244,63,94,0.04);padding:1.1rem 1.25rem;margin-bottom:0.25rem;">
+                        <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.85rem;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                            <span style="font-size:0.78rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#f43f5e;">Aliran Kelulusan Cuti — Staff Operasi Balok (3 Peringkat)</span>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:0.55rem;">
+
+                            <!-- Peringkat 0: TL -->
+                            <div style="display:flex;align-items:flex-start;gap:0.75rem;">
+                                <div style="flex-shrink:0;width:24px;height:24px;border-radius:50%;background:#f43f5e;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.65rem;font-weight:800;margin-top:1px;">P0</div>
+                                <div>
+                                    <div style="font-size:0.82rem;font-weight:700;color:var(--text);">Sokongan Peringkat 0</div>
+                                    <div style="font-size:0.78rem;color:#f43f5e;font-weight:600;margin-top:0.1rem;">Team Leader — Klinik Syed Badaruddin Balok (HQ)</div>
+                                    <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.1rem;">Permohonan perlu disokong oleh Team Leader Balok terlebih dahulu sebelum ke Supervisor.</div>
+                                </div>
+                            </div>
+
+                            ${arrow}
+
+                            <!-- Peringkat 1: Supervisor -->
+                            <div style="display:flex;align-items:flex-start;gap:0.75rem;">
+                                <div style="flex-shrink:0;width:24px;height:24px;border-radius:50%;background:#f59e0b;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.65rem;font-weight:800;margin-top:1px;">P1</div>
+                                <div>
+                                    <div style="font-size:0.82rem;font-weight:700;color:var(--text);">Nilai & Lulus Peringkat 1</div>
+                                    <div style="font-size:0.78rem;color:#f59e0b;font-weight:600;margin-top:0.1rem;">Supervisor — Klinik Syed Badaruddin Balok (HQ)</div>
+                                    <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.1rem;">Supervisor menilai dan meluluskan selepas sokongan Team Leader diterima.</div>
+                                </div>
+                            </div>
+
+                            ${arrow}
+
+                            <!-- Peringkat 2: HR/Admin -->
+                            <div style="display:flex;align-items:flex-start;gap:0.75rem;">
+                                <div style="flex-shrink:0;width:24px;height:24px;border-radius:50%;background:#059669;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.65rem;font-weight:800;margin-top:1px;">P2</div>
+                                <div>
+                                    <div style="font-size:0.82rem;font-weight:700;color:var(--text);">Kelulusan Akhir Peringkat 2</div>
+                                    <div style="font-size:0.78rem;color:#059669;font-weight:600;margin-top:0.1rem;">HR / Admin — KSB HQ</div>
+                                    <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.1rem;">Cuti hanya dikira SAH selepas HR/Admin beri kelulusan akhir.</div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>`;
+                }
+
                 return `
                 <div style="border-radius:14px;border:1.5px solid ${flowColor}33;background:${flowColor}0d;padding:1.1rem 1.25rem;margin-bottom:0.25rem;">
                     <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.85rem;">
@@ -4569,10 +5318,7 @@ function renderView() {
                             </div>
                         </div>
 
-                        <!-- Arrow -->
-                        <div style="padding-left:11px;color:var(--text-muted);">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
-                        </div>
+                        ${arrow}
 
                         <!-- Step 2 -->
                         <div style="display:flex;align-items:flex-start;gap:0.75rem;">
@@ -4584,10 +5330,7 @@ function renderView() {
                             </div>
                         </div>
 
-                        <!-- Arrow -->
-                        <div style="padding-left:11px;color:var(--text-muted);">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
-                        </div>
+                        ${arrow}
 
                         ${isDoctor ? `
                         <!-- Locum info -->
@@ -4657,14 +5400,21 @@ function renderView() {
                 { type: 'HL', label: 'Hospitalisasi', color: '#06b6d4' },
               ].map(item => {
                 const st = window.getLeaveStats(user, item.type);
-                const pct = st.ent > 0 ? Math.min(100, Math.round((st.used / st.ent) * 100)) : 0;
+                // AL: tunjuk baki tanpa pro-rata — guna entitlement penuh + CF
+                let dispEnt = st.ent;
+                let dispBal = st.bal;
+                if (item.type === 'AL') {
+                  dispEnt = parseFloat(window.getEntitlementAL(user)) + parseFloat(user.ent_CF || 0);
+                  dispBal = Math.max(0, dispEnt - st.used);
+                }
+                const pct = dispEnt > 0 ? Math.min(100, Math.round((st.used / dispEnt) * 100)) : 0;
                 return `
                 <div style="margin-bottom:0.85rem;">
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">
                     <span style="font-size:0.72rem;font-weight:600;">${item.label}</span>
                     <div style="display:flex;align-items:center;gap:0.4rem;">
-                      <span style="font-size:0.8rem;font-weight:800;color:${item.color};">${parseFloat(st.bal.toFixed(1))}</span>
-                      <span style="font-size:0.62rem;color:var(--text-muted);">/ ${st.ent} hari</span>
+                      <span style="font-size:0.8rem;font-weight:800;color:${item.color};">${parseFloat(dispBal.toFixed(1))}</span>
+                      <span style="font-size:0.62rem;color:var(--text-muted);">/ ${dispEnt} hari</span>
                     </div>
                   </div>
                   <div style="height:5px;background:rgba(163,177,198,0.15);border-radius:3px;overflow:hidden;">
@@ -4701,11 +5451,21 @@ function renderView() {
                 } else {
                   step1Who = isBalokStaff ? 'Supervisor Balok' : 'Doctor PIC Cawangan';
                 }
-                const steps = [
-                  { n:1, label:'Sokongan Peringkat 1', who: step1Who, color: '#f59e0b' },
-                  { n:2, label:'Kelulusan Akhir', who: 'HR / Admin — KSB HQ', color: '#10b981' },
-                ];
-                if (isDoctor) steps.push({ n:'!', label:'Wajib: Maklumat Locum', who: 'Diisi oleh HOD/Supervisor sebelum lulus', color: '#ef4444' });
+                const isOperationBalok = user.category === 'Operation Staff' && isBalokStaff;
+                let steps;
+                if (isOperationBalok) {
+                  steps = [
+                    { n:1, label:'Sokongan Peringkat 0', who: 'Team Leader — Balok', color: '#f43f5e' },
+                    { n:2, label:'Nilai Peringkat 1', who: 'Supervisor — Balok', color: '#f59e0b' },
+                    { n:3, label:'Kelulusan Akhir', who: 'HR / Admin — KSB HQ', color: '#10b981' },
+                  ];
+                } else {
+                  steps = [
+                    { n:1, label:'Sokongan Peringkat 1', who: step1Who, color: '#f59e0b' },
+                    { n:2, label:'Kelulusan Akhir', who: 'HR / Admin — KSB HQ', color: '#10b981' },
+                  ];
+                  if (isDoctor) steps.push({ n:'!', label:'Wajib: Maklumat Locum', who: 'Diisi oleh HOD/Supervisor sebelum lulus', color: '#ef4444' });
+                }
                 return steps.map((s, i) => `
                   ${i > 0 ? '<div style="padding-left:14px;color:var(--text-muted);margin:0.3rem 0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></div>' : ''}
                   <div style="display:flex;align-items:flex-start;gap:0.65rem;">
@@ -4739,7 +5499,7 @@ function renderView() {
                         <div style="font-size:0.62rem;color:var(--text-muted);">${act.startDate || ''}</div>
                       </div>
                     </div>
-                    <span style="font-size:0.6rem;font-weight:700;padding:0.15rem 0.45rem;border:1px solid ${sc}44;border-radius:6px;color:${sc};background:${sc}12;white-space:nowrap;margin-left:0.5rem;">${(act.status||'').replace('HOD APPROVED','HOD OK').replace('RECOMMENDED','RECOM')}</span>
+                    <span style="font-size:0.6rem;font-weight:700;padding:0.15rem 0.45rem;border:1px solid ${sc}44;border-radius:6px;color:${sc};background:${sc}12;white-space:nowrap;margin-left:0.5rem;">${(act.status||'').replace('TL APPROVED','TL OK').replace('HOD APPROVED','HOD OK').replace('RECOMMENDED','RECOM')}</span>
                   </div>`;
                 }).join('')}
                 ${leaveRecords.filter(r => r.ic === user.ic).length === 0 ? '<div style="font-size:0.75rem;color:var(--text-muted);text-align:center;padding:1rem;">Tiada rekod setakat ini.</div>' : ''}
@@ -4785,7 +5545,9 @@ function renderView() {
           'hr_reports': userPerms.manage_reports,
           'locum_records': userPerms.locum_records,
           'whatsapp_settings': userPerms.wa_setting,
-          'access_control': userPerms.manage_access
+          'access_control': userPerms.manage_access,
+          'roles_categories': userPerms.manage_roles_categories,
+          'reg_requests': ['admin', 'hr', 'super_admin'].includes(user.role)
       };
 
       if (!tabPermissions[managementTab]) {
@@ -4810,13 +5572,25 @@ function renderView() {
           const q = manageSearchQuery.toLowerCase();
           filteredStaff = filteredStaff.filter(s => (s.name || '').toLowerCase().includes(q) || (s.ic || '').includes(q));
       }
-      if (!showInactiveStaff) {
+      if (manageRoleFilter !== 'SEMUA') {
+          filteredStaff = filteredStaff.filter(s => (s.role || 'staff') === manageRoleFilter);
+      }
+      if (manageCategoryFilter !== 'SEMUA') {
+          filteredStaff = filteredStaff.filter(s => (s.category || '') === manageCategoryFilter);
+      }
+      // Toggle: ON = tunjuk HANYA yang tidak aktif, OFF = tunjuk HANYA yang aktif
+      if (showInactiveStaff) {
+          filteredStaff = filteredStaff.filter(s => s.inactive);
+      } else {
           filteredStaff = filteredStaff.filter(s => !s.inactive);
       }
-        
 
       // Staff management: accordion by state > branch, compact card rows
       let branchIdCounter = 0;
+
+      // Kumpulkan branch yang diketahui
+      const knownBranchNames = new Set(branches.map(b => b.name));
+
       const stateGroupedHtml = ['Pahang', 'Terengganu'].map(function(stateName) {
         const stateBranches = branches.filter(function(b) { return b.state === stateName; });
         const stateStaff = filteredStaff.filter(function(s) { return stateBranches.some(function(b) { return b.name === s.branch; }); });
@@ -4909,7 +5683,56 @@ function renderView() {
           + '</div>'
           + branchPanels
           + '</div>';
-      }).join('');
+      }).join('') + (function() {
+        // Kumpulan "Lain-lain" — staff yang branchnya tidak termasuk dalam Pahang/Terengganu
+        const unmatched = filteredStaff.filter(function(s) { return !knownBranchNames.has(s.branch); });
+        if (unmatched.length === 0) return '';
+        const bid = 'b' + (++branchIdCounter);
+        const rows = unmatched.map(function(staff) {
+          const al = window.getLeaveStats(staff, 'AL');
+          const mc = window.getLeaveStats(staff, 'MC');
+          const hl = window.getLeaveStats(staff, 'HL');
+          const alLow = al.bal <= 3 && al.ent > 0;
+          const inBadge = staff.inactive
+            ? '<span style="background:rgba(239,68,68,0.1);color:#ef4444;font-size:0.68rem;padding:0.08rem 0.35rem;border-radius:4px;font-weight:700;border:1px solid rgba(239,68,68,0.2);vertical-align:middle;margin-left:4px;">TIDAK AKTIF</span>'
+            : '';
+          function statCell(label, used, ent, color) {
+            return '<div style="text-align:center;min-width:38px;">'
+              + '<div style="font-size:0.62rem;font-weight:600;color:var(--text-muted);letter-spacing:0.3px;">' + label + '</div>'
+              + '<div style="font-size:0.8rem;font-weight:700;color:' + color + ';line-height:1.1;">' + used
+              + '<span style="font-size:0.6rem;color:var(--text-muted);font-weight:400;">/' + ent + '</span>'
+              + '</div></div>';
+          }
+          return '<div style="display:flex;align-items:center;gap:0.75rem;padding:0.55rem 0.9rem;border-bottom:1px solid rgba(163,177,198,0.15);">'
+            + '<div style="flex:1;min-width:0;">'
+            +   '<div style="font-size:0.85rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + staff.name + inBadge + '</div>'
+            +   '<div style="display:flex;align-items:center;gap:0.35rem;margin-top:0.15rem;">'
+            +     '<span style="font-size:0.7rem;font-weight:600;color:#fff;background:#4361ee;padding:0.08rem 0.4rem;border-radius:4px;text-transform:capitalize;">' + (staff.role || '-') + '</span>'
+            +     '<span style="font-size:0.7rem;color:var(--text-muted);">' + (staff.branch || '—') + '</span>'
+            +   '</div>'
+            + '</div>'
+            + '<div style="display:flex;gap:0.5rem;align-items:center;flex-shrink:0;">'
+            +   statCell('AL', al.used.toFixed(1), window.getEntitlementAL(staff).toFixed(1), alLow ? '#ef4444' : '#38bdf8')
+            +   statCell('MC', mc.used, mc.ent, '#10b981')
+            +   statCell('HL', hl.used, hl.ent, '#06b6d4')
+            + '</div>'
+            + '<button class="btn-logout" data-ic="' + staff.ic + '" onclick="window.setEditingStaff(this.dataset.ic)" style="flex-shrink:0;width:auto;padding:0.2rem 0.65rem;font-size:0.75rem;">Edit</button>'
+            + '<button class="btn-logout" data-ic="' + staff.ic + '" onclick="window.deleteStaff(this.dataset.ic)" style="flex-shrink:0;width:auto;padding:0.2rem 0.65rem;font-size:0.75rem;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);" title="Buang dari sistem">&#10005;</button>'
+            + '</div>';
+        }).join('');
+        return '<div style="margin-bottom:1.25rem;">'
+          + '<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem;padding:0.5rem 0.9rem;background:rgba(163,177,198,0.1);border-radius:8px;border-left:3px solid #94a3b8;">'
+          +   '<span style="font-size:0.9rem;font-weight:700;color:#64748b;">Lain-lain / Tiada Cawangan</span>'
+          +   '<span style="font-size:0.75rem;color:var(--text-muted);">' + unmatched.length + ' staf</span>'
+          + '</div>'
+          + '<div style="border:1px solid rgba(163,177,198,0.3);border-radius:10px;overflow:hidden;">'
+          + '<div data-bid="' + bid + '" onclick="window.toggleBranch(this.dataset.bid)" style="display:flex;align-items:center;justify-content:space-between;padding:0.55rem 0.9rem;background:rgba(255,255,255,0.55);cursor:pointer;user-select:none;">'
+          +   '<span style="font-size:0.88rem;font-weight:700;color:var(--text-soft);">Tidak Ditetapkan</span>'
+          +   '<span style="font-size:0.72rem;font-weight:600;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.1rem 0.5rem;border-radius:999px;">' + unmatched.length + ' staf</span>'
+          + '</div>'
+          + '<div id="bc-' + bid + '" style="display:none;background:#fff;">' + rows + '</div>'
+          + '</div></div>';
+      })();
 
       return `
         <div style="display: flex; gap: 0.5rem; justify-content: space-between; align-items: center; margin-bottom: 2.5rem; background: rgba(163,177,198,0.25); padding: 0.75rem 1rem; border-radius: 999px; border: 1px solid rgba(163,177,198,0.5); overflow-x: auto;">
@@ -4918,15 +5741,21 @@ function renderView() {
                  <button class="neu-tab ${managementTab === 'pending' ? 'active' : ''}" onclick="window.setManageTab('pending')" style="border-radius: 999px;">${(() => {
                     const isFullBoss = ['admin', 'hr', 'super_admin'].includes(user.role);
                     const isHODRole = ['hod', 'pic_hod', 'supervisor'].includes(user.role);
+                    const isTL = user.role === 'team_leader';
                     if (isFullBoss) {
                       // HR/Admin: kira HOD APPROVED (peringkat 2) + PENDING bypass
                       const p2 = leaveRecords.filter(r => window.canManageRequest(user, r) && (r.status === 'HOD APPROVED' || r.status === 'HOD RECOMMENDED')).length;
                       const p1bypass = leaveRecords.filter(r => window.canManageRequest(user, r) && r.status === 'PENDING').length;
                       return `Kelulusan${p2 > 0 ? ` ✅P2:${p2}` : ''}${p1bypass > 0 ? ` ⚡P1:${p1bypass}` : ''} (${p2 + p1bypass})`;
                     }
+                    if (isTL) {
+                      const p0 = leaveRecords.filter(r => window.canManageRequest(user, r) && r.status === 'PENDING').length;
+                      return `Sokongan TL (${p0})`;
+                    }
                     if (isHODRole) {
                       const p1 = leaveRecords.filter(r => window.canManageRequest(user, r) && r.status === 'PENDING').length;
-                      return `Sokongan HOD (${p1})`;
+                      const tlApproved = leaveRecords.filter(r => window.canManageRequest(user, r) && r.status === 'TL APPROVED').length;
+                      return `Nilai Cuti${tlApproved > 0 ? ` 🟡TL:${tlApproved}` : ''}${p1 > 0 ? ` ⚡P:${p1}` : ''} (${p1 + tlApproved})`;
                     }
                     return 'Pending (0)';
                  })()}</button>
@@ -4973,11 +5802,24 @@ function renderView() {
                     WA Settings
                  </button>
                  ` : ''}
+                 ${['admin', 'hr', 'super_admin'].includes(user.role) ? (() => {
+                    const pendingRegs = registrationRequests.filter(r => r.status === 'pending').length;
+                    return `<button class="neu-tab ${managementTab === 'reg_requests' ? 'active' : ''}" onclick="window.setManageTab('reg_requests')" style="border-radius: 999px; ${managementTab !== 'reg_requests' ? 'color:#8b5cf6;' : ''}">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
+                      Daftar Baharu${pendingRegs > 0 ? ` <span style="background:#ef4444;color:white;border-radius:999px;padding:0.05rem 0.45rem;font-size:0.7rem;font-weight:700;margin-left:0.2rem;">${pendingRegs}</span>` : ''}
+                    </button>`;
+                 })() : ''}
             </div>
             ${userPerms.manage_access ? `
             <button class="neu-tab ${managementTab === 'access_control' ? 'active' : ''}" onclick="window.setManageTab('access_control')" style="border-radius: 999px; ${managementTab !== 'access_control' ? 'border: 1px solid rgba(59, 130, 246, 0.3); color: var(--primary); background: transparent;' : ''}">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                 Access Control
+            </button>
+            ` : ''}
+            ${userPerms.manage_roles_categories ? `
+            <button class="neu-tab ${managementTab === 'roles_categories' ? 'active' : ''}" onclick="window.setManageTab('roles_categories')" style="border-radius: 999px; ${managementTab !== 'roles_categories' ? 'border: 1px solid rgba(16,185,129,0.3); color: #10b981; background: transparent;' : ''}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                Peranan & Kategori
             </button>
             ` : ''}
         </div>
@@ -4994,8 +5836,25 @@ function renderView() {
                   if (!window.canManageRequest(user, r)) return false;
                   const isFullBoss = ['admin', 'hr', 'super_admin'].includes(user.role);
                   const isHODRole = ['hod', 'pic_hod', 'supervisor'].includes(user.role);
+                  const isTL = user.role === 'team_leader';
+                  if (isTL) {
+                      // Team Leader hanya nampak PENDING staf operasi Balok
+                      return r.status === 'PENDING';
+                  }
                   if (isHODRole) {
-                      if (r.status === 'PENDING') return true;
+                      if (r.status === 'PENDING') {
+                          // Supervisor Balok: jangan tunjuk PENDING staf operasi Balok jika needs_tl aktif
+                          if (user.role === 'supervisor' && (approvalRouting['operation_balok'] || {}).needs_tl) {
+                              const ap = staffList.find(s => s.ic === r.ic);
+                              if (ap && window.getStaffGroup(ap) === 'operation_balok') return false;
+                          }
+                          return true;
+                      }
+                      // Supervisor: tunjuk TL APPROVED untuk staf operasi Balok jika needs_tl aktif
+                      if (r.status === 'TL APPROVED' && (approvalRouting['operation_balok'] || {}).needs_tl) {
+                          const ap = staffList.find(s => s.ic === r.ic);
+                          return !!(ap && window.getStaffGroup(ap) === 'operation_balok');
+                      }
                       // Supervisor: also show HOD APPROVED doctor records for locum editing
                       if (r.status === 'HOD APPROVED') {
                           const ap = staffList.find(s => s.ic === r.ic);
@@ -5003,27 +5862,36 @@ function renderView() {
                       }
                       return false;
                   }
-                  return true; // isFullBoss sees all pending statuses
+                  // isFullBoss: jangan tunjuk TL APPROVED op-balok — tunggu Supervisor lulus dulu
+                  if (r.status === 'TL APPROVED' && (approvalRouting['operation_balok'] || {}).needs_tl) {
+                      const ap = staffList.find(s => s.ic === r.ic);
+                      if (ap && window.getStaffGroup(ap) === 'operation_balok') return false;
+                  }
+                  return true; // isFullBoss sees all other pending statuses
               }).map(req => {
                 const isFullBoss = ['admin', 'hr', 'super_admin'].includes(user.role);
                 const showHODIndicator = req.status === 'HOD RECOMMENDED' || req.status === 'HOD APPROVED';
+                const showTLIndicator = req.status === 'TL APPROVED';
                 
                 return `
                 <div class="neu-panel">
                   <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
                      <div>
-                        <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem; text-transform: uppercase;">${req.name} ${showHODIndicator ? '🟢' : ''}</div>
+                        <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem; text-transform: uppercase;">${req.name} ${showHODIndicator ? '🟢' : showTLIndicator ? '🟡' : ''}</div>
                         <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">${req.ic}</div>
                         <div style="font-size: 0.7rem; color: var(--primary); text-transform: uppercase; font-weight: 600;">${req.branch}</div>
                      </div>
                      <span style="color: ${req.typeColor}; background: rgba(163,177,198,0.2); padding: 0.25rem 0.75rem; border-radius: 12px; font-weight: 700; font-size: 0.8rem; border: 1px solid var(--border);">${req.type}</span>
                   </div>
 
-                  <div style="padding: 0.5rem 0.75rem; border-radius: 8px; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; ${showHODIndicator ? 'background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); color: var(--accent);' : 'background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.25); color: #b45309;'}">
+                  <div style="padding: 0.5rem 0.75rem; border-radius: 8px; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; ${showHODIndicator ? 'background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); color: var(--accent);' : showTLIndicator ? 'background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.3); color: #ca8a04;' : 'background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.25); color: #b45309;'}">
                       ${(() => {
                           if (showHODIndicator) return '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> Peringkat 2 — Menunggu Kelulusan HR/Admin';
+                          if (showTLIndicator) return '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> Peringkat 1 — Telah Disokong TL, Menunggu Nilai Supervisor';
                           const reqBr = branches.find(b => b.name === req.branch);
                           const isTrg = reqBr && reqBr.state === 'Terengganu';
+                          const isOpBalok = (() => { const ap = staffList.find(s => s.ic === req.ic); return ap && window.getStaffGroup(ap) === 'operation_balok'; })();
+                          if (isOpBalok) return '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Peringkat 0 — Menunggu Sokongan Team Leader';
                           return isTrg
                               ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Menunggu Kelulusan HOD (Terengganu — 1 Peringkat)'
                               : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Peringkat 1 — Menunggu Sokongan HOD/PIC_HOD';
@@ -5045,13 +5913,20 @@ function renderView() {
                       "${req.reason}"
                   </div>
 
-                  <button class="neu-btn primary-text" onclick="printLeave(${req.id})" style="width: 100%; margin-bottom: 1rem;">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                      Print Form
-                  </button>
+                  <div style="display:flex;gap:0.6rem;margin-bottom:1rem;">
+                    <button class="neu-btn primary-text" onclick="printLeave(${req.id})" style="flex:1;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                        Print
+                    </button>
+                    <button class="neu-btn" onclick="window.resendLeaveWA(${req.id})" style="flex:1;color:#22c55e;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.06);" title="Hantar semula notifikasi WhatsApp kepada pelulus semasa">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 1h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"></path><polyline points="14 2 14 8 20 8"/></svg>
+                        Resend WA
+                    </button>
+                  </div>
 
                   ${(() => {
                       const isHODRole = ['hod', 'pic_hod', 'supervisor'].includes(user.role);
+                      const isTLRole = user.role === 'team_leader';
                       const isLocumEditMode = isHODRole && req.status === 'HOD APPROVED';
                       if (isLocumEditMode) {
                           // Supervisor sees HOD APPROVED doctor record only for locum editing
@@ -5070,7 +5945,9 @@ function renderView() {
                           <button class="neu-btn success-text" style="flex: 1; min-width: 120px;" onclick="window.finalizeLeave(${req.id})">
                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
                              ${(() => {
-                                 if (isFullBoss) return showHODIndicator ? '✅ Luluskan Akhir (Peringkat 2)' : '⚡ Luluskan Terus (Bypass HOD)';
+                                 if (isFullBoss) return showHODIndicator ? '✅ Luluskan Akhir (Peringkat 2)' : '⚡ Luluskan Terus (Bypass)';
+                                 if (isTLRole) return '📋 Sokong & Hantar ke Supervisor';
+                                 if (showTLIndicator) return '✅ Lulus & Hantar ke HR/Admin (Peringkat 1)';
                                  const reqB = branches.find(b => b.name === req.branch);
                                  const reqTrg = reqB && reqB.state === 'Terengganu';
                                  return reqTrg ? '✅ Luluskan Cuti' : '📋 Sokong & Hantar ke HR/Admin';
@@ -5186,7 +6063,74 @@ function renderView() {
             </div>
         ` : ''}
 
-        
+        ${managementTab === 'reg_requests' && ['admin', 'hr', 'super_admin'].includes(user.role) ? `
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem; margin-top: 1rem;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
+            <h2 style="font-size: 1.25rem; font-weight: 600;">Permohonan Daftar Baharu</h2>
+          </div>
+
+          ${(() => {
+            const pending = registrationRequests.filter(r => r.status === 'pending');
+            const done = registrationRequests.filter(r => r.status !== 'pending');
+            return `
+              ${pending.length === 0 ? `
+                <div style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity: 0.3; margin-bottom: 1rem;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
+                  <p>Tiada permohonan baharu yang menunggu kelulusan.</p>
+                </div>
+              ` : `
+                <div style="display: grid; gap: 1rem; margin-bottom: 2rem;">
+                  ${pending.map(req => `
+                    <div class="glass-card fade-in" style="padding: 1.25rem 1.5rem; border-left: 4px solid #8b5cf6;">
+                      <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 0.85rem;">
+                          <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg,#8b5cf6,#6d28d9); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; font-weight: 700; flex-shrink: 0;">${req.name.charAt(0)}</div>
+                          <div>
+                            <div style="font-weight: 700; font-size: 0.95rem;">${req.name}</div>
+                            <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem;">IC: ${req.ic} &nbsp;|&nbsp; ${req.branch}</div>
+                            <div style="font-size: 0.78rem; color: var(--text-muted);">${req.category} &nbsp;|&nbsp; 📱 ${req.phone}</div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem;">Dihantar: ${req.submittedAt ? new Date(req.submittedAt).toLocaleString('ms-MY') : '-'}</div>
+                          </div>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; flex-shrink: 0; margin-top: 0.25rem;">
+                          <button onclick="window.approveRegistration('${req.docId}')" style="padding: 0.5rem 1rem; border-radius: 8px; border: none; cursor: pointer; background: rgba(16,185,129,0.15); color: #10b981; font-size: 0.8rem; font-weight: 700; display: flex; align-items: center; gap: 0.35rem;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            Luluskan
+                          </button>
+                          <button onclick="window.rejectRegistration('${req.docId}')" style="padding: 0.5rem 1rem; border-radius: 8px; border: none; cursor: pointer; background: rgba(239,68,68,0.1); color: #ef4444; font-size: 0.8rem; font-weight: 700; display: flex; align-items: center; gap: 0.35rem;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            Tolak
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              `}
+
+              ${done.length > 0 ? `
+                <div style="margin-top: 1.5rem;">
+                  <div style="font-size: 0.75rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); letter-spacing: 1px; margin-bottom: 0.75rem;">Sejarah Permohonan</div>
+                  <div style="display: grid; gap: 0.6rem;">
+                    ${done.slice(0, 20).map(req => `
+                      <div style="padding: 0.85rem 1.25rem; background: rgba(163,177,198,0.08); border-radius: 10px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                        <div>
+                          <span style="font-weight: 600; font-size: 0.875rem;">${req.name}</span>
+                          <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;">${req.ic} — ${req.branch}</span>
+                        </div>
+                        <span style="padding: 0.2rem 0.75rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; ${req.status === 'approved' ? 'background: rgba(16,185,129,0.15); color: #10b981;' : 'background: rgba(239,68,68,0.1); color: #ef4444;'}">
+                          ${req.status === 'approved' ? 'Diluluskan' : 'Ditolak'}
+                        </span>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+            `;
+          })()}
+        ` : ''}
+
+
         ${managementTab === 'master_audit' ? `
           <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem; margin-top: 1rem;">
               <div style="display: flex; align-items: center; gap: 0.75rem;">
@@ -5233,9 +6177,9 @@ function renderView() {
                               </td>
                               <td style="padding: 1.5rem 1rem;">
                                   <span style="font-size: 0.6rem; font-weight: 700; text-transform: uppercase; padding: 0.35rem 0.75rem; border-radius: 20px; 
-                                      ${r.status === 'REJECTED' || r.status === 'CANCELLED' ? 'color: var(--danger); background: rgba(239, 68, 68, 0.1);' : 
-                                        r.status.includes('HOD') ? 'color: #eab308; background: rgba(234, 179, 8, 0.1);' : 
-                                        r.status === 'PENDING' ? 'color: #eab308; border: 1px solid rgba(234, 179, 8, 0.4);' : 
+                                      ${r.status === 'REJECTED' || r.status === 'CANCELLED' ? 'color: var(--danger); background: rgba(239, 68, 68, 0.1);' :
+                                        r.status.includes('HOD') || r.status === 'TL APPROVED' ? 'color: #eab308; background: rgba(234, 179, 8, 0.1);' :
+                                        r.status === 'PENDING' ? 'color: #eab308; border: 1px solid rgba(234, 179, 8, 0.4);' :
                                         'color: var(--accent); background: rgba(34, 197, 94, 0.1);'}">
                                       ${r.status}
                                   </span>
@@ -5513,7 +6457,7 @@ function renderView() {
                     <td style="padding:1.5rem 1rem;font-weight:700;font-size:1.1rem;">${r.days}</td>
                     <td style="padding:1.5rem 1rem;">
                       <span style="font-size:0.6rem;font-weight:700;text-transform:uppercase;padding:0.35rem 0.75rem;border-radius:20px;
-                        ${r.status==='REJECTED'?'color:var(--danger);background:rgba(239,68,68,0.1);':r.status.includes('HOD')?'color:#eab308;background:rgba(234,179,8,0.1);':r.status==='PENDING'?'color:#eab308;border:1px solid rgba(234,179,8,0.4);':'color:var(--accent);background:rgba(34,197,94,0.1);'}">
+                        ${r.status==='REJECTED'?'color:var(--danger);background:rgba(239,68,68,0.1);':r.status.includes('HOD')||r.status==='TL APPROVED'?'color:#eab308;background:rgba(234,179,8,0.1);':r.status==='PENDING'?'color:#eab308;border:1px solid rgba(234,179,8,0.4);':'color:var(--accent);background:rgba(34,197,94,0.1);'}">
                         ${r.status}
                       </span>
                     </td>
@@ -5584,6 +6528,7 @@ function renderView() {
                     <th style="padding:1.2rem 1rem;">Jenis</th>
                     <th style="padding:1.2rem 1rem;">Sebab</th>
                     <th style="padding:1.2rem 1rem;text-align:center;">Hari</th>
+                    <th style="padding:1.2rem 1rem;text-align:center;">WA</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -5605,6 +6550,12 @@ function renderView() {
                     </td>
                     <td style="padding:1.1rem 1rem;font-size:0.73rem;font-style:italic;color:var(--text-muted);max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.reason||'-'}</td>
                     <td style="padding:1.1rem 1rem;font-weight:800;font-size:1rem;text-align:center;color:#059669;">${r.days}</td>
+                    <td style="padding:0.6rem 1rem;text-align:center;">
+                      <button onclick="window.resendApprovalWA(${r.id})" title="Hantar semula notifikasi WhatsApp" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.3);color:#25d366;border-radius:8px;padding:0.35rem 0.6rem;cursor:pointer;font-size:0.7rem;font-weight:700;display:inline-flex;align-items:center;gap:0.3rem;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                        Hantar Semula
+                      </button>
+                    </td>
                   </tr>`).join('')}
                 </tbody>
                 ${approvedFiltered.length > 0 ? `
@@ -5612,6 +6563,7 @@ function renderView() {
                   <tr style="border-top:1px solid rgba(5,150,105,0.3);background:rgba(5,150,105,0.05);">
                     <td colspan="5" style="padding:0.9rem 1rem;font-size:0.75rem;font-weight:800;text-align:right;color:var(--text-muted);text-transform:uppercase;">Jumlah Keseluruhan</td>
                     <td style="padding:0.9rem 1rem;font-weight:800;font-size:1.1rem;text-align:center;color:#059669;">${approvedTotalDays.toFixed(1)}</td>
+                    <td></td>
                   </tr>
                 </tfoot>` : ''}
               </table>
@@ -5942,7 +6894,7 @@ function renderView() {
           ${hrReportTab === 'attendance' && userPerms.report_attendance ? (() => {
             const MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
             const availYearsA = [...new Set(leaveRecords.map(r=>(r.startDate||'').substring(0,4)).filter(Boolean))].sort().reverse();
-            const scopedBranchesA = [...new Set(staffList.filter(s=>s.active!==false).map(s=>s.branch).filter(Boolean))].sort().filter(b => {
+            const scopedBranchesA = [...new Set(staffList.filter(s=>!s.inactive).map(s=>s.branch).filter(Boolean))].sort().filter(b => {
               if (reportBranch) return b === reportBranch;
               const bObj = branches.find(br => br.name === b);
               if (!bObj) return userStateScope === 'all';
@@ -5954,7 +6906,7 @@ function renderView() {
             const monthPrefix = attendanceReportYear + '-' + String(attendanceReportMonth).padStart(2,'0');
 
             const attStaffPool = staffList.filter(s => {
-              if (s.active === false) return false;
+              if (s.inactive) return false;
               if (reportBranch && s.branch !== reportBranch) return false;
               if (attendanceReportBranch !== 'SEMUA' && s.branch !== attendanceReportBranch) return false;
               const bObj = branches.find(b => b.name === s.branch);
@@ -6062,8 +7014,8 @@ function renderView() {
               </div>`;
             };
 
-            const attKakitangan = attStaffPool.filter(s=>s.type!=='doctor').sort((a,b)=>a.name.localeCompare(b.name));
-            const attDoktor = attStaffPool.filter(s=>s.type==='doctor').sort((a,b)=>a.name.localeCompare(b.name));
+            const attKakitangan = attStaffPool.filter(s=>s.category!=='Doctor').sort((a,b)=>a.name.localeCompare(b.name));
+            const attDoktor = attStaffPool.filter(s=>s.category==='Doctor').sort((a,b)=>a.name.localeCompare(b.name));
 
             return `
             <!-- Filter bar -->
@@ -6109,8 +7061,29 @@ function renderView() {
               <button onclick="window.toggleAllBranches(false)" style="padding:0.3rem 0.8rem;border-radius:999px;border:1px solid rgba(163,177,198,0.45);background:rgba(255,255,255,0.6);font-size:0.78rem;font-weight:600;color:var(--text-soft);cursor:pointer;">▶ Tutup Semua</button>
               <div style="display:flex;align-items:center;gap:0.4rem;">
                 <div class="neu-toggle ${showInactiveStaff ? 'active' : ''}" onclick="window.toggleInactive()"></div>
-                <span style="font-size:0.75rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;">Tidak Aktif</span>
+                <span style="font-size:0.75rem;font-weight:600;color:${showInactiveStaff ? '#ef4444' : 'var(--text-muted)'};text-transform:uppercase;letter-spacing:0.4px;">${showInactiveStaff ? 'Melihat: Tidak Aktif' : 'Tidak Aktif'}</span>
               </div>
+              <select onchange="window.setManageRoleFilter(this.value)" style="padding:0.3rem 0.7rem;border-radius:999px;border:1px solid rgba(163,177,198,0.45);background:rgba(255,255,255,0.6);font-size:0.78rem;font-weight:600;color:var(--text-soft);cursor:pointer;color-scheme:light;">
+                ${[
+                  { val: 'SEMUA', label: 'Semua Peranan' },
+                  { val: 'super_admin', label: 'Super Admin' },
+                  { val: 'admin', label: 'Admin' },
+                  { val: 'hr', label: 'HR' },
+                  { val: 'hod', label: 'HOD' },
+                  { val: 'pic_hod', label: 'PIC HOD' },
+                  { val: 'supervisor', label: 'Supervisor' },
+                  { val: 'team_leader', label: 'Team Leader' },
+                  { val: 'staff', label: 'Staff' },
+                ].map(o => '<option value="' + o.val + '"' + (manageRoleFilter === o.val ? ' selected' : '') + '>' + o.label + '</option>').join('')}
+              </select>
+              <select onchange="window.setManageCategoryFilter(this.value)" style="padding:0.3rem 0.7rem;border-radius:999px;border:1px solid rgba(163,177,198,0.45);background:rgba(255,255,255,0.6);font-size:0.78rem;font-weight:600;color:var(--text-soft);cursor:pointer;color-scheme:light;">
+                ${[
+                  { val: 'SEMUA', label: 'Semua Kategori' },
+                  { val: 'Doctor', label: 'Doktor' },
+                  { val: 'Admin Staff', label: 'Admin Staff' },
+                  { val: 'Operation Staff', label: 'Operasi' },
+                ].map(o => '<option value="' + o.val + '"' + (manageCategoryFilter === o.val ? ' selected' : '') + '>' + o.label + '</option>').join('')}
+              </select>
             </div>
             <input type="text" id="manage-staff-search" class="neu-inset" placeholder="Cari nama / IC..." value="${manageSearchQuery}" oninput="window.setManageSearch(this.value)" style="width:180px;padding:0.4rem 0.8rem;border-radius:10px;font-size:0.82rem;color-scheme:light;">
           </div>
@@ -6202,12 +7175,15 @@ function renderView() {
             { key:'admin_staff_terengganu', label:'Kakitangan Admin', sub:'Terengganu',   color:'#0d9488', bg:'rgba(13,148,136,0.06)'  },
             { key:'operation_balok',   label:'Kakitangan Operasi',  sub:'Balok',                color:'#10b981', bg:'rgba(16,185,129,0.06)'  },
             { key:'operation_other',   label:'Kakitangan Operasi',  sub:'Lain-lain',            color:'#14b8a6', bg:'rgba(20,184,166,0.06)'  },
+            { key:'xray_sono_balok',  label:'Juru X-Ray / Sonographer', sub:'Balok — P1: Supervisor', color:'#ec4899', bg:'rgba(236,72,153,0.06)'  },
+            { key:'juru_audio_balok', label:'Juru Audio',               sub:'Balok — P1: HOD',        color:'#0d9488', bg:'rgba(13,148,136,0.06)'  },
           ];
           const cols = [
-            { field:'p1_hod',       label:'HOD',        grp:'p1', color:'#38bdf8' },
-            { field:'p1_pic_hod',   label:'PIC / HOD',  grp:'p1', color:'#818cf8' },
-            { field:'p1_supervisor',label:'Supervisor',  grp:'p1', color:'#34d399', note:'★ Balok Spvsr bagi Doktor Kuantan & Op. Balok' },
-            { field:'needs_p2',     label:'Perlu P2?',  grp:'p2', color:'#f97316' },
+            { field:'needs_tl',     label:'Team Leader', grp:'p0', color:'#f43f5e' },
+            { field:'p1_hod',       label:'HOD',         grp:'p1', color:'#38bdf8' },
+            { field:'p1_pic_hod',   label:'PIC / HOD',   grp:'p1', color:'#818cf8' },
+            { field:'p1_supervisor',label:'Supervisor',   grp:'p1', color:'#34d399', note:'★ Balok Spvsr bagi Doktor Kuantan & Op. Balok' },
+            { field:'needs_p2',     label:'Perlu P2?',   grp:'p2', color:'#f97316' },
           ];
           const mkCell = (group, field, checked, color) =>
             `<td style="padding:0.55rem 0.5rem;border-right:1px solid rgba(163,177,198,0.12);cursor:pointer;text-align:center;" onclick="window.toggleRouting('${group}','${field}')">
@@ -6252,13 +7228,14 @@ function renderView() {
                 <thead>
                   <tr style="background:rgba(163,177,198,0.03);border-bottom:1px solid rgba(163,177,198,0.15);">
                     <th colspan="2" style="padding:0.55rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.8px;text-transform:uppercase;color:#6d28d9;border-right:2px solid rgba(163,177,198,0.25);text-align:left;">Kumpulan Kakitangan</th>
+                    <th colspan="1" style="padding:0.55rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.8px;text-transform:uppercase;color:#f43f5e;border-right:2px solid rgba(163,177,198,0.25);text-align:center;">🟥 Peringkat 0 — Sokongan TL</th>
                     <th colspan="3" style="padding:0.55rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.8px;text-transform:uppercase;color:#38bdf8;border-right:2px solid rgba(163,177,198,0.25);text-align:center;">⬛ Peringkat 1 — Pelulus</th>
                     <th colspan="1" style="padding:0.55rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.8px;text-transform:uppercase;color:#f97316;text-align:center;">🔒 Peringkat 2</th>
                   </tr>
                   <tr style="background:rgba(163,177,198,0.03);border-bottom:2px solid rgba(163,177,198,0.2);">
                     <th style="padding:0.5rem 1rem;font-weight:600;font-size:0.63rem;color:var(--text-muted);border-right:1px solid rgba(163,177,198,0.12);text-align:left;white-space:nowrap;">Kategori</th>
                     <th style="padding:0.5rem 0.75rem;font-weight:600;font-size:0.63rem;color:var(--text-muted);border-right:2px solid rgba(163,177,198,0.25);text-align:left;white-space:nowrap;">Skop</th>
-                    ${cols.map((c,i) => `<th style="padding:0.5rem 0.5rem;font-weight:600;font-size:0.63rem;color:${c.color};border-right:${i===2?'2px':'1px'} solid rgba(163,177,198,${i===2?'0.25':'0.12'});text-align:center;white-space:nowrap;">${c.label}</th>`).join('')}
+                    ${cols.map((c,i) => `<th style="padding:0.5rem 0.5rem;font-weight:600;font-size:0.63rem;color:${c.color};border-right:${i===0||i===3?'2px':'1px'} solid rgba(163,177,198,${i===0||i===3?'0.25':'0.12'});text-align:center;white-space:nowrap;">${c.label}</th>`).join('')}
                   </tr>
                 </thead>
                 <tbody>
@@ -6270,13 +7247,107 @@ function renderView() {
                         <span style="display:inline-block;background:${r.bg};color:${r.color};border:1px solid ${r.color}30;border-radius:6px;padding:0.18rem 0.55rem;font-weight:700;font-size:0.73rem;">${r.label}</span>
                       </td>
                       <td style="padding:0.6rem 0.75rem;border-right:2px solid rgba(163,177,198,0.25);font-size:0.75rem;color:var(--text-muted);font-weight:600;">${r.sub}</td>
-                      ${cols.map((c,i) => mkCell(r.key, c.field, !!cfg[c.field], c.color) + (i===2 ? '' : '')).join('')}
+                      ${cols.map((c,i) => {
+                        const thick = i === 0 || i === 3;
+                        const borderRight = `${thick ? '2' : '1'}px solid rgba(163,177,198,${thick ? '0.25' : '0.12'})`;
+                        return `<td style="padding:0.55rem 0.5rem;border-right:${borderRight};cursor:pointer;text-align:center;" onclick="window.toggleRouting('${r.key}','${c.field}')">
+                          <div style="display:flex;align-items:center;justify-content:center;pointer-events:none;">
+                            ${!!cfg[c.field]
+                              ? `<div style="width:28px;height:28px;border-radius:7px;background:${c.color}20;border:1px solid ${c.color}50;display:flex;align-items:center;justify-content:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="${c.color}" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>`
+                              : '<div style="width:28px;height:28px;border-radius:7px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.15);display:flex;align-items:center;justify-content:center;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>'}
+                          </div>
+                        </td>`;
+                      }).join('')}
                     </tr>`;
                   }).join('')}
                 </tbody>
               </table>
             </div>
           </section>
+
+          <!-- ── Jadual Laluan Kelulusan ─────────────────────────────── -->
+          <div style="margin-top:2rem;">
+            <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">
+              <div style="width:36px;height:36px;border-radius:9px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              </div>
+              <div>
+                <h3 style="font-size:0.95rem;font-weight:700;margin:0;">Jadual Laluan Kelulusan (Ringkasan)</h3>
+                <p style="font-size:0.7rem;color:var(--text-muted);margin:0.15rem 0 0;">Paparan aliran kelulusan semasa mengikut tetapan matrix di atas</p>
+              </div>
+            </div>
+
+            <section class="glass-card fade-in" style="padding:0;overflow:hidden;border:1px solid rgba(59,130,246,0.2);">
+              <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
+                  <thead>
+                    <tr style="background:linear-gradient(135deg,rgba(59,130,246,0.08),rgba(139,92,246,0.06));border-bottom:2px solid rgba(163,177,198,0.2);">
+                      <th style="padding:0.7rem 1rem;font-weight:700;font-size:0.67rem;letter-spacing:0.8px;text-transform:uppercase;color:var(--text-muted);border-right:1px solid rgba(163,177,198,0.15);text-align:left;white-space:nowrap;">Kumpulan Kakitangan</th>
+                      <th style="padding:0.7rem 0.85rem;font-weight:700;font-size:0.67rem;letter-spacing:0.8px;text-transform:uppercase;color:var(--text-muted);border-right:2px solid rgba(163,177,198,0.25);text-align:left;white-space:nowrap;">Cawangan / Skop</th>
+                      <th style="padding:0.7rem 0.85rem;font-weight:700;font-size:0.67rem;letter-spacing:0.8px;text-transform:uppercase;color:#f43f5e;border-right:2px solid rgba(163,177,198,0.25);text-align:center;white-space:nowrap;">🟥 P0 — Team Leader</th>
+                      <th style="padding:0.7rem 0.85rem;font-weight:700;font-size:0.67rem;letter-spacing:0.8px;text-transform:uppercase;color:#38bdf8;border-right:2px solid rgba(163,177,198,0.25);text-align:center;white-space:nowrap;">⬛ P1 — Pelulus Utama</th>
+                      <th style="padding:0.7rem 0.85rem;font-weight:700;font-size:0.67rem;letter-spacing:0.8px;text-transform:uppercase;color:#f97316;text-align:center;white-space:nowrap;">🔒 P2 — Kelulusan Akhir</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${(() => {
+                      const flowArrow = `<span style="color:var(--text-muted);font-size:0.9rem;margin:0 0.3rem;">→</span>`;
+                      const chip = (label, color, bg) => `<span style="display:inline-flex;align-items:center;gap:0.25rem;background:${bg};color:${color};border:1px solid ${color}40;border-radius:20px;padding:0.2rem 0.65rem;font-weight:700;font-size:0.7rem;white-space:nowrap;">${label}</span>`;
+                      const dash = `<span style="color:rgba(163,177,198,0.4);font-size:1rem;">—</span>`;
+
+                      const flowRows = [
+                        { key:'doctor_kuantan',    grp:'Doktor',                    scope:'Kuantan / Pahang Am',            gColor:'#3b82f6' },
+                        { key:'doctor_bentong',    grp:'Doktor',                    scope:'Bentong',                        gColor:'#8b5cf6' },
+                        { key:'doctor_mckip',      grp:'Doktor',                    scope:'MCKIP',                          gColor:'#6366f1' },
+                        { key:'doctor_terengganu', grp:'Doktor',                    scope:'Terengganu',                     gColor:'#0d9488' },
+                        { key:'admin_staff_pahang',     grp:'Kakitangan Admin',     scope:'Pahang',                        gColor:'#f59e0b' },
+                        { key:'admin_staff_terengganu', grp:'Kakitangan Admin',     scope:'Terengganu',                    gColor:'#0d9488' },
+                        { key:'operation_balok',   grp:'Kakitangan Operasi',        scope:'Balok (HQ)',                     gColor:'#10b981' },
+                        { key:'operation_other',   grp:'Kakitangan Operasi',        scope:'Cawangan Lain',                  gColor:'#14b8a6' },
+                        { key:'xray_sono_balok',   grp:'Juru X-Ray / Sonographer', scope:'Balok (HQ)',                     gColor:'#ec4899' },
+                        { key:'juru_audio_balok',  grp:'Juru Audio',               scope:'Balok (HQ)',                     gColor:'#0d9488' },
+                      ];
+
+                      const getP1Label = (key, cfg) => {
+                        if (cfg.needs_tl && cfg.p1_supervisor) return 'Supervisor Balok';
+                        if (cfg.p1_supervisor) {
+                          if (key === 'doctor_kuantan' || key === 'xray_sono_balok') return 'Supervisor Balok';
+                          return 'Supervisor';
+                        }
+                        if (cfg.p1_hod && cfg.p1_pic_hod) return 'HOD / PIC HOD';
+                        if (cfg.p1_hod)     return 'HOD';
+                        if (cfg.p1_pic_hod) return 'PIC HOD';
+                        return null;
+                      };
+
+                      return flowRows.map((r, idx) => {
+                        const cfg = approvalRouting[r.key] || {};
+                        const p1Label = getP1Label(r.key, cfg);
+                        const rowBg = idx % 2 === 0 ? 'transparent' : 'rgba(163,177,198,0.025)';
+                        const isBalokOp = r.key === 'operation_balok';
+
+                        return `<tr style="border-bottom:1px solid rgba(163,177,198,0.08);background:${rowBg};transition:background 0.15s;" onmouseover="this.style.background='rgba(59,130,246,0.04)'" onmouseout="this.style.background='${rowBg}'">
+                          <td style="padding:0.65rem 1rem;border-right:1px solid rgba(163,177,198,0.12);">
+                            <span style="display:inline-block;background:${r.gColor}18;color:${r.gColor};border:1px solid ${r.gColor}30;border-radius:6px;padding:0.18rem 0.6rem;font-weight:700;font-size:0.73rem;">${r.grp}</span>
+                          </td>
+                          <td style="padding:0.65rem 0.85rem;border-right:2px solid rgba(163,177,198,0.2);font-size:0.75rem;color:var(--text-muted);font-weight:600;">${r.scope}</td>
+                          <td style="padding:0.65rem 0.85rem;border-right:2px solid rgba(163,177,198,0.2);text-align:center;">
+                            ${cfg.needs_tl ? chip('Team Leader', '#f43f5e', 'rgba(244,63,94,0.1)') : dash}
+                          </td>
+                          <td style="padding:0.65rem 0.85rem;border-right:2px solid rgba(163,177,198,0.2);text-align:center;">
+                            ${p1Label ? chip(p1Label, '#38bdf8', 'rgba(56,189,248,0.1)') : dash}
+                          </td>
+                          <td style="padding:0.65rem 0.85rem;text-align:center;">
+                            ${cfg.needs_p2 ? chip('HR / Admin', '#f97316', 'rgba(249,115,22,0.1)') : `<span style="font-size:0.7rem;color:var(--text-muted);font-style:italic;">Tidak perlu</span>`}
+                          </td>
+                        </tr>`;
+                      }).join('');
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
           `;
         })() : ''}
 
@@ -6341,7 +7412,11 @@ function renderView() {
             { key: 'hod',         label: 'HOD',          color: '#38bdf8', bg: 'rgba(56,189,248,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Ketua Jabatan' },
             { key: 'pic_hod',     label: 'PIC / HOD',    color: '#fb923c', bg: 'rgba(251,146,60,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Ketua Cawangan' },
             { key: 'supervisor',  label: 'Supervisor',   color: '#10b981', bg: 'rgba(16,185,129,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Penyelia Balok' },
-            { key: 'staff',       label: 'Staff',        color: '#94a3b8', bg: 'transparent',            bottomBorder: 'none',                             desc: 'Kakitangan' },
+            { key: 'team_leader', label: 'Team Leader',  color: '#f43f5e', bg: 'rgba(244,63,94,0.04)',   bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Ketua Kumpulan Balok' },
+            { key: 'staff',       label: 'Staff',        color: '#94a3b8', bg: 'rgba(148,163,184,0.04)', bottomBorder: '2px solid rgba(163,177,198,0.3)',  desc: 'Kakitangan Am' },
+            { key: 'juru_xray',   label: 'Juru X-Ray',   color: '#ec4899', bg: 'rgba(236,72,153,0.04)', bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Paramedik Pengimejan' },
+            { key: 'sonographer', label: 'Sonographer',  color: '#6366f1', bg: 'rgba(99,102,241,0.04)', bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Paramedik Ultrasound' },
+            { key: 'juru_audio',  label: 'Juru Audio',   color: '#0d9488', bg: 'rgba(13,148,136,0.04)', bottomBorder: 'none',                             desc: 'Paramedik Audiologi' },
           ];
 
           const grpTh = (emoji, label, span, color, isLast) => `<th colspan="${span}" style="padding:0.55rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.8px;text-transform:uppercase;color:${color};border-right:${isLast ? '1px solid rgba(163,177,198,0.12)' : '2px solid rgba(163,177,198,0.25)'};border-bottom:1px solid rgba(163,177,198,0.15);background:rgba(163,177,198,0.03);text-align:center;white-space:nowrap;">${emoji} ${label}</th>`;
@@ -6431,7 +7506,7 @@ function renderView() {
                     <th rowspan="2" style="padding:0.85rem 1rem;font-weight:700;font-size:0.78rem;border-right:2px solid rgba(163,177,198,0.25);border-bottom:2px solid rgba(163,177,198,0.2);background:rgba(163,177,198,0.06);text-align:left;vertical-align:middle;min-width:128px;">Peranan</th>
                     ${grpTh('🖥️', 'Navigasi', 4, '#3b82f6', false)}
                     ${grpTh('⚙️', 'Tetapan', 3, '#2dd4bf', false)}
-                    ${grpTh('📋', 'Pengurusan', 8, '#a855f7', false)}
+                    ${grpTh('📋', 'Pengurusan', 9, '#a855f7', false)}
                     ${grpTh('📊', 'Skop Laporan', 3, '#ca8a04', false)}
                     ${grpTh('🏥', 'Operasi', 4, '#f59e0b', true)}
                   </tr>
@@ -6450,7 +7525,8 @@ function renderView() {
                     ${colTh('Log<br>Masuk', '#10b981', false)}
                     ${colTh('Laporan', '#f97316', false)}
                     ${colTh('Laluan<br>Kelulusan', '#6d28d9', false)}
-                    ${colTh('Kawalan<br>Akses', '#ef4444', true)}
+                    ${colTh('Kawalan<br>Akses', '#ef4444', false)}
+                    ${colTh('Peranan &amp;<br>Kategori', '#10b981', true)}
                     ${colTh('Daerah<br>Kuantan', '#ca8a04', false)}
                     ${colTh('Cawangan<br>Sendiri', '#0284c7', false)}
                     ${colTh('Rekod<br>Kedatangan', '#1e293b', true)}
@@ -6483,7 +7559,8 @@ function renderView() {
                     ${renderRbacCell(r.key, 'manage_login_audit', false)}
                     ${renderRbacCell(r.key, 'manage_reports', false)}
                     ${renderRbacCell(r.key, 'manage_routing', false)}
-                    ${renderRbacCell(r.key, 'manage_access', true)}
+                    ${renderRbacCell(r.key, 'manage_access', false)}
+                    ${renderRbacCell(r.key, 'manage_roles_categories', true)}
                     ${renderRbacScopeCell(r.key, 'report_kuantan_only', 'Kuantan', '#ca8a04', 'rgba(234,179,8,0.15)', 'rgba(234,179,8,0.4)', '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>', false)}
                     ${renderRbacScopeCell(r.key, 'report_own_branch_only', 'Cawangan', '#0284c7', 'rgba(56,189,248,0.15)', 'rgba(56,189,248,0.4)', '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>', false)}
                     ${renderRbacScopeCell(r.key, 'report_attendance', 'Kedatangan', '#1e293b', 'rgba(30,41,59,0.15)', 'rgba(30,41,59,0.5)', '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>', true)}
@@ -6496,6 +7573,168 @@ function renderView() {
               </table>
             </div>
           </section>
+          `;
+        })() : ''}
+
+        ${managementTab === 'roles_categories' && userPerms.manage_roles_categories ? (() => {
+          const allRoleKeys = Object.keys(window.rbacMatrix).filter(k => k !== 'super_admin');
+          const categoryRowStyle = 'display:flex;align-items:center;justify-content:space-between;padding:0.55rem 1rem;border-bottom:1px solid rgba(163,177,198,0.12);';
+          const pillStyle = (color) => `font-size:0.75rem;font-weight:700;color:#fff;background:${color};padding:0.2rem 0.6rem;border-radius:6px;`;
+          const roleColors = { admin:'#3b82f6', hr:'#10b981', hod:'#f59e0b', pic_hod:'#f97316', supervisor:'#8b5cf6', team_leader:'#f43f5e', staff:'#64748b' };
+
+          return `
+          <header class="top-bar">
+            <h1>Peranan &amp; Kategori Staff</h1>
+          </header>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;align-items:start;">
+
+            <!-- PERANAN -->
+            <section class="glass-card" style="padding:0;overflow:hidden;">
+              <div style="padding:0.85rem 1rem;border-bottom:1px solid rgba(163,177,198,0.15);display:flex;align-items:center;justify-content:space-between;background:rgba(163,177,198,0.04);">
+                <div style="display:flex;align-items:center;gap:0.55rem;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4361ee" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  <span style="font-size:0.9rem;font-weight:700;color:var(--text);">Peranan (Roles)</span>
+                  <span style="font-size:0.72rem;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.1rem 0.5rem;border-radius:999px;">${allRoleKeys.length} peranan</span>
+                </div>
+                <button onclick="window.addCustomRole()" style="padding:0.3rem 0.8rem;border-radius:999px;border:1px solid rgba(67,97,238,0.4);background:rgba(67,97,238,0.08);font-size:0.78rem;font-weight:600;color:#4361ee;cursor:pointer;">+ Tambah</button>
+              </div>
+              ${allRoleKeys.map(key => {
+                const label = window.staffConfig.roleLabels[key] || key;
+                const isCore = CORE_ROLES.includes(key);
+                const color = roleColors[key] || '#94a3b8';
+                return `<div style="${categoryRowStyle}">
+                  <div style="display:flex;align-items:center;gap:0.6rem;">
+                    <span style="${pillStyle(color)}">${label}</span>
+                    <span style="font-size:0.72rem;color:var(--text-muted);font-family:monospace;">${key}</span>
+                    ${isCore ? '<span style="font-size:0.62rem;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.06rem 0.4rem;border-radius:4px;">TERAS</span>' : ''}
+                  </div>
+                  <div style="display:flex;gap:0.4rem;align-items:center;">
+                    <button onclick="window.setManageTab(\'access_control\')" title="Tetapkan kebenaran" style="padding:0.2rem 0.55rem;border-radius:6px;border:1px solid rgba(67,97,238,0.3);background:rgba(67,97,238,0.07);font-size:0.72rem;color:#4361ee;cursor:pointer;">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                      RBAC
+                    </button>
+                    ${!isCore ? `<button data-rolekey="${key}" onclick="window.deleteCustomRole(this.dataset.rolekey)" title="Padam peranan" style="padding:0.2rem 0.5rem;border-radius:6px;border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.07);font-size:0.72rem;color:#ef4444;cursor:pointer;">&#10005;</button>` : ''}
+                  </div>
+                </div>`;
+              }).join('')}
+              <div style="padding:0.65rem 1rem;background:rgba(163,177,198,0.03);border-top:1px solid rgba(163,177,198,0.1);">
+                <p style="font-size:0.7rem;color:var(--text-muted);margin:0;">Peranan teras tidak boleh dipadam. Peranan baharu akan ditambah ke RBAC dengan kebenaran minimum — tetapkan akses di tab <strong>Access Control</strong>.</p>
+              </div>
+            </section>
+
+            <!-- KATEGORI -->
+            <section class="glass-card" style="padding:0;overflow:hidden;">
+              <div style="padding:0.85rem 1rem;border-bottom:1px solid rgba(163,177,198,0.15);display:flex;align-items:center;justify-content:space-between;background:rgba(163,177,198,0.04);">
+                <div style="display:flex;align-items:center;gap:0.55rem;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                  <span style="font-size:0.9rem;font-weight:700;color:var(--text);">Kategori Staff</span>
+                  <span style="font-size:0.72rem;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.1rem 0.5rem;border-radius:999px;">${window.staffConfig.staffCategories.length} kategori</span>
+                </div>
+                <button onclick="window.addStaffCategory()" style="padding:0.3rem 0.8rem;border-radius:999px;border:1px solid rgba(16,185,129,0.4);background:rgba(16,185,129,0.08);font-size:0.78rem;font-weight:600;color:#10b981;cursor:pointer;">+ Tambah</button>
+              </div>
+              ${window.staffConfig.staffCategories.map(cat => {
+                const isCore = CORE_CATEGORIES.includes(cat);
+                return `<div style="${categoryRowStyle}">
+                  <div style="display:flex;align-items:center;gap:0.6rem;">
+                    <span style="font-size:0.82rem;font-weight:600;color:var(--text);">${cat}</span>
+                    ${isCore ? '<span style="font-size:0.62rem;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.06rem 0.4rem;border-radius:4px;">TERAS</span>' : ''}
+                  </div>
+                  ${!isCore ? `<button data-cat="${cat}" onclick="window.deleteStaffCategory(this.dataset.cat)" title="Padam kategori" style="padding:0.2rem 0.5rem;border-radius:6px;border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.07);font-size:0.72rem;color:#ef4444;cursor:pointer;">&#10005;</button>` : ''}
+                </div>`;
+              }).join('')}
+              <div style="padding:0.65rem 1rem;background:rgba(163,177,198,0.03);border-top:1px solid rgba(163,177,198,0.1);">
+                <p style="font-size:0.7rem;color:var(--text-muted);margin:0;">Kategori teras (Admin Staff, Operation Staff, Doctor) tidak boleh dipadam. Kategori baharu akan tersedia dalam borang tambah/edit staff.</p>
+              </div>
+            </section>
+
+          </div>
+
+          <!-- LALUAN KELULUSAN -->
+          <section class="glass-card" style="padding:0;overflow:hidden;margin-top:1.25rem;">
+            <div style="padding:0.85rem 1rem;border-bottom:1px solid rgba(163,177,198,0.15);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.6rem;background:rgba(163,177,198,0.04);">
+              <div style="display:flex;align-items:center;gap:0.55rem;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6d28d9" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                <span style="font-size:0.9rem;font-weight:700;color:var(--text);">Laluan Kelulusan Cuti</span>
+                <span style="font-size:0.7rem;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.1rem 0.5rem;border-radius:999px;">Siapa meluluskan cuti siapa</span>
+              </div>
+              <button onclick="window.saveRouting()" style="padding:0.35rem 1rem;border-radius:999px;border:1px solid rgba(109,40,217,0.4);background:rgba(109,40,217,0.1);font-size:0.78rem;font-weight:600;color:#6d28d9;cursor:pointer;display:flex;align-items:center;gap:0.4rem;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                Simpan
+              </button>
+            </div>
+
+            <div style="padding:0.65rem 1rem;background:rgba(163,177,198,0.02);border-bottom:1px solid rgba(163,177,198,0.1);display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center;">
+              <div style="display:flex;align-items:center;gap:0.35rem;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:6px;padding:0.2rem 0.55rem;">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                <span style="font-size:0.67rem;color:#34d399;font-weight:600;">Aktif</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:0.35rem;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.18);border-radius:6px;padding:0.2rem 0.55rem;">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <span style="font-size:0.67rem;color:#ef4444;font-weight:600;">Tidak Aktif</span>
+              </div>
+              <span style="font-size:0.67rem;color:var(--text-muted);background:rgba(163,177,198,0.06);border:1px solid rgba(163,177,198,0.18);border-radius:6px;padding:0.2rem 0.55rem;">Klik sel untuk togol · Simpan untuk berkuat kuasa</span>
+              <span style="font-size:0.67rem;color:var(--text-muted);background:rgba(163,177,198,0.06);border:1px solid rgba(163,177,198,0.18);border-radius:6px;padding:0.2rem 0.55rem;">★ Supervisor bagi Doktor Kuantan &amp; Op. Balok = Supervisor Balok (HQ)</span>
+            </div>
+
+            <div style="overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
+                <thead>
+                  <tr style="background:rgba(163,177,198,0.03);border-bottom:1px solid rgba(163,177,198,0.15);">
+                    <th colspan="2" style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.65rem;letter-spacing:0.8px;text-transform:uppercase;color:#6d28d9;border-right:2px solid rgba(163,177,198,0.25);text-align:left;">Kumpulan Kakitangan</th>
+                    <th colspan="1" style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.65rem;letter-spacing:0.8px;text-transform:uppercase;color:#f43f5e;border-right:2px solid rgba(163,177,198,0.25);text-align:center;">Peringkat 0 — TL</th>
+                    <th colspan="3" style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.65rem;letter-spacing:0.8px;text-transform:uppercase;color:#38bdf8;border-right:2px solid rgba(163,177,198,0.25);text-align:center;">Peringkat 1 — Pelulus</th>
+                    <th colspan="1" style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.65rem;letter-spacing:0.8px;text-transform:uppercase;color:#f97316;text-align:center;">Peringkat 2</th>
+                  </tr>
+                  <tr style="background:rgba(163,177,198,0.03);border-bottom:2px solid rgba(163,177,198,0.2);">
+                    <th style="padding:0.45rem 0.9rem;font-weight:600;font-size:0.63rem;color:var(--text-muted);border-right:1px solid rgba(163,177,198,0.12);text-align:left;white-space:nowrap;">Kategori</th>
+                    <th style="padding:0.45rem 0.75rem;font-weight:600;font-size:0.63rem;color:var(--text-muted);border-right:2px solid rgba(163,177,198,0.25);text-align:left;white-space:nowrap;">Skop</th>
+                    <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#f43f5e;border-right:2px solid rgba(163,177,198,0.25);text-align:center;white-space:nowrap;">Team Leader</th>
+                    <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#38bdf8;border-right:1px solid rgba(163,177,198,0.12);text-align:center;white-space:nowrap;">HOD</th>
+                    <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#818cf8;border-right:1px solid rgba(163,177,198,0.12);text-align:center;white-space:nowrap;">PIC / HOD</th>
+                    <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#34d399;border-right:2px solid rgba(163,177,198,0.25);text-align:center;white-space:nowrap;">Supervisor ★</th>
+                    <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#f97316;text-align:center;white-space:nowrap;">Perlu P2?</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${[
+                    { key:'doctor_kuantan',         label:'Doktor',           sub:'Kuantan / Pahang Am', color:'#3b82f6', bg:'rgba(59,130,246,0.04)'  },
+                    { key:'doctor_bentong',         label:'Doktor',           sub:'Bentong',             color:'#8b5cf6', bg:'rgba(139,92,246,0.04)'  },
+                    { key:'doctor_mckip',           label:'Doktor',           sub:'MCKIP',               color:'#6366f1', bg:'rgba(99,102,241,0.04)'  },
+                    { key:'doctor_terengganu',      label:'Doktor',           sub:'Terengganu',          color:'#0d9488', bg:'rgba(13,148,136,0.04)'  },
+                    { key:'admin_staff_pahang',     label:'Kakitangan Admin', sub:'Pahang',              color:'#f59e0b', bg:'rgba(245,158,11,0.04)'  },
+                    { key:'admin_staff_terengganu', label:'Kakitangan Admin', sub:'Terengganu',          color:'#0d9488', bg:'rgba(13,148,136,0.04)'  },
+                    { key:'operation_balok',        label:'Kakitangan Operasi',sub:'Balok',              color:'#10b981', bg:'rgba(16,185,129,0.04)'  },
+                    { key:'operation_other',        label:'Kakitangan Operasi',sub:'Lain-lain',          color:'#14b8a6', bg:'rgba(20,184,166,0.04)'  },
+                  ].map(row => {
+                    const cfg = approvalRouting[row.key] || {};
+                    const mkCell = (field, checked, color, thick) => {
+                      const border = thick ? '2px' : '1px';
+                      return `<td style="padding:0.5rem 0.5rem;border-right:${border} solid rgba(163,177,198,${thick?'0.25':'0.12'});cursor:pointer;text-align:center;" onclick="window.toggleRouting('${row.key}','${field}')">
+                        <div style="display:flex;align-items:center;justify-content:center;pointer-events:none;">
+                          ${checked
+                            ? `<div style="width:26px;height:26px;border-radius:7px;background:${color}20;border:1px solid ${color}50;display:flex;align-items:center;justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>`
+                            : '<div style="width:26px;height:26px;border-radius:7px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.15);display:flex;align-items:center;justify-content:center;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>'}
+                        </div>
+                      </td>`;
+                    };
+                    return `<tr style="border-bottom:1px solid rgba(163,177,198,0.1);background:${row.bg};" onmouseover="this.style.background='rgba(59,130,246,0.06)'" onmouseout="this.style.background='${row.bg}'">
+                      <td style="padding:0.55rem 0.9rem;border-right:1px solid rgba(163,177,198,0.12);">
+                        <span style="font-size:0.75rem;font-weight:700;color:${row.color};background:${row.color}15;border:1px solid ${row.color}30;padding:0.15rem 0.5rem;border-radius:6px;">${row.label}</span>
+                      </td>
+                      <td style="padding:0.55rem 0.75rem;border-right:2px solid rgba(163,177,198,0.25);font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">${row.sub}</td>
+                      ${mkCell('needs_tl',      cfg.needs_tl,      '#f43f5e', true)}
+                      ${mkCell('p1_hod',        cfg.p1_hod,        '#38bdf8', false)}
+                      ${mkCell('p1_pic_hod',    cfg.p1_pic_hod,    '#818cf8', false)}
+                      ${mkCell('p1_supervisor', cfg.p1_supervisor,  '#34d399', true)}
+                      ${mkCell('needs_p2',      cfg.needs_p2,       '#f97316', false)}
+                    </tr>`;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           `;
         })() : ''}
       `;
@@ -6567,6 +7806,83 @@ function renderView() {
                           ${entitlementAL} hari ÷ 12 × ${window.getMonthsWorkedThisYear(user.startDate)} bulan + 0 bawa hadapan - 0 digunakan = ${accumulated.toFixed(2)} hari
                        </div>
                     </div>
+                </section>
+
+                <!-- ALIRAN KELULUSAN SECTION -->
+                <section class="glass-card fade-in" style="padding: 2rem; border: 1px solid rgba(139,92,246,0.25); background: rgba(139,92,246,0.03);">
+                   <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--secondary); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                     Aliran Kelulusan Cuti (Approval Flow)
+                   </h2>
+                   <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.5rem;">Setiap permohonan cuti mesti melalui peringkat kelulusan berikut sebelum dikira SAH.</p>
+
+                   <div style="display: flex; flex-direction: column; gap: 1rem;">
+
+                     <!-- Op Balok — 3 peringkat -->
+                     <div style="border-radius: 14px; border: 1.5px solid #f43f5e33; background: rgba(244,63,94,0.04); padding: 1.25rem 1.5rem;">
+                       <div style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #f43f5e; margin-bottom: 1rem;">Staff Operasi — Klinik Syed Badaruddin Balok (3 Peringkat)</div>
+                       <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+                         <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                           <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #f43f5e; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P0</div>
+                           <div>
+                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Sokongan Peringkat 0 — Team Leader (TL)</div>
+                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Permohonan mesti disokong oleh <strong>Team Leader Balok</strong> yang dipilih semasa menghantar borang sebelum boleh ke Supervisor.</div>
+                           </div>
+                         </div>
+                         <div style="border-left: 2px dashed rgba(244,63,94,0.3); height: 16px; margin-left: 13px;"></div>
+                         <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                           <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #f59e0b; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P1</div>
+                           <div>
+                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Nilai & Lulus Peringkat 1 — Supervisor</div>
+                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Supervisor Balok menilai dan meluluskan <strong>selepas</strong> sokongan Team Leader diterima.</div>
+                           </div>
+                         </div>
+                         <div style="border-left: 2px dashed rgba(245,158,11,0.3); height: 16px; margin-left: 13px;"></div>
+                         <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                           <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #059669; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P2</div>
+                           <div>
+                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Kelulusan Akhir Peringkat 2 — HR / Admin</div>
+                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Cuti hanya dikira <strong>SAH</strong> selepas HR/Admin memberi kelulusan akhir.</div>
+                           </div>
+                         </div>
+                       </div>
+                     </div>
+
+                     <!-- Doktor, Admin, Op Lain — 2 peringkat -->
+                     <div style="border-radius: 14px; border: 1.5px solid #3b82f633; background: rgba(59,130,246,0.04); padding: 1.25rem 1.5rem;">
+                       <div style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #3b82f6; margin-bottom: 1rem;">Doktor / Staff Admin / Staff Operasi Lain (2 Peringkat)</div>
+                       <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+                         <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                           <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #3b82f6; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P1</div>
+                           <div>
+                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Sokongan Peringkat 1 — HOD / PIC HOD / Supervisor</div>
+                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Pelulus Peringkat 1 yang dipilih semasa menghantar borang menilai dan menyokong permohonan.</div>
+                           </div>
+                         </div>
+                         <div style="border-left: 2px dashed rgba(59,130,246,0.3); height: 16px; margin-left: 13px;"></div>
+                         <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                           <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #059669; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P2</div>
+                           <div>
+                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Kelulusan Akhir Peringkat 2 — HR / Admin</div>
+                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Cuti hanya dikira <strong>SAH</strong> selepas HR/Admin memberi kelulusan akhir.</div>
+                           </div>
+                         </div>
+                       </div>
+                     </div>
+
+                     <!-- Terengganu — tanpa P2 -->
+                     <div style="border-radius: 14px; border: 1.5px solid #8b5cf633; background: rgba(139,92,246,0.04); padding: 1.25rem 1.5rem;">
+                       <div style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #8b5cf6; margin-bottom: 1rem;">Staff Terengganu (Dungun / Kerteh / Paka) — 1 Peringkat</div>
+                       <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                         <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #8b5cf6; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P1</div>
+                         <div>
+                           <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Kelulusan — HOD / PIC HOD</div>
+                           <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Cuti <strong>SAH</strong> selepas HOD / PIC HOD beri kelulusan. Tidak perlu kelulusan HR/Admin (Peringkat 2).</div>
+                         </div>
+                       </div>
+                     </div>
+
+                   </div>
                 </section>
 
                 <section class="glass-card fade-in" style="padding: 2rem;">
@@ -6882,6 +8198,14 @@ function renderModal() {
 
   const serviceDurationText = window.getServiceDurationText(staff.startDate);
 
+  // Kiraan AL semasa untuk paparan dalam modal
+  const _modalSysUsedAL = leaveRecords
+    .filter(r => r.ic === staff.ic && (r.status === 'APPROVED' || r.status === 'HOD APPROVED' || r.status === 'TL APPROVED') && r.type === 'AL')
+    .reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
+  const _modalAlAdj = parseFloat(staff.al_adj || 0);
+  const _modalTotalAL = parseFloat(staff.ent_CF !== undefined ? staff.ent_CF : 0) + parseFloat(staff.ent_AL !== undefined ? staff.ent_AL : window.getEntitlementAL(staff));
+  const _modalAlBalance = Math.max(0, _modalTotalAL - _modalSysUsedAL - _modalAlAdj);
+
   return `
     <div class="modal-overlay" id="modal-backdrop">
       <div class="glass-card modal-content fade-in" style="padding: 2.5rem; max-height: 90vh; overflow-y: auto;">
@@ -6923,9 +8247,7 @@ function renderModal() {
               <div style="display: flex; flex-direction: column;">
                  <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">Kategori Staff</label>
                  <select class="neu-inset" style="appearance: none; cursor: pointer; color-scheme: light; font-weight: 600;">
-                     <option value="Admin Staff" ${staff.category === 'Admin Staff' ? 'selected' : ''}>Staff Admin</option>
-                     <option value="Operation Staff" ${staff.category === 'Operation Staff' ? 'selected' : ''}>Staff Operasi</option>
-                     <option value="Doctor" ${staff.category === 'Doctor' ? 'selected' : ''}>Doctor</option>
+                     ${window.staffConfig.staffCategories.map(cat => `<option value="${cat}" ${staff.category === cat ? 'selected' : ''}>${cat}</option>`).join('')}
                      <option value="Super Admin" ${staff.category === 'Super Admin' ? 'selected' : ''}>Super Admin</option>
                  </select>
               </div>
@@ -6933,13 +8255,7 @@ function renderModal() {
               <div style="display: flex; flex-direction: column;">
                  <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">System Role</label>
                  <select class="neu-inset" style="appearance: none; cursor: pointer; color-scheme: light; font-weight: 600;">
-                     <option value="admin" ${staff.role === 'admin' ? 'selected' : ''}>Admin</option>
-                     <option value="hr" ${staff.role === 'hr' ? 'selected' : ''}>HR</option>
-                     <option value="hod" ${staff.role === 'hod' ? 'selected' : ''}>HOD</option>
-                     <option value="pic_hod" ${staff.role === 'pic_hod' ? 'selected' : ''}>PIC/HOD</option>
-                     <option value="supervisor" ${staff.role === 'supervisor' ? 'selected' : ''}>Supervisor</option>
-                     <option value="staff" ${staff.role === 'staff' ? 'selected' : ''}>Staff</option>
-                     <option value="super_admin" ${staff.role === 'super_admin' ? 'selected' : ''}>Super Admin</option>
+                     ${Object.keys(window.rbacMatrix).map(k => `<option value="${k}" ${staff.role === k ? 'selected' : ''}>${window.staffConfig.roleLabels[k] || k}</option>`).join('')}
                  </select>
               </div>
 
@@ -6996,6 +8312,33 @@ function renderModal() {
                   value="${(staff.ent_CF !== undefined ? staff.ent_CF : 0) + (staff.ent_AL !== undefined ? staff.ent_AL : window.getEntitlementAL(staff))}"
                   style="border-left: 3px solid var(--accent); font-weight: 800; color: var(--accent); opacity: 1; cursor: default;">
                 <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Baki Tahun Lepas + Peruntukan Tahun Ini</span>
+              </div>
+            </div>
+
+            <!-- Baris 2: Penggunaan semasa & baki sebenar -->
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px dashed rgba(163,177,198,0.2);">
+              <div style="display: flex; flex-direction: column;">
+                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">AL Digunakan (Rekod Sistem)</label>
+                <input type="number" id="al-sys-used-display" class="neu-inset" disabled
+                  value="${_modalSysUsedAL.toFixed(1)}"
+                  data-used="${_modalSysUsedAL}"
+                  style="border-left: 3px solid #ef4444; color: #ef4444; font-weight: 700; opacity: 1; cursor: default;">
+                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Dikira dari rekod cuti yang diluluskan</span>
+              </div>
+              <div style="display: flex; flex-direction: column;">
+                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #f59e0b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Pelarasan HR (Cuti Sebelum Sistem)</label>
+                <input type="number" id="al-adj-input" class="neu-inset" min="0" step="0.5"
+                  value="${_modalAlAdj}"
+                  oninput="window._updateAlBalance();"
+                  style="border-left: 3px solid #f59e0b;">
+                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Hari AL yang telah digunakan sebelum sistem / pindahan HR</span>
+              </div>
+              <div style="display: flex; flex-direction: column;">
+                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #10b981; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Baki AL Sebenar</label>
+                <input type="number" id="al-balance-display" class="neu-inset" disabled
+                  value="${_modalAlBalance.toFixed(1)}"
+                  style="border-left: 3px solid #10b981; font-weight: 800; color: #10b981; opacity: 1; cursor: default;">
+                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Jumlah − Digunakan − Pelarasan HR</span>
               </div>
             </div>
           </div>
@@ -7106,9 +8449,10 @@ function renderLeaveModal() {
                  <label style="font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-bottom: 0.5rem; display: block; letter-spacing: 0.5px;">Status</label>
                  <select id="el-status" class="neu-inset" style="appearance: none; cursor: pointer;">
                      <option value="PENDING" ${record.status === 'PENDING' ? 'selected' : ''}>Pending</option>
-                     <option value="HOD APPROVED" ${record.status === 'HOD APPROVED' ? 'selected' : ''}>HOD Approved</option>
-                     <option value="APPROVED" ${record.status === 'APPROVED' ? 'selected' : ''}>Approved</option>
-                     <option value="REJECTED" ${record.status === 'REJECTED' ? 'selected' : ''}>Rejected</option>
+                     <option value="TL APPROVED" ${record.status === 'TL APPROVED' ? 'selected' : ''}>TL Approved (Disokong Team Leader)</option>
+                     <option value="HOD APPROVED" ${record.status === 'HOD APPROVED' ? 'selected' : ''}>HOD Approved (Disokong Supervisor)</option>
+                     <option value="APPROVED" ${record.status === 'APPROVED' ? 'selected' : ''}>Approved (Diluluskan)</option>
+                     <option value="REJECTED" ${record.status === 'REJECTED' ? 'selected' : ''}>Rejected (Ditolak)</option>
                  </select>
               </div>
           </div>
@@ -7214,20 +8558,13 @@ function renderAddStaffModal() {
           <div>
             <label style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:1px;display:block;margin-bottom:0.4rem;">Kategori</label>
             <select id="as-category" class="neu-inset" style="appearance:none;cursor:pointer;color-scheme:dark;">
-              <option value="Admin Staff">Staff Admin</option>
-              <option value="Operation Staff">Staff Operasi</option>
-              <option value="Doctor">Doktor</option>
+              ${window.staffConfig.staffCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('')}
             </select>
           </div>
           <div>
             <label style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:1px;display:block;margin-bottom:0.4rem;">Peranan (Role)</label>
             <select id="as-role" class="neu-inset" style="appearance:none;cursor:pointer;color-scheme:dark;">
-              <option value="staff">Staff</option>
-              <option value="supervisor">Supervisor</option>
-              <option value="hod">HOD</option>
-              <option value="pic_hod">PIC/HOD</option>
-              <option value="hr">HR</option>
-              <option value="admin">Admin</option>
+              ${Object.keys(window.rbacMatrix).filter(k => k !== 'super_admin').map(k => `<option value="${k}">${window.staffConfig.roleLabels[k] || k}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -7248,6 +8585,43 @@ function renderAddStaffModal() {
           </button>
         </div>
       </form>
+    </div>
+  </div>
+  `;
+}
+
+window.dismissFirstLoginWarning = function() { showFirstLoginWarning = false; render(); };
+window.goChangePassword = function() { showFirstLoginWarning = false; view = 'settings'; render(); };
+
+function renderFirstLoginModal() {
+  if (!showFirstLoginWarning) return '';
+  return `
+  <div style="position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:1rem;">
+    <div class="glass-pane fade-in" style="width:100%;max-width:460px;border-radius:1.75rem;padding:2rem;position:relative;border:2px solid rgba(239,68,68,0.5);box-shadow:0 0 40px rgba(239,68,68,0.25);">
+      <!-- Pulsing warning icon -->
+      <div style="display:flex;justify-content:center;margin-bottom:1.25rem;">
+        <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#ef4444,#dc2626);display:flex;align-items:center;justify-content:center;box-shadow:0 0 24px rgba(239,68,68,0.5);animation:pulse 2s infinite;">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        </div>
+      </div>
+      <h2 style="text-align:center;font-size:1.25rem;font-weight:800;color:#ef4444;margin-bottom:0.5rem;">⚠️ TUKAR KATA LALUAN SEKARANG!</h2>
+      <p style="text-align:center;font-size:0.9rem;color:var(--text-muted);line-height:1.6;margin-bottom:0.5rem;">
+        Anda masih menggunakan <strong style="color:var(--text);">kata laluan lalai (No. IC)</strong> yang tidak selamat.<br>
+        Sila tukar kata laluan anda <strong style="color:#ef4444;">sebelum menggunakan sistem</strong> ini.
+      </p>
+      <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:0.75rem;padding:0.85rem 1rem;margin-bottom:1.25rem;font-size:0.8rem;color:var(--text-muted);line-height:1.5;">
+        <strong style="color:#ef4444;">Kenapa perlu tukar?</strong><br>
+        Kata laluan lalai adalah nombor IC anda — sesiapa yang tahu IC anda boleh akses akaun ini. Lindungi maklumat cuti anda dengan kata laluan peribadi.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0.75rem;">
+        <button onclick="window.goChangePassword()" class="btn-primary" style="width:100%;padding:1rem;font-size:1rem;font-weight:800;display:flex;align-items:center;justify-content:center;gap:0.6rem;background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 8px 24px rgba(239,68,68,0.35);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          Tukar Kata Laluan Sekarang
+        </button>
+        <button onclick="window.dismissFirstLoginWarning()" style="width:100%;padding:0.75rem;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:12px;color:var(--text-muted);cursor:pointer;font-size:0.82rem;">
+          Abaikan buat masa ini (tidak disyorkan)
+        </button>
+      </div>
     </div>
   </div>
   `;
