@@ -1650,9 +1650,14 @@ window.finalizeLeave = async function(id) {
                     return;
                 }
             }
-            // Jika PENDING (bypass), minta pengesahan
+            // Jika PENDING, minta pengesahan — bezakan "tiada pelulus berdaftar" vs "bypass sengaja"
             if (record.status === 'PENDING') {
-                if (!confirm(`⚠️ Permohonan ini BELUM dinilai oleh HOD/Supervisor.\n\nAdakah anda pasti mahu luluskan terus (bypass) bagi ${record.name}?`)) return;
+                const _ap = applicant || staffList.find(s => s.ic === record.ic);
+                const _noP1 = !!(_ap && window.getRoutingP1Approvers(_ap).length === 0);
+                const _confirmMsg = _noP1
+                    ? `Staf ${record.name} tiada Pelulus Peringkat 1 (HOD/Supervisor) berdaftar untuk cawangan/kategori ini.\n\nLuluskan terus sebagai HR/Admin?`
+                    : `⚠️ Permohonan ini BELUM dinilai oleh HOD/Supervisor.\n\nAdakah anda pasti mahu luluskan terus (bypass) bagi ${record.name}?`;
+                if (!confirm(_confirmMsg)) return;
             }
             newStatus = "APPROVED";
             const approvedName = (applicant || {}).name || record.name;
@@ -5778,7 +5783,8 @@ function renderView() {
           <!-- Right Panel: Summary Widgets -->
           <div class="info-panel" style="display:flex;flex-direction:column;gap:1.25rem;">
 
-            <!-- Notice: Polisi Notis -->
+            <!-- Notice: Polisi Notis — sembunyi untuk MC (tiada had notis 3/7 hari) -->
+            ${!isMC ? `
             <div class="glass-card" style="padding:1.25rem;border:1px solid rgba(59,130,246,0.2);background:rgba(59,130,246,0.03);">
               <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:1rem;">
                 <div style="width:32px;height:32px;border-radius:9px;background:rgba(59,130,246,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -5802,6 +5808,7 @@ function renderView() {
                 </div>
               </div>
             </div>
+            ` : ''}
 
             <!-- Leave Balances Card -->
             <div class="glass-card" style="padding:1.25rem;">
