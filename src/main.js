@@ -13,8 +13,13 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  addDoc,
+  getDocs,
+  writeBatch,
   query,
-  where
+  where,
+  orderBy,
+  limit
 } from "firebase/firestore";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
@@ -45,23 +50,65 @@ const WHATSAPP_ENABLED = () => !!WHATSAPP_TOKEN;
 
 window.sendWhatsApp = async function(toPhone, message, throwOnError = false) {
   if (!WHATSAPP_ENABLED() || !toPhone) return;
-  // Normalize phone: remove leading 0, add country code 60
   let phone = toPhone.replace(/\D/g, '');
   if (phone.startsWith('0')) phone = '6' + phone;
+
+  const recipient = staffList.find(s => (s.phone || '').replace(/\D/g, '').replace(/^0/, '6') === phone);
+  const logBase = {
+    ts: Date.now(),
+    phone,
+    name: recipient ? recipient.name : phone,
+    preview: message.replace(/[*_[\]]/g, '').replace(/\n/g, ' ').trim().substring(0, 120),
+    sentBy: (typeof user !== 'undefined' && user) ? user.name : 'System',
+  };
+
+  let logStatus = 'sent', logErr = null;
   try {
     const res = await fetch('https://api.fonnte.com/send', {
       method: 'POST',
-      headers: {
-        'Authorization': WHATSAPP_TOKEN,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Authorization': WHATSAPP_TOKEN, 'Content-Type': 'application/json' },
       body: JSON.stringify({ target: phone, message, countryCode: '60' })
     });
+    if (!res.ok) {
+      logStatus = 'failed';
+      logErr = `Fonnte HTTP ${res.status} — token mungkin tidak sah atau had had dihantar`;
+    }
     if (throwOnError && !res.ok) throw new Error(`Fonnte error: ${res.status}`);
   } catch(err) {
+    logStatus = 'failed';
+    if (!logErr) logErr = err.message.includes('fetch') ? 'Tiada sambungan internet / Fonnte tidak dapat dihubungi' : err.message;
     if (throwOnError) throw err;
     console.warn('WhatsApp notification failed:', err);
+  } finally {
+    const entry = { ...logBase, status: logStatus };
+    if (logErr) entry.error = logErr;
+    addDoc(collection(db, 'wa_logs'), entry)
+      .then(ref => {
+        waLogs.unshift({ id: ref.id, ...entry });
+        if (waLogs.length > 200) waLogs.pop();
+        if (typeof user !== 'undefined' && user && managementTab === 'whatsapp_settings') render();
+      })
+      .catch(() => {});
   }
+};
+
+window.clearWALogs = async function() {
+  if (!confirm('Padam semua log notifikasi WhatsApp? Tindakan ini tidak boleh dibatalkan.')) return;
+  try {
+    const snap = await getDocs(collection(db, 'wa_logs'));
+    if (snap.empty) { alert('Tiada log untuk dipadam.'); return; }
+    let batch = writeBatch(db), count = 0;
+    const commits = [];
+    snap.docs.forEach(d => {
+      batch.delete(d.ref);
+      if (++count % 500 === 0) { commits.push(batch.commit()); batch = writeBatch(db); }
+    });
+    if (count % 500 !== 0) commits.push(batch.commit());
+    await Promise.all(commits);
+    waLogs = [];
+    render();
+    alert('✅ Log WhatsApp berjaya dipadam.');
+  } catch(e) { alert('Ralat memadam log: ' + e.message); }
 };
 
 window.saveWAToken = async function(token) {
@@ -102,7 +149,7 @@ window.forgotPassword = async function() {
   }
 
   const pwd = staff.password || staff.ic;
-  const msg = `🔐 *PEMULIHAN KATA LALUAN — KSB Leave Apply*\n\nSalam ${staff.name},\n\nKata laluan akaun anda adalah:\n\n📌 *${pwd}*\n\nSila log masuk ke sistem menggunakan kata laluan di atas.\n\n⚠️ Demi keselamatan, sila tukar kata laluan anda selepas berjaya masuk melalui Settings → Security.\n\n_— KSB Leave System_`;
+  const msg = `🔐 *PEMULIHAN KATA LALUAN — KSB Leave Apply*\n\nSalam ${staff.name},\n\nKata laluan akaun anda adalah:\n\n📌 *${pwd}*\n\nSila log masuk ke sistem menggunakan kata laluan di atas.\n\n⚠️ Demi keselamatan, sila tukar kata laluan anda selepas berjaya masuk melalui Settings → Security.\n\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
 
   try {
     await window.sendWhatsApp(staff.phone, msg, true);
@@ -117,8 +164,31 @@ window.testWANotification = async function() {
   const phone = document.getElementById('wa-test-phone')?.value;
   if (!phone) return alert('Sila masukkan nombor telefon untuk ujian.');
   if (!WHATSAPP_TOKEN) return alert('Sila simpan token Fonnte dahulu.');
-  await window.sendWhatsApp(phone, `✅ *Ujian Notifikasi KSB Leave Apply*\n\nSistem notifikasi WhatsApp berfungsi dengan baik.\n\n_— KSB Leave System_`);
+  await window.sendWhatsApp(phone, `✅ *Ujian Notifikasi KSB Leave Apply*\n\nSistem notifikasi WhatsApp berfungsi dengan baik.\n\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`);
   alert('Mesej ujian telah dihantar ke ' + phone);
+};
+
+window.setWaSettingsSubTab = function(tab) {
+  waSettingsSubTab = tab;
+  render();
+};
+
+window.toggleWaNotifRole = function(zone, trigger, role) {
+  const arr = waNotifRbac[zone][trigger] || [];
+  const idx = arr.indexOf(role);
+  if (idx === -1) arr.push(role);
+  else arr.splice(idx, 1);
+  waNotifRbac[zone][trigger] = arr;
+  render();
+};
+
+window.saveWaNotifRbac = async function(zone) {
+  try {
+    await setDoc(doc(db, 'system_config', 'wa_notif_rbac'), { [zone]: waNotifRbac[zone] }, { merge: true });
+    const btn = document.getElementById('save-rbac-' + zone);
+    if (btn) { btn.textContent = '✅ Tersimpan'; btn.disabled = true; }
+    setTimeout(() => render(), 1500);
+  } catch(e) { alert('Ralat menyimpan: ' + e.message); }
 };
 
 // ============================================================
@@ -280,7 +350,8 @@ window.updateLeaveDate = function(field, val) {
 };
 let manageBranchFilter = 'All';
 let editingStaff = null;
-let managementTab = 'pending'; // 'pending', 'staff', 'branches', 'master_audit', 'login_audit', 'hr_reports'
+let managementTab = 'pending';
+let managementGroup = 'approvals'; // 'approvals' | 'people' | 'reports' | 'config'
 let hrReportTab = 'all'; // 'all' | 'approved' | 'balance' | 'jenis'
 let approvedReportBranch = 'SEMUA';
 let approvedReportType = 'SEMUA';
@@ -288,6 +359,8 @@ let approvedReportYear = new Date().getFullYear().toString();
 let balanceReportBranch = 'SEMUA';
 let balanceReportType = 'AL';
 let balanceReportYear = new Date().getFullYear().toString();
+let balanceViewBranch = 'SEMUA';
+let balanceViewSearch = '';
 let jenisCutiYear = new Date().getFullYear().toString();
 let jenisCutiBranch = 'SEMUA';
 let attendanceReportMonth = String(new Date().getMonth() + 1);
@@ -309,6 +382,87 @@ let selectedLoginBranch = '';
 let selectedLoginStaffIC = '';
 let showRegisterModal = false;
 let showFirstLoginWarning = false;
+let showPhoneReminderModal = false;
+
+let publicHolidays = { pahang: [], terengganu: [] };
+let policyContent = {
+  notice: '',
+  glossary: [
+    { code:'AL',  name:'Annual Leave (Cuti Tahunan)' },
+    { code:'MC',  name:'Medical Leave (Cuti Sakit)' },
+    { code:'CME', name:'Continuing Medical Education' },
+    { code:'EL',  name:'Emergency Leave (Cuti Kecemasan)' },
+    { code:'HL',  name:'Hospitalization Leave' },
+    { code:'ML',  name:'Maternity Leave (Cuti Bersalin)' },
+    { code:'PL',  name:'Paternity Leave (Cuti Isteri Bersalin)' },
+    { code:'BL',  name:'Compassionate Leave (Cuti Ihsan)' },
+    { code:'RL',  name:'Replacement Leave (Cuti Ganti)' },
+    { code:'UL',  name:'Unpaid Leave (Cuti Tanpa Gaji)' }
+  ],
+  entitlementPahang:     [{ period:'Sehingga 5 tahun', days:'16 Hari' }, { period:'Lebih 5 Tahun ke atas', days:'20 Hari' }],
+  entitlementTerengganu: [{ period:'Semua Tempoh', days:'16 Hari' }],
+  entitlementDoktor:     [{ days:'25 Hari' }, { days:'20 Hari' }, { days:'10 Hari' }],
+  entitlementMC:         [{ period:'Kurang dari 2 tahun', days:'14 Hari' }, { period:'2 tahun hingga kurang 5 tahun', days:'18 Hari' }, { period:'5 tahun ke atas', days:'22 Hari' }],
+  rulesAL: [
+    'Permohonan mesti dibuat sekurang-kurangnya <strong>3 hari</strong> sebelum tarikh percutian.',
+    'Kelulusan adalah tertakluk kepada budi bicara pihak pengurusan/HOD mengikut kepada keperluan operasi klinik.',
+    'Hanya maksimum baki sejumlah <strong>3 hari</strong> dibenarkan dibawa ke hadapan (carry forward) ke kalendar tahun berikutnya.'
+  ],
+  rulesMC: [
+    'Sijil Cuti Sakit (MC) yang asal <strong>mesti</strong> diserahkan kepada pihak pengurusan pada hari pertama kembali bekerja.',
+    'Staff wajib memaklumkan kepada pihak pengurusan atau HOD sekurang-kurangnya <strong>2 jam sebelum</strong> shift kerja bermula.'
+  ],
+  rulesCME: [
+    'Kelayakan cuti CME ini ditetapkan sebanyak maksimum <strong>5 hari sahaja</strong> bagi setiap kalendar.',
+    'Tujuannya dikhususkan semata-mata untuk melibatkan diri dalam kursus, seminar, dan latihan luaran berkaitan dengan skop kerja.',
+    'Memerlukan surat sokongan bertulis berserta pengesahan daripada Pengurus dan Ketua Jabatan HOD.'
+  ],
+  rulesNotice: [
+    'Notis penamatan kontrak pekerjaan mesti mematuhi garis panduan ditandatangani sewaktu penerimaan jawatan (1 atau 3 bulan lazimnya bergantung pada jawatan).',
+    'Kegagalan untuk memberikan peringatan dan notis yang mencukupi bermaksud staff bersetuju untuk membayar denda kerugian / ganti rugi <i>(indemnity)</i> kepada pihak klinik mengikut kekurangan hari notis tersebut.'
+  ]
+};
+let waLogs = [];
+let inboxNotifs = [];
+let inboxUnsub = null;
+let waSettingsSubTab = 'token_log'; // 'token_log' | 'rbac_notif'
+let waNotifRbac = {
+  balok:      { p1_submit: ['team_leader','hod'], tl_approved: ['supervisor'], p2_p1_approved: ['hr','admin','super_admin'], p3_final: [], overdue_reminder: ['team_leader','supervisor','hr'] },
+  pahang:     { p1_submit: ['hod','pic_hod'],     tl_approved: [],             p2_p1_approved: ['hr','admin'],              p3_final: [], overdue_reminder: ['hr','admin','hod'] },
+  terengganu: { p1_submit: ['hod','pic_hod'],     tl_approved: [],             p2_p1_approved: [],                          p3_final: [], overdue_reminder: ['hod'] }
+};
+
+const DEFAULT_HOLIDAYS_PAHANG = [
+  { date: '2026-01-01', name: "Tahun Baru / New Year's Day" },
+  { date: '2026-01-29', name: 'Tahun Baru Cina (Hari 1)' },
+  { date: '2026-01-30', name: 'Tahun Baru Cina (Hari 2)' },
+  { date: '2026-03-20', name: 'Hari Raya Puasa (Hari 1)' },
+  { date: '2026-03-21', name: 'Hari Raya Puasa (Hari 2)' },
+  { date: '2026-05-01', name: 'Hari Pekerja / Labour Day' },
+  { date: '2026-05-07', name: 'Hari Hol Pahang' },
+  { date: '2026-05-27', name: 'Hari Raya Haji' },
+  { date: '2026-07-06', name: 'Awal Muharram' },
+  { date: '2026-08-31', name: 'Hari Kebangsaan / National Day' },
+  { date: '2026-09-14', name: 'Maulidur Rasul' },
+  { date: '2026-09-16', name: 'Hari Malaysia' },
+  { date: '2026-12-25', name: 'Krismas / Christmas Day' },
+];
+
+const DEFAULT_HOLIDAYS_TERENGGANU = [
+  { date: '2026-01-01', name: "Tahun Baru / New Year's Day" },
+  { date: '2026-01-29', name: 'Tahun Baru Cina (Hari 1)' },
+  { date: '2026-01-30', name: 'Tahun Baru Cina (Hari 2)' },
+  { date: '2026-03-04', name: 'Hari Ulang Tahun Sultan Terengganu' },
+  { date: '2026-03-20', name: 'Hari Raya Puasa (Hari 1)' },
+  { date: '2026-03-21', name: 'Hari Raya Puasa (Hari 2)' },
+  { date: '2026-05-01', name: 'Hari Pekerja / Labour Day' },
+  { date: '2026-05-27', name: 'Hari Raya Haji' },
+  { date: '2026-07-06', name: 'Awal Muharram' },
+  { date: '2026-08-31', name: 'Hari Kebangsaan / National Day' },
+  { date: '2026-09-14', name: 'Maulidur Rasul' },
+  { date: '2026-09-16', name: 'Hari Malaysia' },
+  { date: '2026-12-25', name: 'Krismas / Christmas Day' },
+];
 let registrationRequests = [];
 let leaveStartDate = '';
 let leaveEndDate = '';
@@ -348,68 +502,68 @@ const leaveCategories = [
 
 window.rbacMatrix = {
     super_admin: {
-        dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: true, messenger: true,
-        manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: true, manage_reports: true, manage_routing: true, manage_access: true, manage_roles_categories: true,
+        dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: true, messenger: true, inbox: true,
+        manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: true, manage_reports: true, manage_routing: true, manage_access: true, manage_roles_categories: true, manage_holidays: true, manage_policy: true,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
     },
     admin: {
-        dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: true, manage_reports: true, manage_routing: true, manage_access: true, manage_roles_categories: true,
+        dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: true, manage_reports: true, manage_routing: true, manage_access: true, manage_roles_categories: true, manage_holidays: true, manage_policy: true,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
     },
     hr: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: true, manage_holidays: true, manage_policy: true,
         report_kuantan_only: true, report_own_branch_only: false, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
     },
     hod: {
-        dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false,
+        dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: true, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: true, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: false
     },
     pic_hod: {
-        dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false,
+        dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: false
     },
     supervisor: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
     },
     team_leader: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: false, os_balok: true, os_pahang: false, locum_records: false
     },
     staff: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
     },
     juru_xray: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
     },
     sonographer: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
     },
     juru_audio: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true,
-        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
     }
@@ -562,7 +716,7 @@ window.canManageRequest = function(user, req) {
 
     // Semak cawangan
     if (cfg.p1_supervisor && user.role === 'supervisor') {
-        const useBalok = group === 'doctor_kuantan' || group === 'operation_balok';
+        const useBalok = group === 'operation_balok' || group === 'xray_sono_balok' || group === 'doctor_pahang';
         if (useBalok) return (user.branch || '').includes('Balok');
         return req.branch === user.branch;
     }
@@ -785,36 +939,80 @@ window.changePassword = async function(event) {
 
 window.saveSelfProfile = async function(event) {
     if (event) event.preventDefault();
-    const phone = document.getElementById('self-phone')?.value;
-    const email = document.getElementById('self-email')?.value;
+    const phone   = document.getElementById('self-phone')?.value?.trim() || '';
+    const email   = document.getElementById('self-email')?.value?.trim() || '';
+    const address = document.getElementById('self-address')?.value?.trim() || '';
 
     if (!user || !user.ic) {
         alert('Ralat: Sesi tidak sah. Sila log masuk semula.');
         return;
     }
 
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone && !cleanPhone.startsWith('6')) {
+        alert('⚠️ Format nombor tidak sah.\n\nNombor WhatsApp MESTI bermula dengan 6.\n\nContoh: 60171234678\n(bukan 0171234678)');
+        return;
+    }
+    if (cleanPhone && (cleanPhone.length < 10 || cleanPhone.length > 12)) {
+        alert('⚠️ Nombor telefon tidak sah. Contoh format: 60171234678');
+        return;
+    }
+
     const s = staffList.find(i => i.ic === user.ic);
     if (s) {
-        s.phone = phone;
-        s.email = email;
-        user.phone = phone;
-        user.email = email;
+        s.phone   = phone;
+        s.email   = email;
+        s.address = address;
+        user.phone   = phone;
+        user.email   = email;
+        user.address = address;
     }
 
     try {
-        await updateDoc(doc(db, "staff", user.ic), { phone, email });
+        await updateDoc(doc(db, "staff", user.ic), { phone, email, address });
     } catch (err) {
         console.error("Error saving profile:", err);
         alert('Ralat menyimpan profil ke pangkalan data.');
         return;
     }
 
-    alert('Profil berjaya dikemaskini!');
+    alert('✅ Profil berjaya dikemaskini!');
     window.setProfileSettings(false);
 };
 
+const _tabToGroup = {
+  pending:'approvals',
+  staff:'people', branches:'people', roles_categories:'people', reg_requests:'people',
+  hr_reports:'reports', locum_records:'reports', master_audit:'reports', login_audit:'reports', balance_view:'reports',
+  routing:'config', access_control:'config', public_holidays:'config', whatsapp_settings:'config', policy_editor:'config'
+};
+const _groupFirstTab = {
+  approvals: ['pending'],
+  people:    ['staff','branches','roles_categories','reg_requests'],
+  reports:   ['hr_reports','locum_records','master_audit','login_audit'],
+  config:    ['policy_editor','routing','access_control','public_holidays','whatsapp_settings']
+};
+const _tabPermMap = {
+  pending:'manage_pending', staff:'manage_staff', branches:'manage_branches',
+  roles_categories:'manage_roles_categories', hr_reports:'manage_reports',
+  locum_records:'locum_records', master_audit:'manage_audit', login_audit:'manage_login_audit',
+  balance_view:'manage_reports',
+  routing:'manage_routing', access_control:'manage_access', public_holidays:'manage_holidays',
+  whatsapp_settings:'wa_setting', policy_editor:'manage_policy'
+};
+window.setManageGroup = function(group) {
+  managementGroup = group;
+  const perms = window.rbacMatrix[user ? user.role : ''] || {};
+  const tabs = _groupFirstTab[group] || [];
+  for (const t of tabs) {
+    if (t === 'reg_requests') { if (user && ['admin','hr','super_admin'].includes(user.role)) { managementTab = t; break; } }
+    else if (!_tabPermMap[t] || perms[_tabPermMap[t]]) { managementTab = t; break; }
+  }
+  render();
+};
 window.setManageTab = function(tab) {
   managementTab = tab;
+  managementGroup = _tabToGroup[tab] || managementGroup;
   render();
 };
 
@@ -973,39 +1171,36 @@ const STATE_DAERAH = { Pahang: PAHANG_DAERAH, Terengganu: TERENGGANU_DAERAH };
 // APPROVAL ROUTING CONFIG
 // ============================================================
 const ROUTING_DEFAULTS = {
-  doctor_kuantan:    { needs_tl: false, p1_hod: false, p1_pic_hod: false, p1_supervisor: true,  needs_p2: true  },
-  doctor_bentong:    { needs_tl: false, p1_hod: true,  p1_pic_hod: true,  p1_supervisor: false, needs_p2: true  },
-  doctor_mckip:      { needs_tl: false, p1_hod: true,  p1_pic_hod: true,  p1_supervisor: false, needs_p2: true  },
-  doctor_terengganu: { needs_tl: false, p1_hod: true,  p1_pic_hod: true,  p1_supervisor: false, needs_p2: false },
-  admin_staff_pahang:     { needs_tl: false, p1_hod: true,  p1_pic_hod: false, p1_supervisor: false, needs_p2: true  },
-  admin_staff_terengganu: { needs_tl: false, p1_hod: true,  p1_pic_hod: false, p1_supervisor: false, needs_p2: false },
-  operation_balok:   { needs_tl: true,  p1_hod: false, p1_pic_hod: false, p1_supervisor: true,  needs_p2: true  },
-  operation_other:   { needs_tl: false, p1_hod: false, p1_pic_hod: true,  p1_supervisor: false, needs_p2: true  },
-  xray_sono_balok:   { needs_tl: false, p1_hod: false, p1_pic_hod: false, p1_supervisor: true,  needs_p2: true  },
-  juru_audio_balok:  { needs_tl: false, p1_hod: true,  p1_pic_hod: false, p1_supervisor: false, needs_p2: true  },
+  terengganu:       { needs_tl: false, p1_hod: true,  p1_pic_hod: true,  p1_supervisor: false, needs_p2: false },
+  pahang_lain:      { needs_tl: false, p1_hod: true,  p1_pic_hod: true,  p1_supervisor: false, needs_p2: true  },
+  doctor_pahang:    { needs_tl: false, p1_hod: false, p1_pic_hod: false, p1_supervisor: true,  needs_p2: true  },
+  operation_balok:  { needs_tl: true,  p1_hod: false, p1_pic_hod: false, p1_supervisor: true,  needs_p2: true  },
+  xray_sono_balok:  { needs_tl: false, p1_hod: false, p1_pic_hod: false, p1_supervisor: true,  needs_p2: true  },
+  juru_audio_balok: { needs_tl: false, p1_hod: true,  p1_pic_hod: false, p1_supervisor: false, needs_p2: true  },
 };
 let approvalRouting = JSON.parse(JSON.stringify(ROUTING_DEFAULTS));
 
 window.getStaffGroup = function(s) {
-  const branchObj = branches.find(b => b.name === s.branch);
+  const branchObj  = branches.find(b => b.name === s.branch);
   const isTerengganu = branchObj && branchObj.state === 'Terengganu';
-  const isBentong    = (s.branch || '').includes('Bentong');
-  const isMCKIP      = (s.branch || '').includes('MCKIP');
   const isBalok      = (s.branch || '').includes('Balok');
 
   // Peranan paramedik — laluan kelulusan khusus, hanya di Balok
   if (['juru_xray', 'sonographer'].includes(s.role) && isBalok) return 'xray_sono_balok';
-  if (s.role === 'juru_audio' && isBalok) return 'juru_audio_balok';
+  if (s.role === 'juru_audio'                        && isBalok) return 'juru_audio_balok';
 
-  if (s.category === 'Doctor') {
-    if (isTerengganu) return 'doctor_terengganu';
-    if (isBentong)    return 'doctor_bentong';
-    if (isMCKIP)      return 'doctor_mckip';
-    return 'doctor_kuantan';
+  // Hanya Operation Staff di Balok → TL → Supervisor → HR
+  if (isBalok && s.category === 'Operation Staff') return 'operation_balok';
+  if (isTerengganu)  return 'terengganu';
+
+  // Doktor di Pahang KECUALI Bentong & MCKIP → Supervisor Balok (HQ) → HR, bukan HOD
+  if (s.category === 'Doctor' && branchObj && branchObj.state === 'Pahang'
+      && branchObj.daerah !== 'Bentong'
+      && s.branch !== 'Klinik Syed Badaruddin MCKIP') {
+    return 'doctor_pahang';
   }
-  if (s.category === 'Admin Staff') return isTerengganu ? 'admin_staff_terengganu' : 'admin_staff_pahang';
-  if (isBalok) return 'operation_balok';
-  return 'operation_other';
+
+  return 'pahang_lain';
 };
 
 window.staffNeedsP2 = function(s) {
@@ -1019,7 +1214,7 @@ window.getRoutingP1Approvers = function(staffMember) {
   const cfg   = approvalRouting[group] || {};
   let candidates = [];
   if (cfg.p1_supervisor) {
-    const useBalok = group === 'doctor_kuantan' || group === 'operation_balok';
+    const useBalok = group === 'operation_balok' || group === 'xray_sono_balok' || group === 'doctor_pahang';
     const supBranch = useBalok ? 'Klinik Syed Badaruddin Balok (HQ)' : staffMember.branch;
     candidates.push(...staffList.filter(s => s.role === 'supervisor' && s.branch === supBranch && !s.inactive && s.ic !== staffMember.ic));
   }
@@ -1420,21 +1615,22 @@ window.finalizeLeave = async function(id) {
 
         const isFullBoss = ['admin', 'hr', 'super_admin'].includes(user.role);
         const isHODApproved = record.status === 'HOD APPROVED' || record.status === 'HOD RECOMMENDED';
+        const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
         let newStatus = "";
         let tlWaFeedback = '';
         let waFinalFeedback = '';
+        let waHRFeedback = '';
 
         if (user.role === 'team_leader') {
             // Peringkat 0: Team Leader sokong → TL APPROVED, notify Supervisor Balok
             newStatus = 'TL APPROVED';
-            const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
             const supervisors = staffList.filter(s =>
                 s.role === 'supervisor' && (s.branch || '').includes('Balok') && s.phone && !s.inactive
             );
-            const supMsg = `📋 *SOKONGAN TEAM LEADER — PERLU NILAI SUPERVISOR (Peringkat 1)*\n\nPermohonan cuti telah disokong oleh *${user.name} (TEAM LEADER)* dan menunggu penilaian anda.\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\nSila log masuk ke KSB Leave Apply untuk menilai permohonan ini.\n_— KSB Leave System_`;
+            const supMsg = `📋 *SOKONGAN TEAM LEADER — PERLU NILAI SUPERVISOR (Peringkat 1)*\n\nPermohonan cuti telah disokong oleh *${user.name} (TEAM LEADER)* dan menunggu penilaian anda.\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\n🔗 *Log masuk untuk menilai:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
             supervisors.forEach(sup => window.sendWhatsApp(sup.phone, supMsg));
             if (applicant && applicant.phone) {
-                const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *disokong oleh Team Leader*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini menunggu *penilaian Supervisor*. Anda akan dimaklumkan selepas kelulusan akhir.\n_— KSB Leave System_`;
+                const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *disokong oleh Team Leader*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini menunggu *penilaian Supervisor*. Anda akan dimaklumkan selepas kelulusan akhir.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
                 window.sendWhatsApp(applicant.phone, staffMsg);
             }
             if (!WHATSAPP_ENABLED()) {
@@ -1459,9 +1655,8 @@ window.finalizeLeave = async function(id) {
                 if (!confirm(`⚠️ Permohonan ini BELUM dinilai oleh HOD/Supervisor.\n\nAdakah anda pasti mahu luluskan terus (bypass) bagi ${record.name}?`)) return;
             }
             newStatus = "APPROVED";
-            const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
             const approvedName = (applicant || {}).name || record.name;
-            const approvedMsg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${approvedName},\n\nPermohonan cuti anda telah *DILULUSKAN SEPENUHNYA* oleh HR/Admin.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n_— KSB Leave System_`;
+            const approvedMsg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${approvedName},\n\nPermohonan cuti anda telah *DILULUSKAN SEPENUHNYA* oleh HR/Admin.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
             if (!WHATSAPP_ENABLED()) {
                 waFinalFeedback = `\n\n⚠️ Token WhatsApp belum dikonfigurasi — ${approvedName} TIDAK dapat notifikasi WA. Sila hubungi Super Admin untuk tetapkan token Fonnte.`;
             } else if (!applicant || !applicant.phone) {
@@ -1472,7 +1667,6 @@ window.finalizeLeave = async function(id) {
             }
         } else {
             // Peringkat 1: HOD/PIC_HOD/Supervisor sokong
-            const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
             const p2Required = window.staffNeedsP2(applicant || { branch: record.branch, category: record.category });
 
             // Supervisor menilai TL APPROVED untuk staf operasi Balok (Peringkat 1 selepas TL)
@@ -1487,17 +1681,25 @@ window.finalizeLeave = async function(id) {
                     ['admin', 'hr', 'super_admin'].includes(s.role) && s.phone && !s.inactive
                 );
                 const p1Label = isTLApprovedOperationBalok ? 'SUPERVISOR (selepas Team Leader)' : (user.role || '').toUpperCase();
-                const msg = `📋 *SOKONGAN SUPERVISOR — PERLU KELULUSAN HR/ADMIN (Peringkat 2)*\n\nPermohonan cuti telah dinilai dan disokong oleh *${user.name} (${p1Label})* dan menunggu kelulusan akhir anda.\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\nSila log masuk ke KSB Leave Apply untuk kelulusan akhir.\n_— KSB Leave System_`;
-                admins.forEach(admin => window.sendWhatsApp(admin.phone, msg));
+                const p1Title = isTLApprovedOperationBalok ? 'SOKONGAN SUPERVISOR' : `SOKONGAN ${p1Label}`;
+                const msg = `📋 *${p1Title} — PERLU KELULUSAN HR/ADMIN (Peringkat 2)*\n\nPermohonan cuti telah dinilai dan disokong oleh *${user.name} (${p1Label})* dan menunggu kelulusan akhir anda.\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\n🔗 *Log masuk untuk kelulusan akhir:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+                if (!WHATSAPP_ENABLED()) {
+                    waHRFeedback = '\n\n⚠️ Token WhatsApp belum dikonfigurasi — HR/Admin TIDAK dapat notifikasi WA. Sila hubungi Super Admin untuk tetapkan token Fonnte.';
+                } else if (admins.length === 0) {
+                    waHRFeedback = '\n\n⚠️ Tiada HR/Admin (dengan nombor telefon) dijumpai dalam sistem.\nNotifikasi WA KE HR/ADMIN TIDAK DIHANTAR.\nSila pastikan akaun HR/Admin telah didaftarkan dengan nombor telefon dalam profil staf.';
+                } else {
+                    admins.forEach(admin => window.sendWhatsApp(admin.phone, msg));
+                    waHRFeedback = `\n\n📲 Notifikasi WA dihantar kepada HR/Admin:\n${admins.map(a => a.name).join(', ')}`;
+                }
                 if (applicant && applicant.phone) {
-                    const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *dinilai dan disokong oleh Supervisor*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini sedang menunggu *kelulusan akhir HR/Admin*. Anda akan dimaklumkan selepas kelulusan akhir.\n_— KSB Leave System_`;
+                    const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *dinilai dan disokong oleh ${user.name} (${p1Label})*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini sedang menunggu *kelulusan akhir HR/Admin*. Anda akan dimaklumkan selepas kelulusan akhir.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
                     window.sendWhatsApp(applicant.phone, staffMsg);
                 }
             } else {
                 // Tiada Peringkat 2 — terus APPROVED
                 newStatus = "APPROVED";
                 const hodApprovedName = (applicant || {}).name || record.name;
-                const hodApprovedMsg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${hodApprovedName},\n\nPermohonan cuti anda telah *DILULUSKAN* oleh *${user.name}* (${(user.role || '').toUpperCase()}).\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n_— KSB Leave System_`;
+                const hodApprovedMsg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${hodApprovedName},\n\nPermohonan cuti anda telah *DILULUSKAN* oleh *${user.name}* (${p1Label}).\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
                 if (!WHATSAPP_ENABLED()) {
                     waFinalFeedback = `\n\n⚠️ Token WhatsApp belum dikonfigurasi — ${hodApprovedName} TIDAK dapat notifikasi WA. Sila hubungi Super Admin untuk tetapkan token Fonnte.`;
                 } else if (!applicant || !applicant.phone) {
@@ -1530,11 +1732,18 @@ window.finalizeLeave = async function(id) {
                 : isTLApproval  ? `Team Leader Supported Leave (Peringkat 0) for ${record.name}`
                 : `Supervisor Supported Leave (Peringkat 1) for ${record.name}`
             );
+            if (isFinalApproval) {
+                window.addNotification(record.ic, 'leave_approved', '✅ Cuti Diluluskan!', `Permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}, ${record.days} hari) telah DILULUSKAN sepenuhnya oleh ${user.name}.`, id.toString());
+            } else if (isTLApproval) {
+                window.addNotification(record.ic, 'leave_tl_approved', '📋 Cuti Disokong Team Leader', `Permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}) telah disokong oleh Team Leader dan sedang menunggu penilaian Supervisor.`, id.toString());
+            } else {
+                window.addNotification(record.ic, 'leave_p1_approved', '📋 Cuti Disokong Peringkat 1', `Permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}) telah disokong oleh ${user.name} dan sedang menunggu kelulusan akhir HR/Admin.`, id.toString());
+            }
             alert(isFinalApproval
                 ? `✅ Cuti Diluluskan!${waFinalFeedback}`
                 : isTLApproval
                 ? `📋 Sokongan Team Leader (Peringkat 0) Berjaya! Permohonan dihantar kepada Supervisor untuk dinilai.${tlWaFeedback}`
-                : '📋 Sokongan Supervisor (Peringkat 1) Berjaya! Permohonan dihantar kepada HR/Admin untuk kelulusan akhir.');
+                : `📋 Sokongan Peringkat 1 Berjaya! Permohonan dihantar kepada HR/Admin untuk kelulusan akhir.${waHRFeedback}`);
         } catch (err) {
             console.error("Error updating document: ", err);
             alert("Ralat mengemaskini status cuti.");
@@ -1553,7 +1762,7 @@ window.resendApprovalWA = async function(id) {
     if (!WHATSAPP_ENABLED()) return alert('Token WhatsApp belum dikonfigurasi.\n\nPergi ke Pengurusan → Tetapan WhatsApp untuk simpan token Fonnte.');
 
     const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
-    const msg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *DILULUSKAN SEPENUHNYA* oleh HR/Admin.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n_— KSB Leave System_`;
+    const msg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *DILULUSKAN SEPENUHNYA* oleh HR/Admin.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
 
     try {
         await window.sendWhatsApp(applicant.phone, msg, true);
@@ -1588,7 +1797,7 @@ window.cancelLeave = async function(id) {
         
         const staff = staffList.find(s => s.ic === req.ic);
         if (staff && staff.phone) {
-            const msg = `🚩 *PEMBATALAN CUTI*\n\nPermohonan cuti anda (${req.type}) pada ${req.startDate} telah *DIBATALKAN* oleh ${(user.role || '').toUpperCase()}.\n\nBaki cuti anda telah dikembalikan.\n_— KSB Leave System_`;
+            const msg = `🚩 *PEMBATALAN CUTI*\n\nPermohonan cuti anda (${req.type}) pada ${req.startDate} telah *DIBATALKAN* oleh ${(user.role || '').toUpperCase()}.\n\nBaki cuti anda telah dikembalikan.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
             window.sendWhatsApp(staff.phone, msg);
         }
     } catch (err) {
@@ -1603,11 +1812,12 @@ window.rejectLeave = async function(id) {
         try {
             await updateDoc(doc(db, "leaves", id.toString()), { status: "REJECTED" });
             window.logSystemActivity(`Rejected Leave for ${record.name}`);
-            
+            window.addNotification(record.ic, 'leave_rejected', '❌ Cuti Ditolak', `Maaf, permohonan cuti anda (${record.type}, ${record.startDate} → ${record.endDate}) telah DITOLAK. Sila hubungi HR/Admin untuk maklumat lanjut.`, id.toString());
+
             // Notify applicant of rejection
             const applicant = staffList.find(s => s.ic === record.ic);
             if (applicant && applicant.phone) {
-                const msg = `❌ *CUTI TIDAK DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nMaaf, permohonan cuti anda telah *DITOLAK*.\n\n📋 *Butiran Cuti:*\n• Jenis: ${record.type}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n\nSila hubungi HR/Admin untuk maklumat lanjut.\n_— KSB Leave System_`;
+                const msg = `❌ *CUTI TIDAK DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nMaaf, permohonan cuti anda telah *DITOLAK*.\n\n📋 *Butiran Cuti:*\n• Jenis: ${record.type}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n\nSila hubungi HR/Admin untuk maklumat lanjut.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
                 window.sendWhatsApp(applicant.phone, msg);
             }
         } catch (err) {
@@ -1622,7 +1832,7 @@ window.resendLeaveWA = function(id) {
     if (!record) return;
     const applicant = staffList.find(s => s.ic === record.ic);
     const leaveTypeName = (leaveCategories.find(c => c.id === record.type) || {}).name || record.type;
-    const info = `\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\nSila log masuk ke KSB Leave Apply → Management → Pending Approvals.\n_— KSB Leave System_`;
+    const info = `\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
 
     let recipients = [];
     let msg = '';
@@ -1667,6 +1877,8 @@ window.setApprovedReportBranch = function(val) { approvedReportBranch = val; ren
 window.setApprovedReportType = function(val) { approvedReportType = val; render(); };
 window.setApprovedReportYear = function(val) { approvedReportYear = val; render(); };
 window.setBalanceReportBranch = function(val) { balanceReportBranch = val; render(); };
+window.setBalanceViewBranch = function(val) { balanceViewBranch = val; render(); };
+window.setBalanceViewSearch = function(val) { balanceViewSearch = val; render(); };
 window.setBalanceReportType = function(val) { balanceReportType = val; render(); };
 window.setBalanceReportYear = function(val) { balanceReportYear = val; render(); };
 window.setJenisCutiYear = function(val) { jenisCutiYear = val; render(); };
@@ -1731,7 +1943,7 @@ window.generateBalanceReport = function(rows, branchName, leaveType, year) {
       </tfoot>
     </table>
     <div style="margin-top:12px;font-size:9px;color:#718096;border-top:1px solid #e2e8f0;padding-top:8px;">
-      * Laporan ini hanya mengambil kira rekod cuti berstatus APPROVED. Entitlement AL dikira mengikut pro-rata jika berkaitan.
+      * Baki cuti dikira berdasarkan status APPROVED + HOD APPROVED + TL APPROVED (selari dengan paparan dashboard staf). Breakdown bulanan berdasarkan tarikh permohonan. Entitlement AL dikira mengikut pro-rata jika berkaitan.
     </div>
     <button onclick="window.print()" style="margin-top:12px;padding:7px 18px;background:#7c3aed;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;">PRINT / SIMPAN PDF</button>
   </div>`;
@@ -1745,7 +1957,7 @@ window.generateApprovedReport = function() {
     if (r.status !== 'APPROVED') return false;
     if (approvedReportBranch !== 'SEMUA' && r.branch !== approvedReportBranch) return false;
     if (approvedReportType !== 'SEMUA' && r.type !== approvedReportType) return false;
-    if (approvedReportYear !== 'SEMUA' && !(r.startDate || '').startsWith(approvedReportYear)) return false;
+    if (approvedReportYear !== 'SEMUA' && new Date(r.id).getFullYear().toString() !== approvedReportYear) return false;
     return true;
   });
   const totalDays = recs.reduce((s, r) => s + parseFloat(r.days || 0), 0);
@@ -1823,12 +2035,13 @@ window.generateAttendanceReport = function() {
   const reportBranch = window.getUserReportBranch(user);
   const reportDaerah = window.getUserReportDaerah(user);
   const userStateScope = window.getUserStateScope(user);
-  const monthPrefix = attendanceReportYear + '-' + String(attendanceReportMonth).padStart(2,'0');
+  // baca terus dari state global yang dikemaskini oleh dropdown
+  const activeBranch = attendanceReportBranch;
 
   const staffPool = staffList.filter(s => {
     if (s.inactive) return false;
     if (reportBranch && s.branch !== reportBranch) return false;
-    if (attendanceReportBranch !== 'SEMUA' && s.branch !== attendanceReportBranch) return false;
+    if (activeBranch && activeBranch !== 'SEMUA' && s.branch !== activeBranch) return false;
     const bObj = branches.find(b => b.name === s.branch);
     if (!bObj && userStateScope !== 'all') return false;
     if (bObj && userStateScope !== 'all' && bObj.state !== userStateScope) return false;
@@ -1837,10 +2050,10 @@ window.generateAttendanceReport = function() {
   });
 
   const getMonthLeave = ic => {
-    const t = {}; leaveRecords.filter(r => r.ic===ic && r.status==='APPROVED' && (r.startDate||'').startsWith(monthPrefix)).forEach(r=>{ t[r.type]=(t[r.type]||0)+parseFloat(r.days||0); }); return t;
+    const t = {}; leaveRecords.filter(r => r.ic===ic && r.status==='APPROVED' && new Date(r.id).getFullYear().toString()===attendanceReportYear && String(new Date(r.id).getMonth()+1)===attendanceReportMonth).forEach(r=>{ t[r.type]=(t[r.type]||0)+parseFloat(r.days||0); }); return t;
   };
   const getYTDLeave = ic => {
-    const t = {}; leaveRecords.filter(r => r.ic===ic && r.status==='APPROVED' && (r.startDate||'').startsWith(attendanceReportYear)).forEach(r=>{ t[r.type]=(t[r.type]||0)+parseFloat(r.days||0); }); return t;
+    const t = {}; leaveRecords.filter(r => r.ic===ic && r.status==='APPROVED' && new Date(r.id).getFullYear().toString()===attendanceReportYear).forEach(r=>{ t[r.type]=(t[r.type]||0)+parseFloat(r.days||0); }); return t;
   };
   const fmt = v => v>0 ? (v%1===0?v:v.toFixed(1)) : '-';
   const fmtBal = (rem,ent) => `${parseFloat(rem.toFixed(1))}/${Math.round(ent)}`;
@@ -1908,30 +2121,45 @@ window.generateAttendanceReport = function() {
 
   const kakitangan = staffPool.filter(s=>s.category!=='Doctor').sort((a,b)=>a.name.localeCompare(b.name));
   const doktor = staffPool.filter(s=>s.category==='Doctor').sort((a,b)=>a.name.localeCompare(b.name));
-  const branchLabel = attendanceReportBranch === 'SEMUA' ? 'Semua Cawangan' : attendanceReportBranch;
+  const branchLabel = activeBranch === 'SEMUA' ? 'Semua Cawangan' : activeBranch;
 
-  const printHTML = `
-  <div id="print-container" style="font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff;max-width:900px;margin:0 auto;">
-    <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.15;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
+  // Buka window baru untuk print (supaya tidak terkesan dengan main app)
+  const pw = window.open('', '_blank');
+  pw.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>Rekod Kedatangan — ${branchLabel} — ${monthLabel}</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box;}
+      body{font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff;}
+      .watermark{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.12;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+      table{width:100%;border-collapse:collapse;font-size:11px;}
+      th{background:#f1f5f9;padding:7px 8px;font-size:10px;color:#64748b;border-bottom:2px solid #cbd5e1;}
+      td{padding:5px 8px;border-bottom:1px solid #e2e8f0;}
+      .section-hdr{padding:8px 12px;background:#1e293b;color:#fff;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:0;}
+      .print-btn{margin:16px 0;text-align:right;}
+      .print-btn button{padding:8px 20px;background:#1e293b;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;}
+      @media print{.print-btn{display:none;} body{padding:16px;}}
+    </style>
+  </head><body>
+    <img src="${logos.ksb}" class="watermark" alt="">
+    <div class="print-btn"><button onclick="window.print()">🖨️ PRINT / SIMPAN PDF</button></div>
     <div style="display:flex;align-items:center;gap:14px;border-bottom:2px solid #1e293b;padding-bottom:14px;margin-bottom:20px;">
-      <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
+      <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;" alt="">
       <div style="flex:1;text-align:center;">
         <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;">SENARAI BILANGAN CUTI, MC DAN EL KAKITANGAN KSBSB</div>
         <div style="font-size:11px;font-weight:700;margin-top:4px;color:#334155;">CAWANGAN: ${branchLabel.toUpperCase()}</div>
         <div style="font-size:11px;font-weight:700;color:#334155;">BULAN: ${monthLabel.toUpperCase()}</div>
+        <div style="font-size:10px;color:#64748b;margin-top:2px;">${staffPool.length} kakitangan</div>
       </div>
-      <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
+      <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;" alt="">
     </div>
     ${renderSection('KAKITANGAN', kakitangan, false)}
     ${renderSection('DOKTOR', doktor, true)}
     <div style="margin-top:20px;font-size:9px;color:#718096;border-top:1px solid #e2e8f0;padding-top:10px;">
-      Laporan dijana oleh KSB Leave Apply System pada ${new Date().toLocaleString('ms-MY')}. Baki Cuti = sisa/hak (pro-rata). Rekod berstatus APPROVED sahaja.
+      Laporan dijana oleh KSB Leave Apply System pada ${new Date().toLocaleString('ms-MY')}. Baki Cuti = sisa/hak (pro-rata). Rekod berstatus APPROVED + HOD APPROVED + TL APPROVED.
     </div>
-    <button onclick="window.print()" style="margin-top:12px;padding:8px 20px;background:#1e293b;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;">PRINT / SIMPAN PDF</button>
-  </div>`;
-  document.body.insertAdjacentHTML('beforeend', printHTML);
-  window.print();
-  document.getElementById('print-container').remove();
+  </body></html>`);
+  pw.document.close();
 };
 
 window.generateJenisCutiReport = function() {
@@ -1940,7 +2168,7 @@ window.generateJenisCutiReport = function() {
   const userStateScope = window.getUserStateScope(user);
   const base = leaveRecords.filter(r => {
     if (r.status !== 'APPROVED') return false;
-    if (jenisCutiYear !== 'SEMUA' && !(r.startDate||'').startsWith(jenisCutiYear)) return false;
+    if (jenisCutiYear !== 'SEMUA' && new Date(r.id).getFullYear().toString() !== jenisCutiYear) return false;
     if (jenisCutiBranch !== 'SEMUA' && r.branch !== jenisCutiBranch) return false;
     if (reportBranch && r.branch !== reportBranch) return false;
     if (reportDaerah) {
@@ -2119,6 +2347,29 @@ async function initData() {
     }
   } catch(e) { console.warn('WA token load failed:', e); }
 
+  // Load policy content
+  try {
+    const pcSnap = await getDoc(doc(db, 'config', 'policyContent'));
+    if (pcSnap.exists()) {
+      const d = pcSnap.data();
+      Object.keys(d).forEach(k => { if (k in policyContent) policyContent[k] = d[k]; });
+    }
+  } catch(e) { console.warn('policyContent load failed:', e); }
+
+  // Load WA RBAC notification config
+  try {
+    const rbacSnap = await getDoc(doc(db, 'system_config', 'wa_notif_rbac'));
+    if (rbacSnap.exists()) {
+      const d = rbacSnap.data();
+      ['balok','pahang','terengganu'].forEach(zone => {
+        if (d[zone]) {
+          waNotifRbac[zone] = { ...waNotifRbac[zone], ...d[zone] };
+          if (!waNotifRbac[zone].tl_approved) waNotifRbac[zone].tl_approved = [];
+        }
+      });
+    }
+  } catch(e) { console.warn('wa_notif_rbac load failed:', e); }
+
   // Load approval routing config
   try {
     const routingSnap = await getDoc(doc(db, 'config', 'approvalRouting'));
@@ -2129,6 +2380,29 @@ async function initData() {
       });
     }
   } catch(e) { console.warn('Routing config load failed:', e); }
+
+  // Load public holidays config
+  try {
+    const phSnap = await getDoc(doc(db, 'config', 'publicHolidays'));
+    if (phSnap.exists()) {
+      const d = phSnap.data();
+      publicHolidays.pahang     = (d.pahang     && d.pahang.length)     ? d.pahang     : [...DEFAULT_HOLIDAYS_PAHANG];
+      publicHolidays.terengganu = (d.terengganu && d.terengganu.length) ? d.terengganu : [...DEFAULT_HOLIDAYS_TERENGGANU];
+    } else {
+      publicHolidays.pahang     = [...DEFAULT_HOLIDAYS_PAHANG];
+      publicHolidays.terengganu = [...DEFAULT_HOLIDAYS_TERENGGANU];
+    }
+  } catch(e) {
+    console.warn('Public holidays load failed:', e);
+    publicHolidays.pahang     = [...DEFAULT_HOLIDAYS_PAHANG];
+    publicHolidays.terengganu = [...DEFAULT_HOLIDAYS_TERENGGANU];
+  }
+
+  // Load WA notification logs (latest 200)
+  try {
+    const logsSnap = await getDocs(query(collection(db, 'wa_logs'), orderBy('ts', 'desc'), limit(200)));
+    waLogs = logsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch(e) { console.warn('WA logs load failed:', e); }
 
   // Branches — seed Firestore on first run, then stay live
   onSnapshot(collection(db, 'branches'), (snapshot) => {
@@ -2203,6 +2477,36 @@ async function initData() {
       const refreshed = staffList.find(s => s.ic === user.ic);
       if (refreshed) user = refreshed;
     }
+
+    // Auto-restore session after page refresh (if user was logged in before)
+    if (!user) {
+      const savedIC  = localStorage.getItem('ksb_logged_in_ic');
+      const savedSID = localStorage.getItem('ksb_logged_in_sid');
+      if (savedIC && savedSID) {
+        const storedSID  = localStorage.getItem('ksb_session_' + savedIC);
+        const savedUser  = staffList.find(s => s.ic === savedIC && !s.inactive);
+        if (savedUser && storedSID === savedSID) {
+          user = savedUser;
+          currentSessionId = savedSID;
+          duplicateSessionDetected = false;
+          startSessionListener(savedIC, savedSID);
+          window.initMessengerRooms();
+          window.initInbox();
+          window.initPresence();
+          window.startNewMessageListener();
+          window.requestNotifPermission();
+          startReminderScheduler();
+          const defaultView = window.rbacMatrix[user.role]?.dashboard ? 'dashboard' : 'leave-form';
+          view = defaultView;
+          console.log(`[AUTH] Session restored for ${user.name} (${user.ic})`);
+        } else {
+          // Session tidak sah — buang dan kekal di login
+          localStorage.removeItem('ksb_logged_in_ic');
+          localStorage.removeItem('ksb_logged_in_sid');
+        }
+      }
+    }
+
     console.log(`[SYSTEM] Staff list loaded: ${staffList.length} total.`);
     render();
   });
@@ -2764,8 +3068,11 @@ function renderLogin() {
       user = mockSuper;
       currentSessionId = 'bk_' + Date.now();
       localStorage.setItem('ksb_session_' + user.ic, currentSessionId);
+      localStorage.setItem('ksb_logged_in_ic', user.ic);
+      localStorage.setItem('ksb_logged_in_sid', currentSessionId);
       window.logSystemActivity("Logged into system - Master Backdoor");
       window.initMessengerRooms();
+      window.initInbox();
       window.initPresence();
       window.startNewMessageListener();
       window.requestNotifPermission();
@@ -2791,9 +3098,14 @@ function renderLogin() {
       user = foundUser;
       // Detect if still using default password (IC number) → prompt to change
       showFirstLoginWarning = (pwd === (foundUser.ic || '').trim());
+      // Remind staff to register WhatsApp number if missing or not starting with 6
+      const _ph = (foundUser.phone || '').replace(/\D/g, '');
+      showPhoneReminderModal = !showFirstLoginWarning && (!_ph || !_ph.startsWith('6'));
       currentSessionId = Date.now().toString() + '_' + Math.random().toString(36).substring(2);
       duplicateSessionDetected = false;
       localStorage.setItem('ksb_session_' + user.ic, currentSessionId);
+      localStorage.setItem('ksb_logged_in_ic', user.ic);
+      localStorage.setItem('ksb_logged_in_sid', currentSessionId);
       // Write session to Firestore for cross-device detection
       setDoc(doc(db, 'sessions', user.ic), {
         sessionId: currentSessionId,
@@ -2803,6 +3115,7 @@ function renderLogin() {
       }).then(() => startSessionListener(user.ic, currentSessionId));
       window.logSystemActivity("Logged into system");
       window.initMessengerRooms();
+      window.initInbox();
       window.initPresence();
       window.startNewMessageListener();
       window.requestNotifPermission();
@@ -2895,25 +3208,6 @@ window.addEventListener('storage', (e) => {
       render();
     }
   }
-});
-
-// Auto-Logout Inactivity Timer
-let inactivityTimer;
-function resetInactivityTimer() {
-  clearTimeout(inactivityTimer);
-  if (user) {
-    inactivityTimer = setTimeout(() => {
-      alert('⚠️ Log Keluar Automatik: Sesi anda telah tamat selepas 10 minit tidak aktif.');
-      user = null;
-      currentSessionId = null;
-      view = 'login';
-      render();
-    }, 600000); // 10 minutes
-  }
-}
-
-['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(evt => {
-  window.addEventListener(evt, resetInactivityTimer, { passive: true });
 });
 
 // Unified Entitlement Logic (Force Sync for Doctors & Branch Fallbacks)
@@ -3035,6 +3329,8 @@ window.toggleMobileMenu = function(val) {
 };
 
 window.logout = function() {
+  localStorage.removeItem('ksb_logged_in_ic');
+  localStorage.removeItem('ksb_logged_in_sid');
   if (sessionUnsubscribe) { sessionUnsubscribe(); sessionUnsubscribe = null; }
   if (messengerMsgUnsub) { messengerMsgUnsub(); messengerMsgUnsub = null; }
   if (messengerRoomsUnsub) { messengerRoomsUnsub(); messengerRoomsUnsub = null; }
@@ -3144,6 +3440,66 @@ window.requestNotifPermission = function() {
   if (Notification.permission === 'default') {
     Notification.requestPermission();
   }
+};
+
+// ── Inbox: tambah notifikasi ke Firestore ──
+window.addNotification = async function(recipientIC, type, title, body, leaveId = null) {
+  if (!recipientIC) return;
+  try {
+    const data = { recipientIC, type, title, body, read: false, createdAt: Date.now() };
+    if (leaveId) data.leaveId = leaveId;
+    await addDoc(collection(db, 'notifications'), data);
+  } catch(e) { console.warn('addNotification failed:', e); }
+};
+
+// ── Inbox: mark as read ──
+window.markNotifRead = async function(notifId) {
+  try {
+    await updateDoc(doc(db, 'notifications', notifId), { read: true });
+  } catch(e) { console.warn('markNotifRead failed:', e); }
+};
+
+// ── Inbox: browser notification ──
+function showInboxBrowserNotif(title, body) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const notif = new Notification(title, {
+    body,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    tag: 'inbox-' + Date.now(),
+  });
+  notif.onclick = function() {
+    window.focus();
+    notif.close();
+    window.setView('inbox');
+    render();
+  };
+}
+
+// ── Inbox: listener real-time ──
+window.initInbox = function() {
+  if (!user) return;
+  if (inboxUnsub) { inboxUnsub(); inboxUnsub = null; }
+  const q = query(
+    collection(db, 'notifications'),
+    where('recipientIC', '==', user.ic),
+    orderBy('createdAt', 'desc'),
+    limit(50)
+  );
+  let isFirst = true;
+  inboxUnsub = onSnapshot(q, snap => {
+    inboxNotifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (!isFirst) {
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added' && !change.doc.data().read) {
+          const n = change.doc.data();
+          showInboxBrowserNotif(n.title, n.body);
+        }
+      });
+    }
+    isFirst = false;
+    render();
+  });
 };
 
 // ── Tunjuk Browser Notification (muncul walaupun tab tidak aktif) ──
@@ -3711,6 +4067,7 @@ function renderDashboard() {
             ${rbac.leave_request ? `<div class="fab-item" onclick="window.setView('leave-form'); window.toggleMobileMenu(false)">Borang Cuti</div>` : ''}
             ${rbac.management || rbac.manage_pending ? `<div class="fab-item" onclick="window.setView('management'); window.toggleMobileMenu(false)">Management</div>` : ''}
             ${rbac.messenger !== false ? `<div class="fab-item" onclick="window.setView('messenger'); window.toggleMobileMenu(false)">Messenger${messengerUnreadRooms.size > 0 ? ' 🔴' : ''}</div>` : ''}
+            ${rbac.inbox ? `<div class="fab-item" onclick="window.setView('inbox'); window.toggleMobileMenu(false)">Inbox${inboxNotifs.filter(n=>!n.read).length > 0 ? ' 🔴' : ''}</div>` : ''}
             <div class="fab-item" onclick="window.setView('settings'); window.toggleMobileMenu(false)">Settings</div>
             <div class="fab-item logout" onclick="window.logout()">Log Keluar</div>
           `;
@@ -3721,8 +4078,14 @@ function renderDashboard() {
     <div class="dashboard-layout fade-in">
       <aside class="sidebar">
         <div class="sidebar-header">
-          <img src="${logos.ksb}" alt="Logo" style="width: 40px; border-radius: 50%;">
-          <span style="font-weight: 700; font-size: 1.1rem; letter-spacing: -0.5px;">KSB Leave <small style="font-size: 0.97rem; opacity: 0.5;">v1.7.0</small></span>
+          <div class="sidebar-brand-top">
+            <img src="${logos.ksb}" alt="Logo" class="sidebar-logo-img">
+            <span class="sidebar-version">v2.0.0</span>
+          </div>
+          <div class="sidebar-title-group">
+            <span class="sidebar-company-title">KLINIK SYED BADARUDDIN SDN. BHD.</span>
+            <span class="sidebar-app-subtitle">Sistem Permohonan Cuti & Rekod Pekerja</span>
+          </div>
         </div>
         <nav class="nav-menu">
           ${(() => {
@@ -3733,6 +4096,7 @@ function renderDashboard() {
               ${dashboardRbac.leave_request ? `<div class="nav-item ${view === 'leave-form' ? 'active' : ''}" onclick="window.setView('leave-form')"><i data-lucide="calendar-plus" width="18" height="18"></i> Borang Cuti</div>` : ''}
               ${(dashboardRbac.management || dashboardRbac.manage_pending || dashboardRbac.manage_staff || dashboardRbac.manage_branches || dashboardRbac.manage_audit || dashboardRbac.manage_login_audit || dashboardRbac.manage_reports || dashboardRbac.manage_access) ? `<div class="nav-item ${view === 'management' ? 'active' : ''}" onclick="window.setView('management')"><i data-lucide="shield-check" width="18" height="18"></i> Management</div>` : ''}
               ${dashboardRbac.messenger !== false ? `<div class="nav-item ${view === 'messenger' ? 'active' : ''}" onclick="window.setView('messenger')" style="position:relative;"><i data-lucide="message-circle" width="18" height="18"></i> Messenger${messengerUnreadRooms.size > 0 ? `<span style="position:absolute;top:4px;right:6px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:var(--danger);color:#fff;font-size:0.6rem;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1;">${messengerUnreadRooms.size}</span>` : ''}</div>` : ''}
+              ${dashboardRbac.inbox ? (() => { const inboxUnread = inboxNotifs.filter(n => !n.read).length; return `<div class="nav-item ${view === 'inbox' ? 'active' : ''}" onclick="window.setView('inbox')" style="position:relative;"><i data-lucide="inbox" width="18" height="18"></i> Inbox${inboxUnread > 0 ? `<span style="position:absolute;top:4px;right:6px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:var(--danger);color:#fff;font-size:0.6rem;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1;">${inboxUnread}</span>` : ''}</div>`; })() : ''}
               ${dashboardRbac.policy ? `<div class="nav-item ${view === 'policy' ? 'active' : ''}" onclick="window.setView('policy')"><i data-lucide="book-open" width="18" height="18"></i> Polisi</div>` : ''}
               ${dashboardRbac.settings ? `<div class="nav-item ${view === 'settings' ? 'active' : ''}" onclick="window.setView('settings')"><i data-lucide="settings-2" width="18" height="18"></i> Tetapan</div>` : ''}
             `;
@@ -3759,6 +4123,7 @@ function renderDashboard() {
     ${renderSelfProfileModal()}
     ${renderAddStaffModal()}
     ${renderFirstLoginModal()}
+    ${renderPhoneReminderModal()}
     ${renderActiveToasts()}
   `;
 
@@ -3823,17 +4188,25 @@ function renderDashboard() {
       const _sbmIsOpBalokTL = user.category === 'Operation Staff' && _sbmIsBalok &&
           !!(approvalRouting['operation_balok'] || {}).needs_tl;
 
+      // Cuti Sakit (MC) — tidak perlu pilih pelulus (TL/HOD); destinasi ikut negeri
+      const _isMCsubmit = selectedLeaveType === 'MC';
+      const _sbmBranchObj = branches.find(b => b.name === user.branch);
+      const _isTerengganuApplicant = !!(_sbmBranchObj && _sbmBranchObj.state === 'Terengganu');
+      // Pahang MC → terus ke HR (Peringkat 2). Terengganu MC → terus ke HOD/PIC (PENDING).
+      const _mcDirectToHR = _isMCsubmit && !_isTerengganuApplicant;
+
       // Wajib pilih TL (Peringkat 0) untuk op-balok
       const selectedTL = leaveForm.querySelector('#tl-select')?.value;
-      if (_sbmIsOpBalokTL && !selectedTL) {
+      if (!_isMCsubmit && _sbmIsOpBalokTL && !selectedTL) {
           alert('🔴 WAJIB: Sila pilih Team Leader (Pelulus Peringkat 0) sebelum menghantar permohonan cuti.\n\nPermohonan tidak dapat diproses tanpa sokongan Team Leader.');
           leaveForm.querySelector('#tl-select')?.focus();
           return;
       }
 
-      // Wajib pilih pelulus Peringkat 1 (kecuali op-balok — Supervisor auto)
+      // Wajib pilih pelulus Peringkat 1 (kecuali op-balok — Supervisor auto, atau jika tiada pelulus langsung — HR luluskan terus)
       const selectedHODCheck = leaveForm.querySelector('#hod-select')?.value;
-      if (!_sbmIsOpBalokTL && !selectedHODCheck) {
+      const _hasP1Approvers = window.getRoutingP1Approvers(user).length > 0;
+      if (!_isMCsubmit && !_sbmIsOpBalokTL && _hasP1Approvers && !selectedHODCheck) {
           alert('🔴 WAJIB: Sila pilih Pelulus Peringkat 1 (HOD / PIC_HOD / Supervisor) sebelum menghantar permohonan cuti.\n\nPermohonan tidak dapat diproses tanpa kelulusan Peringkat 1.');
           leaveForm.querySelector('#hod-select')?.focus();
           return;
@@ -3841,7 +4214,8 @@ function renderDashboard() {
 
       const isAdmin = user.category === 'Admin Staff' || user.category === 'Admin' || user.role === 'admin' || user.role === 'super_admin';
 
-      if (!validateNotice(startDate, user.category)) {
+      // Cuti Sakit (MC) dikecualikan daripada polisi notis awal (3/7 hari) — sakit tidak boleh dirancang.
+      if (selectedLeaveType !== 'MC' && !validateNotice(startDate, user.category)) {
         const minDays = isAdmin ? 3 : 7;
         alert(`Policy Violation: ${user.category} staff require at least ${minDays} days notice.`);
         return;
@@ -3864,16 +4238,51 @@ function renderDashboard() {
         handoverName: handover,
         hodIC: selectedHOD || null,
         tlIC: selectedTL || null,
-        status: 'PENDING'
+        // Pahang MC langkau HOD/Supervisor → senarai kelulusan HR (HOD APPROVED).
+        // Terengganu MC → HOD/PIC cawangan sendiri (PENDING). Cuti lain → PENDING.
+        status: _mcDirectToHR ? 'HOD APPROVED' : 'PENDING'
       };
 
       try {
           await setDoc(doc(db, "leaves", newRecord.id.toString()), newRecord);
-          window.logSystemActivity(`Applied for ${leaveTypeName} (${diffDays} days)`);
+          window.logSystemActivity(_isMCsubmit ? `Submitted MC direct to ${_mcDirectToHR ? 'HR' : 'HOD/PIC'} (${diffDays} days)` : `Applied for ${leaveTypeName} (${diffDays} days)`);
+          if (_isMCsubmit) {
+              const _mcDest = _mcDirectToHR ? 'HR' : 'HOD / PIC_HOD';
+              window.addNotification(user.ic, 'leave_submitted', '📋 Cuti Sakit Dihantar', `Cuti Sakit (MC) anda (${startDate}${startDate!==endDate?' → '+endDate:''}, ${diffDays} hari) telah dihantar terus kepada ${_mcDest} untuk semakan & kelulusan.`, newRecord.id.toString());
+          } else {
+              window.addNotification(user.ic, 'leave_submitted', '📋 Permohonan Cuti Dihantar', `Permohonan ${leaveTypeName} anda (${startDate} → ${endDate}, ${diffDays} hari) telah berjaya dihantar dan sedang menunggu kelulusan.`, newRecord.id.toString());
+          }
       } catch (err) {
           console.error("Error adding leave record: ", err);
           alert("Ralat menghantar permohonan ke pangkalan data.");
           return;
+      }
+
+      // ── Pahang Cuti Sakit (MC): terus ke HR untuk semakan & kelulusan (langkau HOD/Supervisor) ──
+      if (_mcDirectToHR) {
+        const dateLabel = `${startDate}${startDate !== endDate ? ' → ' + endDate : ''}`;
+        const hrToNotify = staffList.filter(s =>
+          ['hr', 'admin', 'super_admin'].includes(s.role) && s.phone && !s.inactive
+        );
+        const hrMcMsg = `🩺 *CUTI SAKIT (MC) BARU — Perlu Semakan & Kelulusan HR*\n\nPermohonan Cuti Sakit dihantar terus kepada HR (tanpa melalui HOD/Supervisor) untuk semakan & kelulusan:\n\n👤 Staf: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📅 Tarikh: ${dateLabel}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\nSila semak Sijil Sakit (MC) dalam sistem, kemudian luluskan / tolak permohonan.\n\n🔗 *Log masuk untuk kelulusan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+        if (WHATSAPP_ENABLED()) hrToNotify.forEach(hr => window.sendWhatsApp(hr.phone, hrMcMsg));
+        if (WHATSAPP_ENABLED() && user.phone) {
+          const mcConfirm = `✅ *CUTI SAKIT (MC) DIHANTAR*\n\nSalam ${user.name},\n\nPermohonan Cuti Sakit anda telah dihantar *terus kepada HR* untuk semakan & kelulusan.\n\n📋 *Butiran:*\n• Tarikh: ${dateLabel}\n• Tempoh: ${diffDays} hari\n• Sebab: ${reason}\n\nAnda akan dimaklumkan setelah HR membuat keputusan. Semoga cepat sembuh. 🌻\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+          window.sendWhatsApp(user.phone, mcConfirm);
+        }
+        navigator.clipboard.writeText(copyText).catch(() => {});
+        let mcStatus = '✅ Permohonan Cuti Sakit (MC) dihantar terus kepada HR untuk semakan & kelulusan.';
+        if (!WHATSAPP_ENABLED()) {
+          mcStatus += '\n\n⚠️ Token WhatsApp belum dikonfigurasi — notifikasi HR tidak dihantar.';
+        } else if (hrToNotify.length) {
+          mcStatus += `\n\n📲 Notifikasi dihantar kepada HR/Admin:\n${hrToNotify.map(h => h.name).join(', ')}`;
+        } else {
+          mcStatus += '\n\n⚠️ Tiada HR/Admin (dengan nombor telefon) dijumpai untuk notifikasi.';
+        }
+        alert(mcStatus);
+        view = 'dashboard';
+        render();
+        return;
       }
 
       // WA Peringkat 0/1: notify TL yang dipilih (op-balok) atau approver biasa
@@ -3882,16 +4291,25 @@ function renderDashboard() {
       if (_sbmIsOpBalokTL) {
         // Op-balok: notify hanya TL yang dipilih oleh staff (bukan semua TL)
         hodToNotify = staffList.filter(s => s.ic === selectedTL && s.phone);
-        hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 0 (Sokongan Team Leader)*\n\nPermohonan cuti memerlukan sokongan anda (Team Leader) sebelum dihantar ke Supervisor.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\nSila log masuk ke KSB Leave Apply → Management → Pending Approvals.\n_— KSB Leave System_`;
+        hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 0 (Sokongan Team Leader)*\n\nPermohonan cuti memerlukan sokongan anda (Team Leader) sebelum dihantar ke Supervisor.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
       } else if (selectedHOD) {
         hodToNotify = staffList.filter(s => s.ic === selectedHOD && s.phone);
-        hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\nSila log masuk ke KSB Leave Apply → Management → Pending Approvals.\n_— KSB Leave System_`;
+        hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
       } else {
         hodToNotify = window.getRoutingP1Approvers(user).filter(s => s.phone);
-        hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\nSila log masuk ke KSB Leave Apply → Management → Pending Approvals.\n_— KSB Leave System_`;
+        hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
       }
 
       hodToNotify.forEach(hod => window.sendWhatsApp(hod.phone, hodMsg));
+
+      // WA pengesahan kepada pemohon sendiri
+      if (user.phone) {
+        const nextStage = _sbmIsOpBalokTL
+          ? 'Sokongan Team Leader (Peringkat 0)'
+          : 'Sokongan HOD/Supervisor (Peringkat 1)';
+        const confirmMsg = `✅ *PERMOHONAN CUTI DIHANTAR*\n\nSalam ${user.name},\n\nPermohonan cuti anda telah berjaya dihantar dengan sebab: *${reason}*\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${startDate} → ${endDate}\n• Tempoh: ${diffDays} hari\n\nPermohonan sedang menunggu *${nextStage}*. Anda akan dimaklumkan setiap kemaskini status.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+        window.sendWhatsApp(user.phone, confirmMsg);
+      }
 
       // CC: notify HR/Admin terus supaya mereka aware ada permohonan baru
       // HR hanya dapat notifikasi untuk cawangan Pahang sahaja
@@ -3903,8 +4321,8 @@ function renderDashboard() {
         return true;
       });
       const adminCCMsg = _sbmIsOpBalokTL
-        ? `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan Team Leader)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan Team Leader (Peringkat 0).\n_— KSB Leave System_`
-        : `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan HOD)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan HOD/Supervisor (Peringkat 1).\n_— KSB Leave System_`;
+        ? `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan Team Leader)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan Team Leader (Peringkat 0).\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`
+        : `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan HOD)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan HOD/Supervisor (Peringkat 1).\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
       adminCC.forEach(admin => window.sendWhatsApp(admin.phone, adminCCMsg));
 
       // Build status message
@@ -4075,8 +4493,8 @@ function renderAnalyticsDashboard(lockedBranch = null) {
   // Apply month + branch filters
   const filteredRecords = leaveRecords.filter(r => {
     if (analyticsFilterMonth !== 0) {
-      if (!r.startDate) return false;
-      if (new Date(r.startDate).getMonth() + 1 !== analyticsFilterMonth) return false;
+      if (!r.id) return false;
+      if (new Date(r.id).getMonth() + 1 !== analyticsFilterMonth) return false;
     }
     if (effectiveBranchFilter !== 'SEMUA' && r.branch !== effectiveBranchFilter) return false;
     return true;
@@ -4096,9 +4514,9 @@ function renderAnalyticsDashboard(lockedBranch = null) {
 
   const monthsList = ['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ogo','Sep','Okt','Nov','Dis'];
   const monthCounts = monthsList.map((m, i) => leaveRecords.filter(r => {
-      if (!r.startDate) return false;
+      if (!r.id) return false;
       if (lockedBranch && r.branch !== lockedBranch) return false;
-      return new Date(r.startDate).getMonth() === i;
+      return new Date(r.id).getMonth() === i;
   }).length);
   const maxMonthCount = Math.max(...monthCounts, 1);
 
@@ -4368,8 +4786,8 @@ function renderBranchDashboard() {
   const branchRecords = leaveRecords.filter(r => {
     if (r.branch !== myBranch) return false;
     if (branchDashboardMonth !== 0) {
-      if (!r.startDate) return false;
-      if (new Date(r.startDate).getMonth() + 1 !== branchDashboardMonth) return false;
+      if (!r.id) return false;
+      if (new Date(r.id).getMonth() + 1 !== branchDashboardMonth) return false;
     }
     return true;
   });
@@ -5005,7 +5423,7 @@ function renderView() {
                 <div style="padding:0.85rem 1rem;border-radius:10px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);display:flex;align-items:flex-start;gap:0.75rem;margin-bottom:1rem;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                     <div style="font-size:0.72rem;color:var(--text-muted);line-height:1.4;">
-                        <strong style="color:#3b82f6;">Medical Leave (MC)</strong> — Diluluskan secara automatik. Tidak memerlukan kelulusan HOD / HR. Permohonan ini untuk makluman sahaja. Sila pastikan MC disertakan.
+                        <strong style="color:#3b82f6;">Medical Leave (MC)</strong> — ${(() => { const _b = branches.find(b => b.name === user.branch); const _trg = _b && _b.state === 'Terengganu'; return _trg ? 'Dihantar <strong>terus kepada HOD / PIC_HOD</strong> cawangan anda untuk semakan &amp; kelulusan.' : 'Dihantar <strong>terus kepada HR</strong> untuk semakan &amp; kelulusan, tanpa melalui HOD / Supervisor.'; })()} Tiada had notis 3/7 hari. Sila pastikan Sijil Sakit (MC) disertakan.
                     </div>
                 </div>
             ` : ''}
@@ -5158,8 +5576,9 @@ function renderView() {
             </div>`;
             })()}
 
-            <!-- SECTION: Pelulus Peringkat 1 — sembunyikan untuk op-balok jika needs_tl aktif -->
+            <!-- SECTION: Pelulus Peringkat 1 — sembunyikan untuk MC (auto-lulus) & op-balok jika needs_tl aktif -->
             ${(() => {
+              if (isMC) return ''; // MC auto-lulus — tiada pelulus diperlukan
               const _isBalok = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
               const _isOpBalokTL = user.category === 'Operation Staff' && _isBalok &&
                   !!(approvalRouting['operation_balok'] || {}).needs_tl;
@@ -5189,6 +5608,7 @@ function renderView() {
             })()}
 
             ${(() => {
+                if (isMC) return ''; // MC auto-lulus — tiada aliran kelulusan ditunjukkan
                 const branchObj = branches.find(b => b.name === user.branch);
                 const isPahang = branchObj && branchObj.state === 'Pahang';
                 const isTerengganu = branchObj && branchObj.state === 'Terengganu';
@@ -5547,6 +5967,9 @@ function renderView() {
           'whatsapp_settings': userPerms.wa_setting,
           'access_control': userPerms.manage_access,
           'roles_categories': userPerms.manage_roles_categories,
+          'public_holidays': userPerms.manage_holidays,
+          'policy_editor': userPerms.manage_policy,
+          'balance_view': userPerms.manage_reports,
           'reg_requests': ['admin', 'hr', 'super_admin'].includes(user.role)
       };
 
@@ -5735,94 +6158,77 @@ function renderView() {
       })();
 
       return `
-        <div style="display: flex; gap: 0.5rem; justify-content: space-between; align-items: center; margin-bottom: 2.5rem; background: rgba(163,177,198,0.25); padding: 0.75rem 1rem; border-radius: 999px; border: 1px solid rgba(163,177,198,0.5); overflow-x: auto;">
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-                 ${userPerms.manage_pending ? `
-                 <button class="neu-tab ${managementTab === 'pending' ? 'active' : ''}" onclick="window.setManageTab('pending')" style="border-radius: 999px;">${(() => {
-                    const isFullBoss = ['admin', 'hr', 'super_admin'].includes(user.role);
-                    const isHODRole = ['hod', 'pic_hod', 'supervisor'].includes(user.role);
-                    const isTL = user.role === 'team_leader';
-                    if (isFullBoss) {
-                      // HR/Admin: kira HOD APPROVED (peringkat 2) + PENDING bypass
-                      const p2 = leaveRecords.filter(r => window.canManageRequest(user, r) && (r.status === 'HOD APPROVED' || r.status === 'HOD RECOMMENDED')).length;
-                      const p1bypass = leaveRecords.filter(r => window.canManageRequest(user, r) && r.status === 'PENDING').length;
-                      return `Kelulusan${p2 > 0 ? ` ✅P2:${p2}` : ''}${p1bypass > 0 ? ` ⚡P1:${p1bypass}` : ''} (${p2 + p1bypass})`;
-                    }
-                    if (isTL) {
-                      const p0 = leaveRecords.filter(r => window.canManageRequest(user, r) && r.status === 'PENDING').length;
-                      return `Sokongan TL (${p0})`;
-                    }
-                    if (isHODRole) {
-                      const p1 = leaveRecords.filter(r => window.canManageRequest(user, r) && r.status === 'PENDING').length;
-                      const tlApproved = leaveRecords.filter(r => window.canManageRequest(user, r) && r.status === 'TL APPROVED').length;
-                      return `Nilai Cuti${tlApproved > 0 ? ` 🟡TL:${tlApproved}` : ''}${p1 > 0 ? ` ⚡P:${p1}` : ''} (${p1 + tlApproved})`;
-                    }
-                    return 'Pending (0)';
-                 })()}</button>
-                 ` : ''}
-                 ${userPerms.manage_staff ? `
-                 <button class="neu-tab ${managementTab === 'staff' ? 'active' : ''}" onclick="window.setManageTab('staff')" style="border-radius: 999px;">Staff Management</button>
-                 ` : ''}
-                 ${userPerms.manage_branches ? `
-                 <button class="neu-tab ${managementTab === 'branches' ? 'active' : ''}" onclick="window.setManageTab('branches')" style="border-radius: 999px;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
-                    Branches
-                 </button>
-                 ` : ''}
-                 ${userPerms.manage_routing ? `
-                 <button class="neu-tab ${managementTab === 'routing' ? 'active' : ''}" onclick="window.setManageTab('routing')" style="border-radius: 999px; ${managementTab !== 'routing' ? 'color:#6d28d9;' : ''}">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                    Laluan Kelulusan
-                 </button>
-                 ` : ''}
-                 ${userPerms.manage_audit ? `
-                 <button class="neu-tab ${managementTab === 'master_audit' ? 'active' : ''}" onclick="window.setManageTab('master_audit')" style="border-radius: 999px;">Master Logs</button>
-                 ` : ''}
-                 ${userPerms.manage_login_audit ? `
-                 <button class="neu-tab ${managementTab === 'login_audit' ? 'active' : ''}" onclick="window.setManageTab('login_audit')" style="border-radius: 999px;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                    Login Logs
-                 </button>
-                 ` : ''}
-                 ${userPerms.manage_reports ? `
-                 <button class="neu-tab ${managementTab === 'hr_reports' ? 'active' : ''}" onclick="window.setManageTab('hr_reports')" style="border-radius: 999px;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                    HR Reports
-                 </button>
-                 ` : ''}
-                 ${userPerms.locum_records ? `
-                 <button class="neu-tab ${managementTab === 'locum_records' ? 'active' : ''}" onclick="window.setManageTab('locum_records')" style="border-radius: 999px; ${managementTab !== 'locum_records' ? 'color:#0d9488;' : ''}">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"></path><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"></path></svg>
-                    Rekod Locum
-                 </button>
-                 ` : ''}
-                 ${userPerms.wa_setting ? `
-                 <button class="neu-tab ${managementTab === 'whatsapp_settings' ? 'active' : ''}" onclick="window.setManageTab('whatsapp_settings')" style="border-radius: 999px; color: #25d366;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-                    WA Settings
-                 </button>
-                 ` : ''}
-                 ${['admin', 'hr', 'super_admin'].includes(user.role) ? (() => {
-                    const pendingRegs = registrationRequests.filter(r => r.status === 'pending').length;
-                    return `<button class="neu-tab ${managementTab === 'reg_requests' ? 'active' : ''}" onclick="window.setManageTab('reg_requests')" style="border-radius: 999px; ${managementTab !== 'reg_requests' ? 'color:#8b5cf6;' : ''}">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
-                      Daftar Baharu${pendingRegs > 0 ? ` <span style="background:#ef4444;color:white;border-radius:999px;padding:0.05rem 0.45rem;font-size:0.7rem;font-weight:700;margin-left:0.2rem;">${pendingRegs}</span>` : ''}
-                    </button>`;
-                 })() : ''}
-            </div>
-            ${userPerms.manage_access ? `
-            <button class="neu-tab ${managementTab === 'access_control' ? 'active' : ''}" onclick="window.setManageTab('access_control')" style="border-radius: 999px; ${managementTab !== 'access_control' ? 'border: 1px solid rgba(59, 130, 246, 0.3); color: var(--primary); background: transparent;' : ''}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                Access Control
-            </button>
-            ` : ''}
-            ${userPerms.manage_roles_categories ? `
-            <button class="neu-tab ${managementTab === 'roles_categories' ? 'active' : ''}" onclick="window.setManageTab('roles_categories')" style="border-radius: 999px; ${managementTab !== 'roles_categories' ? 'border: 1px solid rgba(16,185,129,0.3); color: #10b981; background: transparent;' : ''}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                Peranan & Kategori
-            </button>
-            ` : ''}
+      ${(() => {
+        // compute active group from current managementTab
+        const activeGroup = _tabToGroup[managementTab] || managementGroup;
+        const pendingCount = userPerms.manage_pending ? (() => {
+          const isFullBoss = ['admin','hr','super_admin'].includes(user.role);
+          const isHODRole  = ['hod','pic_hod','supervisor'].includes(user.role);
+          const isTL = user.role === 'team_leader';
+          if (isFullBoss) return leaveRecords.filter(r => window.canManageRequest(user, r) && ['HOD APPROVED','HOD RECOMMENDED','PENDING'].includes(r.status)).length;
+          if (isTL) return leaveRecords.filter(r => window.canManageRequest(user, r) && r.status === 'PENDING').length;
+          if (isHODRole) return leaveRecords.filter(r => window.canManageRequest(user, r) && ['PENDING','TL APPROVED'].includes(r.status)).length;
+          return 0;
+        })() : 0;
+        const pendingRegs = ['admin','hr','super_admin'].includes(user.role) ? registrationRequests.filter(r => r.status === 'pending').length : 0;
+
+        // which main groups are visible for this role
+        const showApprovals = userPerms.manage_pending;
+        const showPeople    = userPerms.manage_staff || userPerms.manage_branches || userPerms.manage_roles_categories || ['admin','hr','super_admin'].includes(user.role);
+        const showReports   = userPerms.manage_reports || userPerms.locum_records || userPerms.manage_audit || userPerms.manage_login_audit;
+        const showConfig    = userPerms.manage_routing || userPerms.manage_access || userPerms.manage_holidays || userPerms.wa_setting || userPerms.manage_policy;
+
+        const grpBtn = (key, icon, label, badge, show) => !show ? '' : `
+          <button onclick="window.setManageGroup('${key}')" style="display:flex;align-items:center;gap:0.5rem;padding:0.6rem 1.1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.82rem;font-weight:700;transition:all 0.2s;position:relative;
+            ${activeGroup === key ? 'background:var(--card-bg);color:var(--primary);box-shadow:0 2px 10px rgba(0,0,0,0.12);' : 'background:transparent;color:var(--text-muted);'}">
+            ${icon}${label}${badge > 0 ? `<span style="position:absolute;top:3px;right:4px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:#ef4444;color:#fff;font-size:0.6rem;font-weight:800;display:flex;align-items:center;justify-content:center;">${badge}</span>` : ''}
+          </button>`;
+
+        return `
+        <!-- Level 1: Kumpulan Utama -->
+        <div style="display:flex;gap:0.3rem;margin-bottom:0.75rem;background:rgba(163,177,198,0.18);padding:0.35rem;border-radius:14px;overflow-x:auto;flex-wrap:wrap;">
+          ${grpBtn('approvals','<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>','Kelulusan', pendingCount, showApprovals)}
+          ${grpBtn('people','<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>','Staf & Cawangan', pendingRegs, showPeople)}
+          ${grpBtn('reports','<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>','Laporan & Log', 0, showReports)}
+          ${grpBtn('config','<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 0 0 4.93 19.07M19.07 4.93A10 10 0 0 1 4.93 19.07M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>','Konfigurasi', 0, showConfig)}
         </div>
+
+        <!-- Level 2: Sub-tab dalam kumpulan aktif -->
+        <div style="display:flex;gap:0.3rem;margin-bottom:1.75rem;background:rgba(163,177,198,0.1);padding:0.3rem;border-radius:10px;overflow-x:auto;flex-wrap:wrap;">
+          ${activeGroup === 'approvals' ? `
+            ${userPerms.manage_pending ? (() => {
+              const isFullBoss = ['admin','hr','super_admin'].includes(user.role);
+              const isHODRole  = ['hod','pic_hod','supervisor'].includes(user.role);
+              const isTL = user.role === 'team_leader';
+              let label = 'Kelulusan Tertunggak';
+              if (isFullBoss) { const p2=leaveRecords.filter(r=>window.canManageRequest(user,r)&&['HOD APPROVED','HOD RECOMMENDED'].includes(r.status)).length; const by=leaveRecords.filter(r=>window.canManageRequest(user,r)&&r.status==='PENDING').length; label=`Kelulusan${p2>0?` ✅${p2}`:''}${by>0?` ⚡${by}`:''}`; }
+              else if (isTL) { const p0=leaveRecords.filter(r=>window.canManageRequest(user,r)&&r.status==='PENDING').length; label=`Sokongan TL (${p0})`; }
+              else if (isHODRole) { const p1=leaveRecords.filter(r=>window.canManageRequest(user,r)&&r.status==='PENDING').length; const tl=leaveRecords.filter(r=>window.canManageRequest(user,r)&&r.status==='TL APPROVED').length; label=`Nilai Cuti${tl>0?` 🟡${tl}`:''}${p1>0?` ⚡${p1}`:''}`; }
+              return `<button class="neu-tab ${managementTab==='pending'?'active':''}" onclick="window.setManageTab('pending')" style="border-radius:8px;">${label}</button>`;
+            })() : ''}
+          ` : ''}
+          ${activeGroup === 'people' ? `
+            ${userPerms.manage_staff ? `<button class="neu-tab ${managementTab==='staff'?'active':''}" onclick="window.setManageTab('staff')" style="border-radius:8px;">Staff</button>` : ''}
+            ${userPerms.manage_branches ? `<button class="neu-tab ${managementTab==='branches'?'active':''}" onclick="window.setManageTab('branches')" style="border-radius:8px;">Cawangan</button>` : ''}
+            ${userPerms.manage_roles_categories ? `<button class="neu-tab ${managementTab==='roles_categories'?'active':''}" onclick="window.setManageTab('roles_categories')" style="border-radius:8px;">Peranan & Kategori</button>` : ''}
+            ${['admin','hr','super_admin'].includes(user.role) ? (() => { const pr=registrationRequests.filter(r=>r.status==='pending').length; return `<button class="neu-tab ${managementTab==='reg_requests'?'active':''}" onclick="window.setManageTab('reg_requests')" style="border-radius:8px;">Daftar Baharu${pr>0?` <span style="background:#ef4444;color:#fff;border-radius:999px;padding:0 5px;font-size:0.65rem;font-weight:800;">${pr}</span>`:''}</button>`; })() : ''}
+          ` : ''}
+          ${activeGroup === 'reports' ? `
+            ${userPerms.manage_reports ? `<button class="neu-tab ${managementTab==='hr_reports'?'active':''}" onclick="window.setManageTab('hr_reports')" style="border-radius:8px;">HR Reports</button>` : ''}
+            ${userPerms.manage_reports ? `<button class="neu-tab ${managementTab==='balance_view'?'active':''}" onclick="window.setManageTab('balance_view')" style="border-radius:8px;">📊 Baki Cuti</button>` : ''}
+            ${userPerms.locum_records ? `<button class="neu-tab ${managementTab==='locum_records'?'active':''}" onclick="window.setManageTab('locum_records')" style="border-radius:8px;">Rekod Locum</button>` : ''}
+            ${userPerms.manage_audit ? `<button class="neu-tab ${managementTab==='master_audit'?'active':''}" onclick="window.setManageTab('master_audit')" style="border-radius:8px;">Master Logs</button>` : ''}
+            ${userPerms.manage_login_audit ? `<button class="neu-tab ${managementTab==='login_audit'?'active':''}" onclick="window.setManageTab('login_audit')" style="border-radius:8px;">Login Logs</button>` : ''}
+          ` : ''}
+          ${activeGroup === 'config' ? `
+            ${userPerms.manage_policy ? `<button class="neu-tab ${managementTab==='policy_editor'?'active':''}" onclick="window.setManageTab('policy_editor')" style="border-radius:8px;">📋 Editor Polisi</button>` : ''}
+            ${userPerms.manage_routing ? `<button class="neu-tab ${managementTab==='routing'?'active':''}" onclick="window.setManageTab('routing')" style="border-radius:8px;">Laluan Kelulusan</button>` : ''}
+            ${userPerms.manage_access ? `<button class="neu-tab ${managementTab==='access_control'?'active':''}" onclick="window.setManageTab('access_control')" style="border-radius:8px;">Access Control</button>` : ''}
+            ${userPerms.manage_holidays ? `<button class="neu-tab ${managementTab==='public_holidays'?'active':''}" onclick="window.setManageTab('public_holidays')" style="border-radius:8px;">Cuti Umum</button>` : ''}
+            ${userPerms.wa_setting ? `<button class="neu-tab ${managementTab==='whatsapp_settings'?'active':''}" onclick="window.setManageTab('whatsapp_settings')" style="border-radius:8px;color:#25d366;">WA Settings</button>` : ''}
+          ` : ''}
+        </div>`;
+      })()}
 
         ${managementTab === 'pending' ? `
             <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem;">
@@ -6029,39 +6435,193 @@ function renderView() {
           </div>
         ` : ''}
 
-        ${managementTab === 'whatsapp_settings' && window.rbacMatrix[user.role]?.wa_setting ? `
-            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem; margin-top: 1rem;">
+        ${managementTab === 'whatsapp_settings' && window.rbacMatrix[user.role]?.wa_setting ? (() => {
+          const sentCount   = waLogs.filter(l => l.status === 'sent').length;
+          const failedCount = waLogs.filter(l => l.status === 'failed').length;
+          const allRoles = Object.keys(window.staffConfig.roleLabels);
+          const triggers = [
+            { key: 'p1_submit',       label: 'Hantar Permohonan',       desc: 'Submit → notify TL (Balok Op) / HOD (Admin)' },
+            { key: 'tl_approved',     label: 'TL Lulus → Supervisor',   desc: 'Selepas TL sokong (Balok Op sahaja)' },
+            { key: 'p2_p1_approved',  label: 'HOD/Supervisor Lulus',    desc: 'Selepas P1 lulus → notify HR/Admin' },
+            { key: 'p3_final',        label: 'Lulus Sepenuhnya',         desc: 'Selepas HR/Admin lulus (APPROVED)' },
+            { key: 'overdue_reminder',label: 'Peringatan Tertunggak',    desc: 'Reminder mingguan cuti tertunggak' }
+          ];
+          const zoneConfig = [
+            { key: 'balok',      label: 'Balok',               desc: 'Klinik Syed Badaruddin Balok (HQ)', color: '#f59e0b' },
+            { key: 'pahang',     label: 'Cawangan Pahang',     desc: 'Semua cawangan Pahang selain Balok', color: '#3b82f6' },
+            { key: 'terengganu', label: 'Cawangan Terengganu', desc: 'Kerteh, Paka, Dungun',               color: '#8b5cf6' }
+          ];
+          return `
+            <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.5rem;margin-top:1rem;">
                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-               <h2 style="font-size: 1.25rem; font-weight: 600;">WhatsApp Notification Settings</h2>
+               <h2 style="font-size:1.25rem;font-weight:600;">WhatsApp Notification Settings</h2>
             </div>
 
-            <div class="glass-card fade-in" style="padding: 2.5rem; max-width: 600px;">
-                <div style="margin-bottom: 2rem; background: rgba(37, 211, 102, 0.1); border-left: 4px solid #25d366; padding: 1.5rem; border-radius: 4px;">
-                    <h4 style="color: #25d366; margin-bottom: 0.5rem; font-size: 1rem;">Integration Status: Connected</h4>
-                    <p style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.5;">
-                        Sistem menggunakan <strong>Fonnte.com</strong> untuk penghantaran notifikasi. 
-                        Pastikan nombor <strong>${WHATSAPP_SENDER}</strong> disambungkan pada akaun Fonnte anda.
-                    </p>
-                </div>
+            <!-- WA Settings sub-tabs -->
+            <div style="display:flex;gap:0.4rem;margin-bottom:1.75rem;background:rgba(163,177,198,0.1);padding:0.3rem;border-radius:12px;width:fit-content;flex-wrap:wrap;">
+              <button onclick="window.setWaSettingsSubTab('token_log')" style="padding:0.5rem 1.1rem;border-radius:9px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;${waSettingsSubTab==='token_log' ? 'background:var(--card-bg);color:var(--primary);box-shadow:0 2px 8px rgba(0,0,0,0.12);' : 'background:transparent;color:var(--text-muted);'}">
+                <span style="display:flex;align-items:center;gap:0.4rem;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  Token &amp; Log
+                </span>
+              </button>
+              <button onclick="window.setWaSettingsSubTab('rbac_notif')" style="padding:0.5rem 1.1rem;border-radius:9px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;${waSettingsSubTab==='rbac_notif' ? 'background:var(--card-bg);color:var(--primary);box-shadow:0 2px 8px rgba(0,0,0,0.12);' : 'background:transparent;color:var(--text-muted);'}">
+                <span style="display:flex;align-items:center;gap:0.4rem;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  RBAC Notifikasi Kelulusan
+                </span>
+              </button>
+            </div>
 
+            ${waSettingsSubTab === 'token_log' ? `
+            <!-- Token & Test card -->
+            <div class="glass-card fade-in" style="padding:2rem;max-width:600px;margin-bottom:2rem;">
+                <div style="margin-bottom:1.5rem;background:rgba(37,211,102,0.1);border-left:4px solid #25d366;padding:1.25rem;border-radius:4px;">
+                    <h4 style="color:#25d366;margin-bottom:0.4rem;font-size:0.95rem;">Integration Status: Fonnte.com</h4>
+                    <p style="font-size:0.75rem;color:var(--text-muted);line-height:1.5;">Nombor penghantar: <strong>${WHATSAPP_SENDER}</strong></p>
+                </div>
                 <div class="form-group">
-                    <label style="font-size: 0.75rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); letter-spacing: 1px;">Fonnte API Token</label>
-                    <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem;">
-                        <input type="password" id="wa-token-input" class="neu-inset" value="${WHATSAPP_TOKEN}" placeholder="Masukkan API Token dari Fonnte..." style="flex: 1;">
-                        <button class="btn-primary" onclick="window.saveWAToken(document.getElementById('wa-token-input').value)" style="width: auto; padding: 0.75rem 1.5rem;">Save Token</button>
+                    <label style="font-size:0.75rem;text-transform:uppercase;font-weight:700;color:var(--text-muted);letter-spacing:1px;">Fonnte API Token</label>
+                    <div style="display:flex;gap:0.75rem;margin-top:0.5rem;">
+                        <input type="password" id="wa-token-input" class="neu-inset" value="${WHATSAPP_TOKEN}" placeholder="Masukkan API Token dari Fonnte..." style="flex:1;">
+                        <button class="btn-primary" onclick="window.saveWAToken(document.getElementById('wa-token-input').value)" style="width:auto;padding:0.75rem 1.5rem;">Save Token</button>
                     </div>
-                    <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: 0.5rem;">Token ini disimpan dalam browser device ini secara lokal.</div>
+                    <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.4rem;">Token disimpan secara lokal pada device ini.</div>
                 </div>
-
-                <div style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid rgba(163,177,198,0.25);">
-                    <h4 style="font-size: 0.85rem; margin-bottom: 1rem;">Test Notification</h4>
-                    <div style="display: flex; gap: 0.75rem;">
-                        <input type="tel" id="wa-test-phone" class="neu-inset" placeholder="Contoh: 60123456789" style="flex: 1;">
-                        <button class="btn-logout" onclick="window.testWANotification()" style="width: auto; padding: 0.75rem 1.5rem; background: rgba(163,177,198,0.2); border: 1px solid var(--border); color: var(--primary);">Test Send</button>
+                <div style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid rgba(163,177,198,0.25);">
+                    <h4 style="font-size:0.85rem;margin-bottom:0.75rem;">Test Notification</h4>
+                    <div style="display:flex;gap:0.75rem;">
+                        <input type="tel" id="wa-test-phone" class="neu-inset" placeholder="Contoh: 60123456789" style="flex:1;">
+                        <button class="btn-logout" onclick="window.testWANotification()" style="width:auto;padding:0.75rem 1.5rem;background:rgba(163,177,198,0.2);border:1px solid var(--border);color:var(--primary);">Test Send</button>
                     </div>
                 </div>
             </div>
-        ` : ''}
+
+            <!-- WA Log -->
+            <div class="glass-card fade-in" style="padding:0;overflow:hidden;">
+              <div style="padding:0.85rem 1.25rem;border-bottom:1px solid rgba(163,177,198,0.15);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;background:rgba(163,177,198,0.04);">
+                <div style="display:flex;align-items:center;gap:0.7rem;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                  <span style="font-size:0.9rem;font-weight:700;color:var(--text);">Log Notifikasi WhatsApp</span>
+                  <span style="font-size:0.72rem;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.1rem 0.5rem;border-radius:999px;">${waLogs.length} entri</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+                  <span style="font-size:0.75rem;font-weight:700;background:rgba(16,185,129,0.12);color:#10b981;border:1px solid rgba(16,185,129,0.25);border-radius:999px;padding:0.2rem 0.65rem;">✓ ${sentCount} Berjaya</span>
+                  <span style="font-size:0.75rem;font-weight:700;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.2);border-radius:999px;padding:0.2rem 0.65rem;">✗ ${failedCount} Gagal</span>
+                  ${waLogs.length > 0 ? `<button onclick="window.clearWALogs()" style="padding:0.3rem 0.8rem;border-radius:999px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.07);font-size:0.75rem;font-weight:600;color:#ef4444;cursor:pointer;">🗑 Kosongkan Log</button>` : ''}
+                </div>
+              </div>
+              ${waLogs.length === 0 ? `
+                <div style="padding:3rem;text-align:center;color:var(--text-muted);font-size:0.85rem;">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3;margin-bottom:0.75rem;display:block;margin-inline:auto;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                  Tiada log notifikasi lagi. Log akan muncul selepas sistem menghantar WhatsApp.
+                </div>
+              ` : `
+              <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
+                  <thead>
+                    <tr style="background:rgba(163,177,198,0.04);border-bottom:1px solid rgba(163,177,198,0.15);">
+                      <th style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:left;white-space:nowrap;">Masa</th>
+                      <th style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:left;white-space:nowrap;">Status</th>
+                      <th style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:left;white-space:nowrap;">Penerima</th>
+                      <th style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:left;white-space:nowrap;">No. Telefon</th>
+                      <th style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:left;">Pratonton Mesej / Sebab Gagal</th>
+                      <th style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:left;white-space:nowrap;">Dihantar Oleh</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${waLogs.map((log, i) => {
+                      const d = new Date(log.ts);
+                      const timeStr = d.toLocaleDateString('ms-MY', { day:'2-digit', month:'short', year:'2-digit' }) + ' ' + d.toLocaleTimeString('ms-MY', { hour:'2-digit', minute:'2-digit' });
+                      const isSent = log.status === 'sent';
+                      const rowBg = !isSent ? 'rgba(239,68,68,0.04)' : (i % 2 === 0 ? '' : 'rgba(163,177,198,0.03)');
+                      return `
+                      <tr style="border-bottom:1px solid rgba(163,177,198,0.08);background:${rowBg};">
+                        <td style="padding:0.55rem 0.75rem;white-space:nowrap;color:var(--text-muted);font-size:0.73rem;">${timeStr}</td>
+                        <td style="padding:0.55rem 0.75rem;white-space:nowrap;">
+                          ${isSent
+                            ? `<span style="display:inline-flex;align-items:center;gap:0.3rem;background:rgba(16,185,129,0.12);color:#10b981;border:1px solid rgba(16,185,129,0.25);border-radius:999px;padding:0.18rem 0.6rem;font-size:0.7rem;font-weight:700;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Berjaya</span>`
+                            : `<span style="display:inline-flex;align-items:center;gap:0.3rem;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.2);border-radius:999px;padding:0.18rem 0.6rem;font-size:0.7rem;font-weight:700;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Gagal</span>`
+                          }
+                        </td>
+                        <td style="padding:0.55rem 0.75rem;font-weight:600;color:var(--text);">${log.name || '—'}</td>
+                        <td style="padding:0.55rem 0.75rem;color:var(--text-muted);font-family:monospace;font-size:0.75rem;">${log.phone || '—'}</td>
+                        <td style="padding:0.55rem 0.75rem;max-width:320px;">
+                          ${!isSent && log.error
+                            ? `<span style="color:#ef4444;font-size:0.75rem;font-weight:600;">⚠️ ${log.error}</span>`
+                            : `<span style="color:var(--text-muted);font-size:0.75rem;">${(log.preview || '').substring(0, 100)}${(log.preview||'').length > 100 ? '…' : ''}</span>`
+                          }
+                        </td>
+                        <td style="padding:0.55rem 0.75rem;color:var(--text-muted);font-size:0.73rem;white-space:nowrap;">${log.sentBy || '—'}</td>
+                      </tr>`;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+              `}
+            </div>
+            ` : ''}
+
+            ${waSettingsSubTab === 'rbac_notif' ? `
+            <!-- RBAC Notifikasi Kelulusan -->
+            <div style="margin-bottom:1rem;">
+              <p style="font-size:0.8rem;color:var(--text-muted);line-height:1.6;">Pilih role yang akan menerima notifikasi WhatsApp bagi setiap peringkat kelulusan cuti, mengikut zon cawangan. Konfigurasi disimpan dalam Firestore dan berkuat kuasa untuk semua pengguna.</p>
+            </div>
+            ${zoneConfig.map(zone => {
+              const cfg = waNotifRbac[zone.key] || {};
+              return `
+              <div class="glass-card fade-in" style="padding:0;overflow:hidden;margin-bottom:1.5rem;border-top:3px solid ${zone.color};">
+                <div style="padding:1rem 1.25rem;border-bottom:1px solid rgba(163,177,198,0.15);background:rgba(163,177,198,0.04);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:0.6rem;">
+                      <div style="width:10px;height:10px;border-radius:50%;background:${zone.color};flex-shrink:0;"></div>
+                      <span style="font-size:0.95rem;font-weight:700;color:var(--text);">${zone.label}</span>
+                    </div>
+                    <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.2rem;margin-left:1.1rem;">${zone.desc}</div>
+                  </div>
+                  <button id="save-rbac-${zone.key}" onclick="window.saveWaNotifRbac('${zone.key}')" style="padding:0.45rem 1.1rem;border-radius:8px;border:1px solid ${zone.color};background:transparent;color:${zone.color};font-size:0.78rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    Simpan ${zone.label}
+                  </button>
+                </div>
+                <div style="overflow-x:auto;">
+                  <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+                    <thead>
+                      <tr style="background:rgba(163,177,198,0.06);border-bottom:1px solid rgba(163,177,198,0.15);">
+                        <th style="padding:0.65rem 1rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:left;white-space:nowrap;min-width:140px;">Role</th>
+                        ${triggers.map(t => `
+                        <th style="padding:0.65rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:center;white-space:nowrap;">
+                          <div>${t.label}</div>
+                          <div style="font-size:0.6rem;font-weight:400;color:var(--text-muted);opacity:0.7;text-transform:none;letter-spacing:0;">${t.desc}</div>
+                        </th>`).join('')}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${allRoles.map((role, ri) => {
+                        const label = window.staffConfig.roleLabels[role] || role;
+                        return `
+                        <tr style="border-bottom:1px solid rgba(163,177,198,0.07);${ri % 2 === 1 ? 'background:rgba(163,177,198,0.025);' : ''}">
+                          <td style="padding:0.55rem 1rem;font-weight:600;color:var(--text);white-space:nowrap;">${label}</td>
+                          ${triggers.map(t => {
+                            const checked = (cfg[t.key] || []).includes(role);
+                            return `
+                            <td style="padding:0.55rem 0.75rem;text-align:center;">
+                              <label style="display:inline-flex;align-items:center;justify-content:center;cursor:pointer;width:32px;height:32px;border-radius:8px;border:1.5px solid ${checked ? zone.color : 'rgba(163,177,198,0.35)'};background:${checked ? zone.color + '22' : 'transparent'};transition:all 0.15s;">
+                                <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleWaNotifRole('${zone.key}','${t.key}','${role}')" style="position:absolute;opacity:0;width:0;height:0;">
+                                ${checked ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${zone.color}" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>` : ''}
+                              </label>
+                            </td>`;
+                          }).join('')}
+                        </tr>`;
+                      }).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>`;
+            }).join('')}
+            ` : ''}
+          `;
+        })() : ''}
 
         ${managementTab === 'reg_requests' && ['admin', 'hr', 'super_admin'].includes(user.role) ? `
           <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem; margin-top: 1rem;">
@@ -6319,6 +6879,121 @@ function renderView() {
           `;
         })() : ''}
 
+        ${managementTab === 'balance_view' && userPerms.manage_reports ? (() => {
+          const userStateScope = window.getUserStateScope(user);
+          const reportBranch   = window.getUserReportBranch(user);
+          const reportDaerah   = window.getUserReportDaerah(user);
+
+          // Pool staf ikut skop pengguna
+          let pool = staffList.filter(s => {
+            if (s.inactive) return false;
+            if (s.role === 'super_admin') return false;
+            if (reportBranch && s.branch !== reportBranch) return false;
+            const b = branches.find(br => br.name === s.branch);
+            if (!reportBranch) {
+              if (userStateScope !== 'all' && (!b || b.state !== userStateScope)) return false;
+              if (reportDaerah && (!b || b.daerah !== reportDaerah)) return false;
+            }
+            return true;
+          });
+
+          // Filter cawangan & carian
+          if (balanceViewBranch !== 'SEMUA') pool = pool.filter(s => s.branch === balanceViewBranch);
+          if (balanceViewSearch.trim()) {
+            const q = balanceViewSearch.toLowerCase();
+            pool = pool.filter(s => (s.name||'').toLowerCase().includes(q) || (s.ic||'').includes(q));
+          }
+
+          const availBranches = [...new Set(staffList.filter(s=>!s.inactive && s.role!=='super_admin').map(s=>s.branch).filter(Boolean))].sort();
+
+          // Kira baki cuti untuk setiap staf
+          const keyTypes = ['AL','MC','EL','HL','ML','CME'];
+          const staffRows = pool.map(s => {
+            const stats = {};
+            keyTypes.forEach(t => { stats[t] = window.getLeaveStats(s, t); });
+            return { s, stats };
+          });
+
+          // Kumpul ikut cawangan
+          const byBranch = {};
+          staffRows.forEach(({ s, stats }) => {
+            const br = s.branch || '—';
+            if (!byBranch[br]) byBranch[br] = [];
+            byBranch[br].push({ s, stats });
+          });
+          const sortedBranches = Object.keys(byBranch).sort();
+
+          const roleColor = { super_admin:'#3b82f6', admin:'#f59e0b', hr:'#a855f7', hod:'#38bdf8', pic_hod:'#fb923c', supervisor:'#10b981', team_leader:'#f43f5e', staff:'#64748b', juru_xray:'#ec4899', sonographer:'#6366f1', juru_audio:'#0d9488' };
+
+          return `
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;margin-top:0.5rem;flex-wrap:wrap;gap:0.75rem;">
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.25);display:flex;align-items:center;justify-content:center;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              </div>
+              <div>
+                <h2 style="font-size:1.05rem;font-weight:700;margin:0;">Baki Cuti Semua Staf</h2>
+                <p style="font-size:0.72rem;color:var(--text-muted);margin:0.1rem 0 0;">${pool.length} staf · dikumpul ikut cawangan</p>
+              </div>
+            </div>
+            <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+              <input type="text" placeholder="Cari nama / IC..." value="${balanceViewSearch}" oninput="window.setBalanceViewSearch(this.value)" class="neu-inset" style="padding:0.45rem 0.75rem;font-size:0.82rem;border-radius:8px;width:180px;">
+              <select class="neu-inset" style="padding:0.45rem 0.75rem;font-size:0.82rem;border-radius:8px;cursor:pointer;" onchange="window.setBalanceViewBranch(this.value)">
+                <option value="SEMUA" ${balanceViewBranch==='SEMUA'?'selected':''}>Semua Cawangan</option>
+                ${availBranches.map(b=>`<option value="${b}" ${balanceViewBranch===b?'selected':''}>${b}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+
+          ${sortedBranches.length === 0 ? `
+            <div class="glass-card" style="padding:3rem;text-align:center;color:var(--text-muted);">Tiada staf dijumpai.</div>
+          ` : sortedBranches.map(br => {
+            const rows = byBranch[br];
+            return `
+            <div class="glass-card fade-in" style="padding:0;overflow:hidden;margin-bottom:1.25rem;border-top:3px solid rgba(16,185,129,0.5);">
+              <div style="padding:0.75rem 1.1rem;background:rgba(16,185,129,0.04);border-bottom:1px solid rgba(163,177,198,0.15);display:flex;align-items:center;gap:0.75rem;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                <span style="font-size:0.88rem;font-weight:700;color:var(--text);">${br}</span>
+                <span style="font-size:0.72rem;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.1rem 0.5rem;border-radius:999px;">${rows.length} staf</span>
+              </div>
+              <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
+                  <thead>
+                    <tr style="background:rgba(163,177,198,0.06);border-bottom:1px solid rgba(163,177,198,0.2);">
+                      <th style="padding:0.6rem 1rem;font-weight:700;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);text-align:left;min-width:160px;">Nama</th>
+                      <th style="padding:0.6rem 0.75rem;font-weight:700;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);text-align:left;">Peranan</th>
+                      ${keyTypes.map(t=>`<th style="padding:0.6rem 0.75rem;font-weight:700;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);text-align:center;min-width:70px;">${t}</th>`).join('')}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rows.map(({ s, stats }, ri) => {
+                      const rc = roleColor[s.role] || '#64748b';
+                      return `<tr style="border-bottom:1px solid rgba(163,177,198,0.08);${ri%2===1?'background:rgba(163,177,198,0.025);':''}">
+                        <td style="padding:0.6rem 1rem;font-weight:600;color:var(--text);">${s.name}</td>
+                        <td style="padding:0.6rem 0.75rem;">
+                          <span style="font-size:0.65rem;font-weight:700;background:${rc}18;color:${rc};border:1px solid ${rc}33;border-radius:5px;padding:0.15rem 0.45rem;">${window.staffConfig.roleLabels[s.role]||s.role}</span>
+                        </td>
+                        ${keyTypes.map(t => {
+                          const st = stats[t];
+                          const hasEnt = st.ent > 0;
+                          const isLow = hasEnt && st.bal <= 3;
+                          const isZero = hasEnt && st.bal <= 0;
+                          if (!hasEnt) return `<td style="padding:0.6rem 0.75rem;text-align:center;color:rgba(163,177,198,0.4);font-size:0.7rem;">—</td>`;
+                          return `<td style="padding:0.6rem 0.75rem;text-align:center;">
+                            <div style="font-size:0.82rem;font-weight:800;color:${isZero?'#ef4444':isLow?'#f59e0b':'#10b981'};">${st.bal.toFixed(1)}</div>
+                            <div style="font-size:0.6rem;color:var(--text-muted);">${st.used.toFixed(1)}/${st.ent.toFixed(1)}</div>
+                          </td>`;
+                        }).join('')}
+                      </tr>`;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>`;
+          }).join('')}
+          `;
+        })() : ''}
+
         ${managementTab === 'hr_reports' ? (() => {
           // Scope filter (state + optional daerah + optional own-branch restriction)
           const reportDaerah = window.getUserReportDaerah(user);
@@ -6335,14 +7010,14 @@ function renderView() {
 
           // Approved report data
           const approvedBase = scopedRecords.filter(r => r.status === 'APPROVED');
-          const availableYears = [...new Set(approvedBase.map(r => (r.startDate||'').substring(0,4)).filter(Boolean))].sort().reverse();
+          const availableYears = [...new Set(approvedBase.map(r => r.id ? new Date(r.id).getFullYear().toString() : '').filter(Boolean))].sort().reverse();
           const availableBranches = [...new Set(approvedBase.map(r => r.branch).filter(Boolean))].sort();
           const availableTypes = [...new Set(approvedBase.map(r => r.type).filter(Boolean))].sort();
 
           const approvedFiltered = approvedBase.filter(r => {
             if (approvedReportBranch !== 'SEMUA' && r.branch !== approvedReportBranch) return false;
             if (approvedReportType !== 'SEMUA' && r.type !== approvedReportType) return false;
-            if (approvedReportYear !== 'SEMUA' && !(r.startDate||'').startsWith(approvedReportYear)) return false;
+            if (approvedReportYear !== 'SEMUA' && (!r.id || new Date(r.id).getFullYear().toString() !== approvedReportYear)) return false;
             return true;
           });
           const approvedTotalDays = approvedFiltered.reduce((s,r) => s + parseFloat(r.days||0), 0);
@@ -6442,8 +7117,10 @@ function renderView() {
                   ${scopedRecords.map(r => `
                   <tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
                     <td style="padding:1.5rem 1rem;">
-                      <div style="font-weight:700;font-size:0.8rem;">${r.startDate}</div>
-                      <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.25rem;">${r.startDate===r.endDate?'':`to ${r.endDate}`}</div>
+                      <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-muted);margin-bottom:0.2rem;">Tarikh Mohon</div>
+                      <div style="font-weight:700;font-size:0.8rem;">${r.id ? new Date(r.id).toLocaleDateString('ms-MY',{day:'2-digit',month:'short',year:'numeric'}) : '-'}</div>
+                      <div style="font-size:0.62rem;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-muted);margin-top:0.4rem;margin-bottom:0.1rem;">Tarikh Cuti</div>
+                      <div style="font-size:0.7rem;color:var(--text-muted);">${r.startDate}${r.startDate!==r.endDate?` → ${r.endDate}`:''}</div>
                     </td>
                     <td style="padding:1.5rem 1rem;">
                       <div style="font-weight:700;font-size:0.85rem;text-transform:uppercase;margin-bottom:0.25rem;">${r.name}</div>
@@ -6534,11 +7211,13 @@ function renderView() {
                 <tbody>
                   ${approvedFiltered.length === 0
                     ? `<tr><td colspan="6" style="padding:3rem;text-align:center;color:var(--text-muted);font-size:0.85rem;">Tiada rekod diluluskan dijumpai</td></tr>`
-                    : approvedFiltered.sort((a,b)=>(b.startDate||'').localeCompare(a.startDate||'')).map(r => `
+                    : approvedFiltered.slice().sort((a,b)=>(b.id||0)-(a.id||0)).map(r => `
                   <tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
                     <td style="padding:1.1rem 1rem;">
-                      <div style="font-weight:700;font-size:0.8rem;">${r.startDate}</div>
-                      ${r.startDate!==r.endDate?`<div style="font-size:0.68rem;color:var(--text-muted);">s/d ${r.endDate}</div>`:''}
+                      <div style="font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-muted);margin-bottom:0.15rem;">Tarikh Mohon</div>
+                      <div style="font-weight:700;font-size:0.8rem;">${r.id ? new Date(r.id).toLocaleDateString('ms-MY',{day:'2-digit',month:'short',year:'numeric'}) : '-'}</div>
+                      <div style="font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-muted);margin-top:0.35rem;margin-bottom:0.1rem;">Tarikh Cuti</div>
+                      <div style="font-size:0.68rem;color:var(--text-muted);">${r.startDate}${r.startDate!==r.endDate?` → ${r.endDate}`:''}</div>
                     </td>
                     <td style="padding:1.1rem 1rem;">
                       <div style="font-weight:700;font-size:0.82rem;text-transform:uppercase;">${r.name}</div>
@@ -6572,12 +7251,12 @@ function renderView() {
           `}
 
           ${hrReportTab === 'jenis' ? (() => {
-            const availYearsJ = [...new Set(scopedRecords.map(r=>(r.startDate||'').substring(0,4)).filter(Boolean))].sort().reverse();
+            const availYearsJ = [...new Set(scopedRecords.map(r=>r.id ? new Date(r.id).getFullYear().toString() : '').filter(Boolean))].sort().reverse();
             const availBranchesJ = [...new Set(scopedRecords.map(r=>r.branch).filter(Boolean))].sort();
 
             const jeniFiltered = scopedRecords.filter(r => {
               if (r.status !== 'APPROVED') return false;
-              if (jenisCutiYear !== 'SEMUA' && !(r.startDate||'').startsWith(jenisCutiYear)) return false;
+              if (jenisCutiYear !== 'SEMUA' && new Date(r.id).getFullYear().toString() !== jenisCutiYear) return false;
               if (jenisCutiBranch !== 'SEMUA' && r.branch !== jenisCutiBranch) return false;
               return true;
             });
@@ -6697,7 +7376,7 @@ function renderView() {
             const MONTHS = ['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ogo','Sep','Okt','Nov','Dis'];
             const allLeaveTypes = leaveCategories.map(c => c.id);
             const availBranchesForBalance = [...new Set(scopedRecords.map(r=>r.branch).filter(Boolean))].sort();
-            const availYearsForBalance = [...new Set(leaveRecords.map(r=>(r.startDate||'').substring(0,4)).filter(Boolean))].sort().reverse();
+            const availYearsForBalance = [...new Set(leaveRecords.map(r=>r.id ? new Date(r.id).getFullYear().toString() : '').filter(Boolean))].sort().reverse();
 
             // Get staff pool: staff in selected branch (or all), include inactive if they have records
             let staffPool = staffList.filter(s => {
@@ -6713,11 +7392,11 @@ function renderView() {
               return true;
             });
 
-            // Approved records for the selected year + type
+            // Records for balance — sama dengan getLeaveStats: APPROVED + HOD APPROVED + TL APPROVED
             const approvedForBalance = leaveRecords.filter(r => {
-              if (r.status !== 'APPROVED') return false;
+              if (!['APPROVED','HOD APPROVED','TL APPROVED'].includes(r.status)) return false;
               if (r.type !== balanceReportType) return false;
-              if (balanceReportYear !== 'SEMUA' && !(r.startDate||'').startsWith(balanceReportYear)) return false;
+              if (balanceReportYear !== 'SEMUA' && (!r.id || new Date(r.id).getFullYear().toString() !== balanceReportYear)) return false;
               if (reportBranch && r.branch !== reportBranch) return false;
               if (!reportBranch && balanceReportBranch !== 'SEMUA' && r.branch !== balanceReportBranch) return false;
               if (!reportBranch) {
@@ -6730,10 +7409,10 @@ function renderView() {
               return true;
             });
 
-            // Build monthly usage map per staff IC
+            // Build monthly usage map per staff IC — guna tarikh mohon (submission date)
             const usageByIc = {};
             approvedForBalance.forEach(r => {
-              const m = parseInt((r.startDate||'').substring(5,7));
+              const m = r.id ? new Date(r.id).getMonth() + 1 : parseInt((r.startDate||'').substring(5,7));
               if (!m || m < 1 || m > 12) return;
               if (!usageByIc[r.ic]) usageByIc[r.ic] = Array(12).fill(0);
               usageByIc[r.ic][m-1] += parseFloat(r.days||0);
@@ -6748,20 +7427,20 @@ function renderView() {
             });
             const fullPool = [...staffPool, ...extraStaff];
 
-            // Build rows
+            // Build rows — guna getLeaveStats supaya selari dengan dashboard staf
             const balanceRows = fullPool.map(s => {
               const monthlyUsed = usageByIc[s.ic] || Array(12).fill(0);
-              const totalUsed = monthlyUsed.reduce((a,b)=>a+b,0);
-              let entitlement = 0;
-              if (balanceReportType === 'AL') {
-                entitlement = parseFloat(window.getEarnedAL(s).toFixed(1));
-              } else {
-                const stored = s[`ent_${balanceReportType}`];
-                entitlement = (stored !== undefined && stored !== null)
-                  ? parseFloat(stored)
-                  : (leaveCategories.find(c=>c.id===balanceReportType)?.entitlement || 0);
-              }
-              return { ic: s.ic, name: s.name, branch: s.branch, monthlyUsed, totalUsed, entitlement };
+              // Guna getLeaveStats untuk entitlement + used total (sama dengan dashboard)
+              const staffFull = staffList.find(x => x.ic === s.ic) || s;
+              const stats = window.getLeaveStats(staffFull, balanceReportType);
+              return {
+                ic: s.ic,
+                name: s.name,
+                branch: s.branch,
+                monthlyUsed,
+                totalUsed: stats.used,
+                entitlement: stats.ent
+              };
             }).filter(r => r.totalUsed > 0 || staffPool.find(s=>s.ic===r.ic));
 
             // Expose to print function via closure-accessible variable
@@ -6893,7 +7572,7 @@ function renderView() {
 
           ${hrReportTab === 'attendance' && userPerms.report_attendance ? (() => {
             const MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
-            const availYearsA = [...new Set(leaveRecords.map(r=>(r.startDate||'').substring(0,4)).filter(Boolean))].sort().reverse();
+            const availYearsA = [...new Set(leaveRecords.map(r=>r.id ? new Date(r.id).getFullYear().toString() : '').filter(Boolean))].sort().reverse();
             const scopedBranchesA = [...new Set(staffList.filter(s=>!s.inactive).map(s=>s.branch).filter(Boolean))].sort().filter(b => {
               if (reportBranch) return b === reportBranch;
               const bObj = branches.find(br => br.name === b);
@@ -6905,10 +7584,11 @@ function renderView() {
 
             const monthPrefix = attendanceReportYear + '-' + String(attendanceReportMonth).padStart(2,'0');
 
+            const _selBranch = attendanceReportBranch; // tangkap nilai semasa
             const attStaffPool = staffList.filter(s => {
               if (s.inactive) return false;
               if (reportBranch && s.branch !== reportBranch) return false;
-              if (attendanceReportBranch !== 'SEMUA' && s.branch !== attendanceReportBranch) return false;
+              if (_selBranch && _selBranch !== 'SEMUA' && s.branch !== _selBranch) return false;
               const bObj = branches.find(b => b.name === s.branch);
               if (userStateScope !== 'all') { if (!bObj || bObj.state !== userStateScope) return false; }
               if (reportDaerah && (!bObj || bObj.daerah !== reportDaerah)) return false;
@@ -6917,13 +7597,16 @@ function renderView() {
 
             const getML = ic => {
               const t = {};
-              leaveRecords.filter(r => r.ic===ic && r.status==='APPROVED' && (r.startDate||'').startsWith(monthPrefix))
+              leaveRecords.filter(r => r.ic===ic && r.status==='APPROVED' &&
+                r.id && new Date(r.id).getFullYear().toString()===attendanceReportYear &&
+                String(new Date(r.id).getMonth()+1)===attendanceReportMonth)
                 .forEach(r => { t[r.type]=(t[r.type]||0)+parseFloat(r.days||0); });
               return t;
             };
             const getYL = ic => {
               const t = {};
-              leaveRecords.filter(r => r.ic===ic && r.status==='APPROVED' && (r.startDate||'').startsWith(attendanceReportYear))
+              leaveRecords.filter(r => r.ic===ic && r.status==='APPROVED' &&
+                r.id && new Date(r.id).getFullYear().toString()===attendanceReportYear)
                 .forEach(r => { t[r.type]=(t[r.type]||0)+parseFloat(r.days||0); });
               return t;
             };
@@ -7037,8 +7720,12 @@ function renderView() {
             <!-- Report title -->
             <div style="text-align:center;margin-bottom:1.5rem;padding:1rem;background:rgba(163,177,198,0.05);border-radius:12px;border:1px solid rgba(163,177,198,0.15);">
               <div style="font-size:0.9rem;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.25rem;">SENARAI BILANGAN CUTI, MC DAN EL KAKITANGAN</div>
-              ${attendanceReportBranch !== 'SEMUA' ? `<div style="font-size:0.75rem;color:var(--text-muted);">Cawangan: ${attendanceReportBranch}</div>` : reportBranch ? `<div style="font-size:0.75rem;color:var(--text-muted);">Cawangan: ${reportBranch}</div>` : ''}
+              <div style="display:inline-flex;align-items:center;gap:0.5rem;background:rgba(30,41,59,0.08);border:1px solid rgba(30,41,59,0.2);border-radius:20px;padding:0.3rem 1rem;margin:0.4rem 0;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                <span style="font-size:0.75rem;font-weight:700;">Cawangan: ${_selBranch === 'SEMUA' ? (reportBranch || 'Semua Cawangan') : _selBranch}</span>
+              </div>
               <div style="font-size:0.78rem;font-weight:700;color:var(--primary);margin-top:0.2rem;">BULAN: ${MONTHS_MS[parseInt(attendanceReportMonth)-1].toUpperCase()} ${attendanceReportYear}</div>
+              <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.2rem;">${attStaffPool.length} kakitangan</div>
             </div>
 
             ${renderAttSection('KAKITANGAN', attKakitangan, false, '#3b82f6')}
@@ -7167,22 +7854,18 @@ function renderView() {
 
         ${managementTab === 'routing' && canManageRouting ? (() => {
           const rows = [
-            { key:'doctor_kuantan',    label:'Doktor',              sub:'Kuantan / Pahang Am',  color:'#3b82f6', bg:'rgba(59,130,246,0.06)'  },
-            { key:'doctor_bentong',    label:'Doktor',              sub:'Bentong',              color:'#8b5cf6', bg:'rgba(139,92,246,0.06)'  },
-            { key:'doctor_mckip',      label:'Doktor',              sub:'MCKIP',                color:'#6366f1', bg:'rgba(99,102,241,0.06)'  },
-            { key:'doctor_terengganu', label:'Doktor',              sub:'Terengganu',           color:'#0d9488', bg:'rgba(13,148,136,0.06)'  },
-            { key:'admin_staff_pahang',     label:'Kakitangan Admin', sub:'Pahang',       color:'#f59e0b', bg:'rgba(245,158,11,0.06)'  },
-            { key:'admin_staff_terengganu', label:'Kakitangan Admin', sub:'Terengganu',   color:'#0d9488', bg:'rgba(13,148,136,0.06)'  },
-            { key:'operation_balok',   label:'Kakitangan Operasi',  sub:'Balok',                color:'#10b981', bg:'rgba(16,185,129,0.06)'  },
-            { key:'operation_other',   label:'Kakitangan Operasi',  sub:'Lain-lain',            color:'#14b8a6', bg:'rgba(20,184,166,0.06)'  },
-            { key:'xray_sono_balok',  label:'Juru X-Ray / Sonographer', sub:'Balok — P1: Supervisor', color:'#ec4899', bg:'rgba(236,72,153,0.06)'  },
-            { key:'juru_audio_balok', label:'Juru Audio',               sub:'Balok — P1: HOD',        color:'#0d9488', bg:'rgba(13,148,136,0.06)'  },
+            { key:'terengganu',       label:'Semua Kakitangan',  sub:'Terengganu',           color:'#0d9488', bg:'rgba(13,148,136,0.06)'  },
+            { key:'pahang_lain',      label:'Semua Kakitangan',  sub:'Pahang (Selain Balok)', color:'#3b82f6', bg:'rgba(59,130,246,0.06)'  },
+            { key:'doctor_pahang',    label:'Doktor',            sub:'Pahang (Selain Bentong)', color:'#d97706', bg:'rgba(217,119,6,0.06)'  },
+            { key:'operation_balok',  label:'Kakitangan Operasi',sub:'Balok (HQ)',            color:'#10b981', bg:'rgba(16,185,129,0.06)'  },
+            { key:'xray_sono_balok',  label:'Juru X-Ray / Sono', sub:'Balok (HQ)',            color:'#ec4899', bg:'rgba(236,72,153,0.06)'  },
+            { key:'juru_audio_balok', label:'Juru Audio',        sub:'Balok (HQ)',            color:'#0d9488', bg:'rgba(13,148,136,0.06)'  },
           ];
           const cols = [
             { field:'needs_tl',     label:'Team Leader', grp:'p0', color:'#f43f5e' },
             { field:'p1_hod',       label:'HOD',         grp:'p1', color:'#38bdf8' },
             { field:'p1_pic_hod',   label:'PIC / HOD',   grp:'p1', color:'#818cf8' },
-            { field:'p1_supervisor',label:'Supervisor',   grp:'p1', color:'#34d399', note:'★ Balok Spvsr bagi Doktor Kuantan & Op. Balok' },
+            { field:'p1_supervisor',label:'Supervisor',   grp:'p1', color:'#34d399', note:'★ Balok Spvsr bagi Doktor Pahang (Selain Bentong) & Op. Balok' },
             { field:'needs_p2',     label:'Perlu P2?',   grp:'p2', color:'#f97316' },
           ];
           const mkCell = (group, field, checked, color) =>
@@ -7219,7 +7902,7 @@ function renderView() {
               <div style="width:16px;height:16px;border-radius:4px;background:rgba(239,68,68,0.1);display:flex;align-items:center;justify-content:center;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
               <span style="font-size:0.68rem;color:#ef4444;font-weight:600;">Tidak Aktif</span>
             </div>
-            <div style="font-size:0.68rem;color:var(--text-muted);padding:0.28rem 0.65rem;background:rgba(163,177,198,0.06);border:1px solid rgba(163,177,198,0.2);border-radius:6px;">★ Supervisor bagi Doktor Kuantan & Op. Balok = Supervisor Balok (HQ)</div>
+            <div style="font-size:0.68rem;color:var(--text-muted);padding:0.28rem 0.65rem;background:rgba(163,177,198,0.06);border:1px solid rgba(163,177,198,0.2);border-radius:6px;">★ Supervisor bagi Doktor Pahang (Selain Bentong) & Op. Balok = Supervisor Balok (HQ)</div>
           </div>
 
           <section class="glass-card fade-in" style="padding:0;overflow:hidden;border:1px solid rgba(163,177,198,0.3);">
@@ -7296,22 +7979,18 @@ function renderView() {
                       const dash = `<span style="color:rgba(163,177,198,0.4);font-size:1rem;">—</span>`;
 
                       const flowRows = [
-                        { key:'doctor_kuantan',    grp:'Doktor',                    scope:'Kuantan / Pahang Am',            gColor:'#3b82f6' },
-                        { key:'doctor_bentong',    grp:'Doktor',                    scope:'Bentong',                        gColor:'#8b5cf6' },
-                        { key:'doctor_mckip',      grp:'Doktor',                    scope:'MCKIP',                          gColor:'#6366f1' },
-                        { key:'doctor_terengganu', grp:'Doktor',                    scope:'Terengganu',                     gColor:'#0d9488' },
-                        { key:'admin_staff_pahang',     grp:'Kakitangan Admin',     scope:'Pahang',                        gColor:'#f59e0b' },
-                        { key:'admin_staff_terengganu', grp:'Kakitangan Admin',     scope:'Terengganu',                    gColor:'#0d9488' },
-                        { key:'operation_balok',   grp:'Kakitangan Operasi',        scope:'Balok (HQ)',                     gColor:'#10b981' },
-                        { key:'operation_other',   grp:'Kakitangan Operasi',        scope:'Cawangan Lain',                  gColor:'#14b8a6' },
-                        { key:'xray_sono_balok',   grp:'Juru X-Ray / Sonographer', scope:'Balok (HQ)',                     gColor:'#ec4899' },
-                        { key:'juru_audio_balok',  grp:'Juru Audio',               scope:'Balok (HQ)',                     gColor:'#0d9488' },
+                        { key:'terengganu',       grp:'Semua Kakitangan',          scope:'Terengganu',                     gColor:'#0d9488' },
+                        { key:'pahang_lain',      grp:'Semua Kakitangan',          scope:'Pahang (Selain Balok)',           gColor:'#3b82f6' },
+                        { key:'doctor_pahang',    grp:'Doktor',                    scope:'Pahang (Selain Bentong)',         gColor:'#d97706' },
+                        { key:'operation_balok',  grp:'Kakitangan Operasi',        scope:'Balok (HQ)',                     gColor:'#10b981' },
+                        { key:'xray_sono_balok',  grp:'Juru X-Ray / Sonographer', scope:'Balok (HQ)',                     gColor:'#ec4899' },
+                        { key:'juru_audio_balok', grp:'Juru Audio',               scope:'Balok (HQ)',                     gColor:'#0d9488' },
                       ];
 
                       const getP1Label = (key, cfg) => {
                         if (cfg.needs_tl && cfg.p1_supervisor) return 'Supervisor Balok';
                         if (cfg.p1_supervisor) {
-                          if (key === 'doctor_kuantan' || key === 'xray_sono_balok') return 'Supervisor Balok';
+                          if (key === 'operation_balok' || key === 'xray_sono_balok' || key === 'doctor_pahang') return 'Supervisor Balok';
                           return 'Supervisor';
                         }
                         if (cfg.p1_hod && cfg.p1_pic_hod) return 'HOD / PIC HOD';
@@ -7352,35 +8031,36 @@ function renderView() {
         })() : ''}
 
         ${managementTab === 'access_control' ? (() => {
+          const CELL_SIZE = '38px';
           const renderRbacDashboardCell = (role) => {
               const val = window.rbacMatrix[role].dashboard;
               const isAnalisa = val === 'analisa';
               const isBranch = val === 'branch';
-              const bg = isAnalisa ? 'rgba(16,185,129,0.18)' : isBranch ? 'rgba(251,146,60,0.18)' : 'rgba(163,177,198,0.1)';
-              const border = isAnalisa ? 'rgba(16,185,129,0.3)' : isBranch ? 'rgba(251,146,60,0.35)' : 'rgba(163,177,198,0.2)';
-              const color = isAnalisa ? '#34d399' : isBranch ? '#fb923c' : '#64748b';
+              const bg     = isAnalisa ? 'rgba(16,185,129,0.2)'  : isBranch ? 'rgba(251,146,60,0.2)'  : 'rgba(163,177,198,0.12)';
+              const border = isAnalisa ? '2px solid #34d399'      : isBranch ? '2px solid #fb923c'      : '1px solid rgba(163,177,198,0.3)';
+              const color  = isAnalisa ? '#10b981'                : isBranch ? '#f97316'                : '#64748b';
               const icon = isAnalisa
-                ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>'
+                ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>'
                 : isBranch
-                  ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>'
+                  ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>'
                   : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
               const label = isAnalisa ? 'ANALISA' : isBranch ? 'CAWANGAN' : 'STAFF';
-              return `<td style="padding:0.6rem 0.5rem;border-right:1px solid rgba(163,177,198,0.12);cursor:pointer;text-align:center;" onclick="window.toggleRbac('${role}', 'dashboard')">
-                <div style="display:flex;flex-direction:column;align-items:center;gap:0.25rem;pointer-events:none;">
-                  <div style="width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;background:${bg};border:1px solid ${border};">${icon}</div>
-                  <span style="font-size:0.58rem;font-weight:700;letter-spacing:0.4px;color:${color};">${label}</span>
+              return `<td style="padding:0.55rem 0.4rem;border-right:1px solid rgba(163,177,198,0.15);cursor:pointer;text-align:center;background:transparent;" onclick="window.toggleRbac('${role}', 'dashboard')">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:0.3rem;pointer-events:none;">
+                  <div style="width:${CELL_SIZE};height:${CELL_SIZE};border-radius:9px;display:flex;align-items:center;justify-content:center;background:${bg};border:${border};box-shadow:0 1px 3px rgba(0,0,0,0.07);">${icon}</div>
+                  <span style="font-size:0.65rem;font-weight:800;letter-spacing:0.5px;color:${color};">${label}</span>
                 </div>
               </td>`;
           };
 
           const renderRbacCell = (role, module, isLastInGroup) => {
               const checked = window.rbacMatrix[role][module];
-              const borderStyle = isLastInGroup ? 'border-right:2px solid rgba(163,177,198,0.25)' : 'border-right:1px solid rgba(163,177,198,0.12)';
-              return `<td style="padding:0.6rem 0.5rem;${borderStyle};cursor:pointer;text-align:center;" onclick="window.toggleRbac('${role}', '${module}')">
+              const borderStyle = isLastInGroup ? 'border-right:2px solid rgba(163,177,198,0.3)' : 'border-right:1px solid rgba(163,177,198,0.15)';
+              return `<td style="padding:0.55rem 0.4rem;${borderStyle};cursor:pointer;text-align:center;" onclick="window.toggleRbac('${role}', '${module}')">
                 <div style="display:flex;align-items:center;justify-content:center;pointer-events:none;">
                   ${checked
-                    ? '<div style="width:28px;height:28px;border-radius:7px;background:rgba(16,185,129,0.18);border:1px solid rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>'
-                    : '<div style="width:28px;height:28px;border-radius:7px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.15);display:flex;align-items:center;justify-content:center;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>'}
+                    ? `<div style="width:${CELL_SIZE};height:${CELL_SIZE};border-radius:9px;background:rgba(16,185,129,0.15);border:2px solid #10b981;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(16,185,129,0.2);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>`
+                    : `<div style="width:${CELL_SIZE};height:${CELL_SIZE};border-radius:9px;background:rgba(239,68,68,0.08);border:1.5px solid rgba(239,68,68,0.25);display:flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>`}
                 </div>
               </td>`;
           };
@@ -7388,18 +8068,18 @@ function renderView() {
           const renderRbacScopeCell = (role, module, badgeLabel, badgeColor, badgeBg, badgeBorder, badgeIcon, isLastInGroup) => {
               const checked = !!(window.rbacMatrix[role][module]);
               const hasReport = !!(window.rbacMatrix[role].manage_reports);
-              const borderStyle = isLastInGroup ? 'border-right:2px solid rgba(163,177,198,0.25)' : 'border-right:1px solid rgba(163,177,198,0.12)';
+              const borderStyle = isLastInGroup ? 'border-right:2px solid rgba(163,177,198,0.3)' : 'border-right:1px solid rgba(163,177,198,0.15)';
               const canApply = hasReport;
-              return `<td style="padding:0.6rem 0.5rem;${borderStyle};cursor:${canApply?'pointer':'default'};text-align:center;${!canApply?'opacity:0.3;':''}" ${canApply?`onclick="window.toggleRbac('${role}', '${module}')"`:''}>
-                <div style="display:flex;flex-direction:column;align-items:center;gap:0.2rem;pointer-events:none;">
+              return `<td style="padding:0.55rem 0.4rem;${borderStyle};cursor:${canApply?'pointer':'default'};text-align:center;${!canApply?'opacity:0.25;':''}" ${canApply?`onclick="window.toggleRbac('${role}', '${module}')"`:''}>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:0.25rem;pointer-events:none;">
                   ${checked
-                    ? `<div style="padding:0.2rem 0.55rem;border-radius:20px;background:${badgeBg};border:1px solid ${badgeBorder};display:flex;align-items:center;gap:0.3rem;">
+                    ? `<div style="padding:0.25rem 0.6rem;border-radius:20px;background:${badgeBg};border:2px solid ${badgeBorder};display:flex;align-items:center;gap:0.35rem;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
                         ${badgeIcon}
-                        <span style="font-size:0.58rem;font-weight:800;color:${badgeColor};">${badgeLabel}</span>
+                        <span style="font-size:0.68rem;font-weight:800;color:${badgeColor};">${badgeLabel}</span>
                       </div>`
-                    : `<div style="padding:0.2rem 0.55rem;border-radius:20px;background:rgba(163,177,198,0.08);border:1px solid rgba(163,177,198,0.18);display:flex;align-items:center;gap:0.3rem;">
-                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                        <span style="font-size:0.58rem;font-weight:600;color:#94a3b8;">—</span>
+                    : `<div style="padding:0.25rem 0.6rem;border-radius:20px;background:rgba(163,177,198,0.08);border:1.5px solid rgba(163,177,198,0.2);display:flex;align-items:center;gap:0.3rem;">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        <span style="font-size:0.68rem;font-weight:600;color:#94a3b8;">Tiada</span>
                       </div>`}
                 </div>
               </td>`;
@@ -7419,8 +8099,8 @@ function renderView() {
             { key: 'juru_audio',  label: 'Juru Audio',   color: '#0d9488', bg: 'rgba(13,148,136,0.04)', bottomBorder: 'none',                             desc: 'Paramedik Audiologi' },
           ];
 
-          const grpTh = (emoji, label, span, color, isLast) => `<th colspan="${span}" style="padding:0.55rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.8px;text-transform:uppercase;color:${color};border-right:${isLast ? '1px solid rgba(163,177,198,0.12)' : '2px solid rgba(163,177,198,0.25)'};border-bottom:1px solid rgba(163,177,198,0.15);background:rgba(163,177,198,0.03);text-align:center;white-space:nowrap;">${emoji} ${label}</th>`;
-          const colTh = (label, color, isLast) => `<th style="padding:0.5rem 0.4rem;font-weight:600;font-size:0.63rem;color:${color || 'var(--text-muted)'};border-right:${isLast ? '2px solid rgba(163,177,198,0.25)' : '1px solid rgba(163,177,198,0.12)'};text-align:center;white-space:nowrap;line-height:1.3;">${label}</th>`;
+          const grpTh = (emoji, label, span, color, isLast) => `<th colspan="${span}" style="padding:0.7rem 0.75rem;font-weight:800;font-size:0.72rem;letter-spacing:0.8px;text-transform:uppercase;color:${color};border-right:${isLast ? '1px solid rgba(163,177,198,0.15)' : '3px solid rgba(163,177,198,0.3)'};border-bottom:2px solid ${color}44;background:${color}0f;text-align:center;white-space:nowrap;">${emoji} ${label}</th>`;
+          const colTh = (label, color, isLast) => `<th style="padding:0.55rem 0.5rem;font-weight:700;font-size:0.68rem;color:${color || 'var(--text-muted)'};border-right:${isLast ? '3px solid rgba(163,177,198,0.3)' : '1px solid rgba(163,177,198,0.15)'};text-align:center;white-space:nowrap;line-height:1.4;min-width:64px;">${label}</th>`;
 
           return `
           <!-- Header -->
@@ -7498,19 +8178,19 @@ function renderView() {
             </div>
           </div>
 
-          <section class="glass-card fade-in" style="padding:0;overflow:hidden;border:1px solid rgba(163,177,198,0.3);">
+          <section class="glass-card fade-in" style="padding:0;overflow:hidden;border:1.5px solid rgba(163,177,198,0.35);">
             <div style="overflow-x:auto;">
-              <table style="width:100%;border-collapse:collapse;font-size:0.73rem;">
+              <table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
                 <thead>
-                  <tr style="border-bottom:1px solid rgba(163,177,198,0.15);">
-                    <th rowspan="2" style="padding:0.85rem 1rem;font-weight:700;font-size:0.78rem;border-right:2px solid rgba(163,177,198,0.25);border-bottom:2px solid rgba(163,177,198,0.2);background:rgba(163,177,198,0.06);text-align:left;vertical-align:middle;min-width:128px;">Peranan</th>
+                  <tr style="border-bottom:1px solid rgba(163,177,198,0.2);">
+                    <th rowspan="2" style="padding:0.9rem 1.1rem;font-weight:800;font-size:0.82rem;border-right:3px solid rgba(163,177,198,0.35);border-bottom:2px solid rgba(163,177,198,0.25);background:rgba(163,177,198,0.08);text-align:left;vertical-align:middle;min-width:148px;">Peranan</th>
                     ${grpTh('🖥️', 'Navigasi', 4, '#3b82f6', false)}
                     ${grpTh('⚙️', 'Tetapan', 3, '#2dd4bf', false)}
-                    ${grpTh('📋', 'Pengurusan', 9, '#a855f7', false)}
+                    ${grpTh('📋', 'Pengurusan', 11, '#a855f7', false)}
                     ${grpTh('📊', 'Skop Laporan', 3, '#ca8a04', false)}
                     ${grpTh('🏥', 'Operasi', 4, '#f59e0b', true)}
                   </tr>
-                  <tr style="background:rgba(163,177,198,0.03);border-bottom:2px solid rgba(163,177,198,0.2);">
+                  <tr style="background:rgba(163,177,198,0.06);border-bottom:2px solid rgba(163,177,198,0.25);">
                     ${colTh('Dashboard', '#94a3b8', false)}
                     ${colTh('Analisa<br>Cawangan', '#fb923c', false)}
                     ${colTh('Permohonan<br>Cuti', '#818cf8', false)}
@@ -7526,7 +8206,9 @@ function renderView() {
                     ${colTh('Laporan', '#f97316', false)}
                     ${colTh('Laluan<br>Kelulusan', '#6d28d9', false)}
                     ${colTh('Kawalan<br>Akses', '#ef4444', false)}
-                    ${colTh('Peranan &amp;<br>Kategori', '#10b981', true)}
+                    ${colTh('Peranan &amp;<br>Kategori', '#10b981', false)}
+                    ${colTh('Cuti<br>Umum', '#f59e0b', false)}
+                    ${colTh('Editor<br>Polisi', '#6366f1', true)}
                     ${colTh('Daerah<br>Kuantan', '#ca8a04', false)}
                     ${colTh('Cawangan<br>Sendiri', '#0284c7', false)}
                     ${colTh('Rekod<br>Kedatangan', '#1e293b', true)}
@@ -7538,11 +8220,11 @@ function renderView() {
                 </thead>
                 <tbody>
                   ${roles.map(r => `
-                  <tr style="border-bottom:${r.bottomBorder};background:${r.bg};transition:background 0.15s;" onmouseover="this.style.background='rgba(59,130,246,0.07)'" onmouseout="this.style.background='${r.bg}'">
-                    <td style="padding:0.75rem 1rem;border-right:2px solid rgba(163,177,198,0.25);">
-                      <div style="display:flex;flex-direction:column;gap:0.25rem;">
-                        <span style="display:inline-block;background:${r.color}20;color:${r.color};border:1px solid ${r.color}38;border-radius:6px;padding:0.18rem 0.55rem;font-weight:700;font-size:0.75rem;width:fit-content;">${r.label}</span>
-                        <span style="font-size:0.62rem;color:var(--text-muted);padding-left:0.1rem;">${r.desc}</span>
+                  <tr style="border-bottom:${r.bottomBorder};background:${r.bg};transition:background 0.15s;" onmouseover="this.style.background='rgba(59,130,246,0.06)'" onmouseout="this.style.background='${r.bg}'">
+                    <td style="padding:0.8rem 1.1rem;border-right:3px solid rgba(163,177,198,0.35);">
+                      <div style="display:flex;flex-direction:column;gap:0.3rem;">
+                        <span style="display:inline-block;background:${r.color}22;color:${r.color};border:1.5px solid ${r.color}55;border-radius:7px;padding:0.22rem 0.7rem;font-weight:800;font-size:0.8rem;width:fit-content;letter-spacing:0.2px;">${r.label}</span>
+                        <span style="font-size:0.68rem;color:var(--text-muted);padding-left:0.15rem;">${r.desc}</span>
                       </div>
                     </td>
                     ${renderRbacDashboardCell(r.key)}
@@ -7560,7 +8242,9 @@ function renderView() {
                     ${renderRbacCell(r.key, 'manage_reports', false)}
                     ${renderRbacCell(r.key, 'manage_routing', false)}
                     ${renderRbacCell(r.key, 'manage_access', false)}
-                    ${renderRbacCell(r.key, 'manage_roles_categories', true)}
+                    ${renderRbacCell(r.key, 'manage_roles_categories', false)}
+                    ${renderRbacCell(r.key, 'manage_holidays', false)}
+                    ${renderRbacCell(r.key, 'manage_policy', true)}
                     ${renderRbacScopeCell(r.key, 'report_kuantan_only', 'Kuantan', '#ca8a04', 'rgba(234,179,8,0.15)', 'rgba(234,179,8,0.4)', '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>', false)}
                     ${renderRbacScopeCell(r.key, 'report_own_branch_only', 'Cawangan', '#0284c7', 'rgba(56,189,248,0.15)', 'rgba(56,189,248,0.4)', '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>', false)}
                     ${renderRbacScopeCell(r.key, 'report_attendance', 'Kedatangan', '#1e293b', 'rgba(30,41,59,0.15)', 'rgba(30,41,59,0.5)', '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>', true)}
@@ -7573,6 +8257,197 @@ function renderView() {
               </table>
             </div>
           </section>
+          `;
+        })() : ''}
+
+        ${managementTab === 'policy_editor' && userPerms.manage_policy ? (() => {
+          const pc = policyContent;
+          const sectionCard = (id, title, icon, color, content) => `
+            <div class="glass-card fade-in" style="padding:0;overflow:hidden;margin-bottom:1.25rem;border-top:3px solid ${color};">
+              <div style="padding:0.9rem 1.1rem;background:rgba(163,177,198,0.04);border-bottom:1px solid rgba(163,177,198,0.12);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
+                <div style="display:flex;align-items:center;gap:0.6rem;">
+                  <span style="font-size:1rem;">${icon}</span>
+                  <span style="font-size:0.92rem;font-weight:700;color:var(--text);">${title}</span>
+                </div>
+                <button id="save-policy-${id}" onclick="window.savePolicySection('${id}')" style="padding:0.4rem 1rem;border-radius:8px;border:1px solid ${color};background:${color}15;color:${color};font-size:0.78rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                  Simpan
+                </button>
+              </div>
+              <div style="padding:1rem 1.1rem;">${content}</div>
+            </div>`;
+
+          const ruleEditor = (section, color) => `
+            <div style="display:flex;flex-direction:column;gap:0.5rem;">
+              ${(pc[section]||[]).map((rule,i) => `
+                <div style="display:flex;gap:0.5rem;align-items:flex-start;">
+                  <span style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:${color}22;border:1px solid ${color}44;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:800;color:${color};margin-top:0.55rem;">${i+1}</span>
+                  <textarea oninput="window.updatePolicyRule('${section}',${i},this.value)" style="flex:1;padding:0.5rem 0.75rem;border-radius:8px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.82rem;resize:vertical;min-height:52px;line-height:1.5;">${rule}</textarea>
+                  <button onclick="window.deletePolicyRule('${section}',${i})" style="flex-shrink:0;padding:0.3rem 0.6rem;border-radius:7px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.07);color:#ef4444;cursor:pointer;margin-top:0.4rem;font-size:0.8rem;">✕</button>
+                </div>`).join('')}
+              <button onclick="window.addPolicyRule('${section}')" style="padding:0.4rem 0.9rem;border-radius:8px;border:1px dashed ${color}66;background:transparent;color:${color};font-size:0.78rem;font-weight:600;cursor:pointer;width:fit-content;margin-top:0.25rem;">+ Tambah Peraturan</button>
+            </div>`;
+
+          return `
+          <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.5rem;margin-top:0.5rem;">
+            <div style="width:40px;height:40px;border-radius:10px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            </div>
+            <div>
+              <h2 style="font-size:1.05rem;font-weight:700;margin:0;">Editor Polisi Syarikat</h2>
+              <p style="font-size:0.72rem;color:var(--text-muted);margin:0.15rem 0 0;">Edit kandungan halaman Polisi yang dilihat oleh semua staf. Klik <strong>Simpan</strong> selepas setiap bahagian.</p>
+            </div>
+          </div>
+
+          ${sectionCard('notice','Notis Umum','📢','#f59e0b',`
+            <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.6rem;">Mesej/notis yang dipaparkan di bahagian atas halaman Polisi. Kosongkan jika tiada notis.</p>
+            <textarea oninput="window.updatePolicyNotice(this.value)" placeholder="Contoh: Mulai 1 Jan 2026, semua permohonan cuti AL mestilah dikemukakan 7 hari lebih awal..." style="width:100%;padding:0.65rem 0.85rem;border-radius:9px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.85rem;resize:vertical;min-height:80px;box-sizing:border-box;line-height:1.5;">${pc.notice||''}</textarea>
+          `)}
+
+          ${sectionCard('glossary','Senarai Jenis Cuti (Glossary)','📝','#3b82f6',`
+            <div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.75rem;">
+              <div style="display:grid;grid-template-columns:90px 1fr auto;gap:0.5rem;font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);padding:0 0.25rem;">
+                <span>Kod</span><span>Nama Penuh</span><span></span>
+              </div>
+              ${pc.glossary.map((g,i) => `
+                <div style="display:grid;grid-template-columns:90px 1fr auto;gap:0.5rem;align-items:center;">
+                  <input value="${g.code}" oninput="window.updatePolicyGlossary(${i},'code',this.value)" style="padding:0.45rem 0.6rem;border-radius:7px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.82rem;font-weight:700;text-align:center;">
+                  <input value="${(g.name||'').replace(/"/g,'&quot;')}" oninput="window.updatePolicyGlossary(${i},'name',this.value)" style="padding:0.45rem 0.6rem;border-radius:7px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.82rem;">
+                  <button onclick="window.deletePolicyGlossaryRow(${i})" style="padding:0.3rem 0.6rem;border-radius:7px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.07);color:#ef4444;cursor:pointer;font-size:0.8rem;">✕</button>
+                </div>`).join('')}
+            </div>
+            <button onclick="window.addPolicyGlossaryRow()" style="padding:0.4rem 0.9rem;border-radius:8px;border:1px dashed rgba(59,130,246,0.5);background:transparent;color:#3b82f6;font-size:0.78rem;font-weight:600;cursor:pointer;">+ Tambah Jenis Cuti</button>
+          `)}
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:0.5rem;">
+            ${['entitlementPahang','entitlementTerengganu'].map((sec,si) => {
+              const labels = ['Kelayakan AL — Pahang','Kelayakan AL — Terengganu'];
+              const colors = ['#3b82f6','#8b5cf6'];
+              const icons  = ['🏙️','🌊'];
+              const isDoktor = false;
+              return `<div class="glass-card" style="padding:0;overflow:hidden;border-top:3px solid ${colors[si]};">
+                <div style="padding:0.75rem 0.9rem;background:rgba(163,177,198,0.04);border-bottom:1px solid rgba(163,177,198,0.1);display:flex;align-items:center;justify-content:space-between;gap:0.5rem;">
+                  <span style="font-size:0.82rem;font-weight:700;">${icons[si]} ${labels[si]}</span>
+                  <button id="save-policy-${sec}" onclick="window.savePolicySection('${sec}')" style="padding:0.3rem 0.7rem;border-radius:7px;border:1px solid ${colors[si]};background:${colors[si]}15;color:${colors[si]};font-size:0.72rem;font-weight:700;cursor:pointer;">Simpan</button>
+                </div>
+                <div style="padding:0.75rem 0.9rem;">
+                  <div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.6rem;">
+                    ${isDoktor ? '' : `<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:0.35rem;font-size:0.65rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);padding:0 0.2rem;"><span>Tempoh</span><span>Hari</span><span></span></div>`}
+                    ${(pc[sec]||[]).map((row,i) => `
+                      <div style="display:grid;grid-template-columns:${isDoktor?'1fr auto':'1fr 1fr auto'};gap:0.35rem;align-items:center;">
+                        ${isDoktor ? '' : `<input value="${row.period||''}" oninput="window.updateEntitlement('${sec}',${i},'period',this.value)" style="padding:0.4rem 0.5rem;border-radius:6px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.78rem;">`}
+                        <input value="${row.days||''}" oninput="window.updateEntitlement('${sec}',${i},'days',this.value)" style="padding:0.4rem 0.5rem;border-radius:6px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.78rem;font-weight:700;text-align:center;">
+                        <button onclick="window.deleteEntitlementRow('${sec}',${i})" style="padding:0.25rem 0.45rem;border-radius:6px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.07);color:#ef4444;cursor:pointer;font-size:0.75rem;">✕</button>
+                      </div>`).join('')}
+                  </div>
+                  <button onclick="window.addEntitlementRow('${sec}')" style="padding:0.35rem 0.75rem;border-radius:7px;border:1px dashed ${colors[si]}66;background:transparent;color:${colors[si]};font-size:0.73rem;font-weight:600;cursor:pointer;">+ Tambah</button>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem;">
+            ${['entitlementMC','entitlementDoktor'].map((sec,si) => {
+              const labels = ['Kelayakan MC — Mengikut Tempoh Berkhidmat','Kelayakan AL — Doktor'];
+              const colors = ['#10b981','#ef4444'];
+              const icons  = ['🏥','🩺'];
+              const isDoktor = sec === 'entitlementDoktor';
+              return `<div class="glass-card" style="padding:0;overflow:hidden;border-top:3px solid ${colors[si]};">
+                <div style="padding:0.75rem 0.9rem;background:rgba(163,177,198,0.04);border-bottom:1px solid rgba(163,177,198,0.1);display:flex;align-items:center;justify-content:space-between;gap:0.5rem;">
+                  <span style="font-size:0.82rem;font-weight:700;">${icons[si]} ${labels[si]}</span>
+                  <button id="save-policy-${sec}" onclick="window.savePolicySection('${sec}')" style="padding:0.3rem 0.7rem;border-radius:7px;border:1px solid ${colors[si]};background:${colors[si]}15;color:${colors[si]};font-size:0.72rem;font-weight:700;cursor:pointer;">Simpan</button>
+                </div>
+                <div style="padding:0.75rem 0.9rem;">
+                  <div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.6rem;">
+                    ${isDoktor ? '' : `<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:0.35rem;font-size:0.65rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);padding:0 0.2rem;"><span>Tempoh Berkhidmat</span><span>Hari MC</span><span></span></div>`}
+                    ${(pc[sec]||[]).map((row,i) => `
+                      <div style="display:grid;grid-template-columns:${isDoktor?'1fr auto':'1fr 1fr auto'};gap:0.35rem;align-items:center;">
+                        ${isDoktor ? '' : `<input value="${row.period||''}" oninput="window.updateEntitlement('${sec}',${i},'period',this.value)" style="padding:0.4rem 0.5rem;border-radius:6px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.78rem;">`}
+                        <input value="${row.days||''}" oninput="window.updateEntitlement('${sec}',${i},'days',this.value)" style="padding:0.4rem 0.5rem;border-radius:6px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.78rem;font-weight:700;text-align:center;">
+                        <button onclick="window.deleteEntitlementRow('${sec}',${i})" style="padding:0.25rem 0.45rem;border-radius:6px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.07);color:#ef4444;cursor:pointer;font-size:0.75rem;">✕</button>
+                      </div>`).join('')}
+                  </div>
+                  <button onclick="window.addEntitlementRow('${sec}')" style="padding:0.35rem 0.75rem;border-radius:7px;border:1px dashed ${colors[si]}66;background:transparent;color:${colors[si]};font-size:0.73rem;font-weight:600;cursor:pointer;">+ Tambah</button>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+
+          ${sectionCard('rulesAL','Peraturan Cuti Tahunan (AL)','📅','#6366f1', ruleEditor('rulesAL','#6366f1'))}
+          ${sectionCard('rulesMC','Peraturan Cuti Sakit (MC)','🏥','#eab308', ruleEditor('rulesMC','#eab308'))}
+          ${sectionCard('rulesCME','Peraturan Cuti CME','🎓','#c084fc', ruleEditor('rulesCME','#c084fc'))}
+          ${sectionCard('rulesNotice','Notis Berhenti Kerja','📄','#94a3b8', ruleEditor('rulesNotice','#94a3b8'))}
+          `;
+        })() : ''}
+
+        ${managementTab === 'public_holidays' && userPerms.manage_holidays ? (() => {
+          const canEditPahang     = ['super_admin','admin','hr'].includes(user.role);
+          const canEditTerengganu = ['super_admin','admin','hr','hod'].includes(user.role);
+          const rowStyle = 'display:grid;grid-template-columns:150px 1fr auto;gap:0.5rem;align-items:center;padding:0.45rem 0.75rem;border-bottom:1px solid rgba(163,177,198,0.1);';
+
+          const renderPanel = (state, label, color, canEdit) => {
+            const list = publicHolidays[state] || [];
+            const year = list.length ? list[0].date.substring(0,4) : new Date().getFullYear();
+            return `
+            <section class="glass-card" style="padding:0;overflow:hidden;">
+              <div style="padding:0.85rem 1rem;border-bottom:1px solid rgba(163,177,198,0.15);display:flex;align-items:center;justify-content:space-between;background:rgba(163,177,198,0.04);">
+                <div style="display:flex;align-items:center;gap:0.6rem;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  <span style="font-size:0.9rem;font-weight:700;color:var(--text);">Cuti Umum ${label} ${year}</span>
+                  <span style="font-size:0.72rem;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.1rem 0.5rem;border-radius:999px;">${list.length} hari</span>
+                </div>
+                ${canEdit ? `<button onclick="window.addHoliday('${state}')" style="padding:0.3rem 0.8rem;border-radius:999px;border:1px solid ${color}55;background:${color}11;font-size:0.78rem;font-weight:600;color:${color};cursor:pointer;">+ Tambah</button>` : `<span style="font-size:0.72rem;color:var(--text-muted);font-style:italic;">Baca sahaja</span>`}
+              </div>
+              ${!canEdit ? `<div style="padding:0.6rem 0.75rem;background:rgba(163,177,198,0.04);border-bottom:1px solid rgba(163,177,198,0.08);font-size:0.75rem;color:var(--text-muted);">⚠️ Hanya HR/Admin boleh mengubah cuti umum Pahang.</div>` : ''}
+              <div style="padding:0.6rem 1rem;background:${color}0d;border-bottom:1px solid ${color}22;text-align:center;">
+                <span style="font-size:0.78rem;font-weight:700;color:${color};letter-spacing:0.5px;text-transform:uppercase;">
+                  Jumlah: ${list.length} Hari Pelepasan Am
+                </span>
+              </div>
+              <div style="padding:0.35rem 0.75rem;background:rgba(163,177,198,0.03);border-bottom:1px solid rgba(163,177,198,0.08);">
+                <div style="display:grid;grid-template-columns:150px 1fr auto;gap:0.5rem;font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);padding:0.25rem 0;">
+                  <span>Tarikh</span><span>Nama Cuti</span><span></span>
+                </div>
+              </div>
+              ${list.length === 0 ? `<div style="padding:1.5rem;text-align:center;color:var(--text-muted);font-size:0.85rem;">Tiada cuti umum ditetapkan. Klik "+ Tambah" untuk mula.</div>` : ''}
+              ${list.map((h, i) => `
+                <div style="${rowStyle}">
+                  ${canEdit
+                    ? `<input type="date" value="${h.date}" onchange="window.updateHolidayField('${state}',${i},'date',this.value)" style="padding:0.35rem 0.5rem;border-radius:6px;border:1px solid rgba(163,177,198,0.25);background:rgba(163,177,198,0.07);color:var(--text);font-size:0.82rem;width:100%;">`
+                    : `<span style="font-size:0.82rem;color:var(--text-muted);">${h.date ? new Date(h.date+'T00:00:00').toLocaleDateString('ms-MY',{day:'2-digit',month:'short',year:'numeric'}) : '-'}</span>`
+                  }
+                  ${canEdit
+                    ? `<input type="text" value="${h.name.replace(/"/g,'&quot;')}" oninput="window.updateHolidayField('${state}',${i},'name',this.value)" placeholder="Nama cuti..." style="padding:0.35rem 0.5rem;border-radius:6px;border:1px solid rgba(163,177,198,0.25);background:rgba(163,177,198,0.07);color:var(--text);font-size:0.82rem;width:100%;">`
+                    : `<span style="font-size:0.82rem;color:var(--text);">${h.name}</span>`
+                  }
+                  ${canEdit ? `<button onclick="window.deleteHoliday('${state}',${i})" title="Padam" style="padding:0.25rem 0.5rem;border-radius:6px;border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.06);color:#ef4444;cursor:pointer;font-size:0.8rem;">✕</button>` : '<span></span>'}
+                </div>`).join('')}
+              <div style="padding:0.75rem;border-top:1px solid rgba(163,177,198,0.1);display:flex;align-items:center;justify-content:${canEdit ? 'space-between' : 'flex-end'};gap:0.75rem;flex-wrap:wrap;">
+                ${canEdit ? `
+                <button onclick="window.savePublicHolidays('${state}')" style="padding:0.55rem 1.25rem;border-radius:999px;border:none;background:linear-gradient(135deg,${color},${color}cc);color:#fff;font-size:0.85rem;font-weight:700;cursor:pointer;box-shadow:0 4px 12px ${color}44;">
+                  💾 Simpan Cuti Umum ${label}
+                </button>` : '<span></span>'}
+                <button onclick="window.printPublicHolidays('${state}')" style="padding:0.55rem 1.25rem;border-radius:999px;border:1px solid ${color}55;background:${color}11;color:${color};font-size:0.85rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                  Cetak / Jana PDF
+                </button>
+              </div>
+            </section>`;
+          };
+
+          return `
+          <header class="top-bar">
+            <h1>📅 Polisi Cuti Umum</h1>
+          </header>
+          <div style="margin-bottom:1rem;padding:0.75rem 1rem;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.25);border-radius:0.75rem;font-size:0.82rem;color:var(--text-muted);">
+            <strong style="color:#f59e0b;">Skop Kebenaran:</strong>
+            HR / Admin → menguruskan Cuti Umum <strong>Pahang</strong> &amp; <strong>Terengganu</strong> &nbsp;|&nbsp;
+            HOD → menguruskan Cuti Umum <strong>Terengganu</strong> sahaja
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;align-items:start;">
+            ${renderPanel('pahang',     'Pahang',     '#3b82f6', canEditPahang)}
+            ${renderPanel('terengganu', 'Terengganu', '#f59e0b', canEditTerengganu)}
+          </div>
           `;
         })() : ''}
 
@@ -7698,14 +8573,12 @@ function renderView() {
                 </thead>
                 <tbody>
                   ${[
-                    { key:'doctor_kuantan',         label:'Doktor',           sub:'Kuantan / Pahang Am', color:'#3b82f6', bg:'rgba(59,130,246,0.04)'  },
-                    { key:'doctor_bentong',         label:'Doktor',           sub:'Bentong',             color:'#8b5cf6', bg:'rgba(139,92,246,0.04)'  },
-                    { key:'doctor_mckip',           label:'Doktor',           sub:'MCKIP',               color:'#6366f1', bg:'rgba(99,102,241,0.04)'  },
-                    { key:'doctor_terengganu',      label:'Doktor',           sub:'Terengganu',          color:'#0d9488', bg:'rgba(13,148,136,0.04)'  },
-                    { key:'admin_staff_pahang',     label:'Kakitangan Admin', sub:'Pahang',              color:'#f59e0b', bg:'rgba(245,158,11,0.04)'  },
-                    { key:'admin_staff_terengganu', label:'Kakitangan Admin', sub:'Terengganu',          color:'#0d9488', bg:'rgba(13,148,136,0.04)'  },
-                    { key:'operation_balok',        label:'Kakitangan Operasi',sub:'Balok',              color:'#10b981', bg:'rgba(16,185,129,0.04)'  },
-                    { key:'operation_other',        label:'Kakitangan Operasi',sub:'Lain-lain',          color:'#14b8a6', bg:'rgba(20,184,166,0.04)'  },
+                    { key:'terengganu',       label:'Semua Kakitangan',  sub:'Terengganu',             color:'#0d9488', bg:'rgba(13,148,136,0.04)'  },
+                    { key:'pahang_lain',      label:'Semua Kakitangan',  sub:'Pahang (Selain Balok)',   color:'#3b82f6', bg:'rgba(59,130,246,0.04)'  },
+                    { key:'doctor_pahang',    label:'Doktor',            sub:'Pahang (Selain Bentong)', color:'#d97706', bg:'rgba(217,119,6,0.04)'  },
+                    { key:'operation_balok',  label:'Kakitangan Operasi',sub:'Balok (HQ)',             color:'#10b981', bg:'rgba(16,185,129,0.04)'  },
+                    { key:'xray_sono_balok',  label:'Juru X-Ray / Sono', sub:'Balok (HQ)',             color:'#ec4899', bg:'rgba(236,72,153,0.04)'  },
+                    { key:'juru_audio_balok', label:'Juru Audio',        sub:'Balok (HQ)',             color:'#0d9488', bg:'rgba(13,148,136,0.04)'  },
                   ].map(row => {
                     const cfg = approvalRouting[row.key] || {};
                     const mkCell = (field, checked, color, thick) => {
@@ -7885,19 +8758,11 @@ function renderView() {
                    </div>
                 </section>
 
+                ${policyContent.notice ? `<div style="margin-bottom:1.5rem;padding:1rem 1.25rem;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-left:4px solid #f59e0b;border-radius:10px;font-size:0.88rem;color:var(--text);line-height:1.6;">📢 ${policyContent.notice}</div>` : ''}
                 <section class="glass-card fade-in" style="padding: 2rem;">
                    <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--primary); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> Senarai Kategori Cuti (Glossary)</h2>
                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                       <div class="neu-panel" style="padding: 1rem;"><strong style="color: var(--primary);">AL:</strong> Annual Leave (Cuti Tahunan)</div>
-                       <div class="neu-panel" style="padding: 1rem;"><strong style="color: var(--primary);">MC:</strong> Medical Leave (Cuti Sakit)</div>
-                       <div class="neu-panel" style="padding: 1rem;"><strong style="color: var(--primary);">CME:</strong> Continuing Medical Education</div>
-                       <div class="neu-panel" style="padding: 1rem;"><strong style="color: var(--primary);">EL:</strong> Emergency Leave (Cuti Kecemasan)</div>
-                       <div class="neu-panel" style="padding: 1rem;"><strong style="color: var(--primary);">HL:</strong> Hospitalization Leave</div>
-                       <div class="neu-panel" style="padding: 1rem;"><strong style="color: var(--primary);">ML:</strong> Maternity Leave (Cuti Bersalin)</div>
-                       <div class="neu-panel" style="padding: 1rem;"><strong style="color: var(--primary);">PL:</strong> Paternity Leave (Cuti Isteri Bersalin)</div>
-                       <div class="neu-panel" style="padding: 1rem;"><strong style="color: var(--primary);">BL:</strong> Compassionate Leave (Cuti Ihsan)</div>
-                       <div class="neu-panel" style="padding: 1rem;"><strong style="color: var(--primary);">RL:</strong> Replacement Leave (Cuti Ganti)</div>
-                       <div class="neu-panel" style="padding: 1rem;"><strong style="color: var(--primary);">UL:</strong> Unpaid Leave (Cuti Tanpa Gaji)</div>
+                     ${policyContent.glossary.map(g => `<div class="neu-panel" style="padding: 1rem;"><strong style="color: var(--primary);">${g.code}:</strong> ${g.name}</div>`).join('')}
                    </div>
                 </section>
 
@@ -7905,72 +8770,51 @@ function renderView() {
                    <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--primary); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg> Jadual Kelayakan Cuti Tahunan Mengikut Lokasi</h2>
                    
                    ${(!user || !user.branch || (!user.branch.includes('Dungun') && !user.branch.includes('Kerteh') && !user.branch.includes('Paka'))) ? `
-                   <!-- Pahang Table -->
                    <div style="margin-bottom: 2rem;">
                      <h3 style="color: var(--primary); font-size: 1rem; margin-bottom: 0.5rem;">Negeri Pahang</h3>
                      <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted);">
-                        <thead>
-                            <tr style="background: rgba(67,97,238,0.07); color: var(--text);">
-                                <th style="padding: 0.5rem; border: 1px solid var(--border);">Tempoh Berkhidmat</th>
-                                <th style="padding: 0.5rem; border: 1px solid var(--border);">Kelayakan Tahunan (AL)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td style="padding: 0.5rem; border: 1px solid var(--border);">Sehingga 5 tahun</td>
-                                <td style="padding: 0.5rem; border: 1px solid var(--border);">16 Hari</td>
-                            </tr>
-                            <tr style="background: rgba(59, 130, 246, 0.1);">
-                                <td style="padding: 0.5rem; border: 1px solid var(--border); color: var(--primary); font-weight: bold;">Lebih 5 Tahun ke atas</td>
-                                <td style="padding: 0.5rem; border: 1px solid var(--border); color: var(--primary); font-weight: bold;">20 Hari</td>
-                            </tr>
-                        </tbody>
+                       <thead><tr style="background: rgba(67,97,238,0.07); color: var(--text);">
+                         <th style="padding: 0.5rem; border: 1px solid var(--border);">Tempoh Berkhidmat</th>
+                         <th style="padding: 0.5rem; border: 1px solid var(--border);">Kelayakan Tahunan (AL)</th>
+                       </tr></thead>
+                       <tbody>${policyContent.entitlementPahang.map((r,i) => `
+                         <tr style="${i%2===1?'background:rgba(59,130,246,0.07);':''}">
+                           <td style="padding:0.5rem;border:1px solid var(--border);font-weight:${i>0?'bold':'normal'};color:${i>0?'var(--primary)':'inherit'};">${r.period}</td>
+                           <td style="padding:0.5rem;border:1px solid var(--border);font-weight:${i>0?'bold':'normal'};color:${i>0?'var(--primary)':'inherit'};">${r.days}</td>
+                         </tr>`).join('')}
+                       </tbody>
                      </table>
-                   </div>
-                   ` : ''}
+                   </div>` : ''}
 
                    ${(!user || !user.branch || (user.branch.includes('Dungun') || user.branch.includes('Kerteh') || user.branch.includes('Paka'))) ? `
-                   <!-- Terengganu Table -->
                    <div>
                      <h3 style="color: var(--accent); font-size: 1rem; margin-bottom: 0.5rem;">Negeri Terengganu</h3>
                      <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted);">
-                        <thead>
-                            <tr style="background: rgba(67,97,238,0.07); color: var(--text);">
-                                <th style="padding: 0.5rem; border: 1px solid var(--border);">Tempoh Berkhidmat</th>
-                                <th style="padding: 0.5rem; border: 1px solid var(--border);">Kelayakan Tahunan (AL)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr style="background: rgba(192, 132, 252, 0.1);">
-                                <td style="padding: 0.5rem; border: 1px solid var(--border); color: var(--accent); font-weight: bold;">Semua Tempoh</td>
-                                <td style="padding: 0.5rem; border: 1px solid var(--border); color: var(--accent); font-weight: bold;">16 Hari</td>
-                            </tr>
-                        </tbody>
+                       <thead><tr style="background: rgba(67,97,238,0.07); color: var(--text);">
+                         <th style="padding: 0.5rem; border: 1px solid var(--border);">Tempoh Berkhidmat</th>
+                         <th style="padding: 0.5rem; border: 1px solid var(--border);">Kelayakan Tahunan (AL)</th>
+                       </tr></thead>
+                       <tbody>${policyContent.entitlementTerengganu.map((r,i) => `
+                         <tr style="background:rgba(192,132,252,0.1);">
+                           <td style="padding:0.5rem;border:1px solid var(--border);color:var(--accent);font-weight:bold;">${r.period}</td>
+                           <td style="padding:0.5rem;border:1px solid var(--border);color:var(--accent);font-weight:bold;">${r.days}</td>
+                         </tr>`).join('')}
+                       </tbody>
                      </table>
-                     <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem; font-style: italic;">*Terhad kepada cawangan Dungun, Kerteh, dan Paka.</p>
-                   </div>
-                   ` : ''}
+                     <p style="font-size:0.75rem;color:var(--text-muted);margin-top:0.5rem;font-style:italic;">*Terhad kepada cawangan Dungun, Kerteh, dan Paka.</p>
+                   </div>` : ''}
 
-                   <!-- Kategori Doktor -->
                    <div style="margin-top: 2rem;">
                      <h3 style="color: var(--danger); font-size: 1rem; margin-bottom: 0.5rem;">Kategori Doktor (Semua Kawasan)</h3>
                      <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted);">
-                        <thead>
-                            <tr style="background: rgba(67,97,238,0.07); color: var(--text);">
-                                <th style="padding: 0.5rem; border: 1px solid var(--border);">Peringkat Cuti Tahunan (AL)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td style="padding: 0.5rem; border: 1px solid var(--border); color: var(--danger); font-weight: bold;">25 Hari</td>
-                            </tr>
-                            <tr style="background: rgba(248, 113, 113, 0.1);">
-                                <td style="padding: 0.5rem; border: 1px solid var(--border); color: var(--danger); font-weight: bold;">20 Hari</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 0.5rem; border: 1px solid var(--border); color: var(--danger); font-weight: bold;">10 Hari</td>
-                            </tr>
-                        </tbody>
+                       <thead><tr style="background: rgba(67,97,238,0.07); color: var(--text);">
+                         <th style="padding: 0.5rem; border: 1px solid var(--border);">Peringkat Cuti Tahunan (AL)</th>
+                       </tr></thead>
+                       <tbody>${policyContent.entitlementDoktor.map((r,i) => `
+                         <tr style="${i%2===1?'background:rgba(248,113,113,0.1);':''}">
+                           <td style="padding:0.5rem;border:1px solid var(--border);color:var(--danger);font-weight:bold;">${r.days}</td>
+                         </tr>`).join('')}
+                       </tbody>
                      </table>
                    </div>
                 </section>
@@ -7982,18 +8826,31 @@ function renderView() {
                        <div class="neu-panel" style="border-left: 4px solid var(--accent); padding-left: 1.5rem;">
                           <h3 style="font-size: 1rem; color: var(--accent); margin-bottom: 0.5rem;">1. Cuti Tahunan (Annual Leave - AL)</h3>
                           <ul style="color: var(--text-muted); font-size: 0.9rem; padding-left: 1.5rem; line-height: 1.6; margin: 0;">
-                              <li>Permohonan mesti dibuat sekurang-kurangnya <strong>3 hari</strong> sebelum tarikh percutian.</li>
-                              <li>Kelulusan adalah tertakluk kepada budi bicara pihak pengurusan/HOD mengikut kepada keperluan operasi klinik.</li>
-                              <li>Hanya maksimum baki sejumlah <strong>3 hari</strong> dibenarkan dibawa ke hadapan (carry forward) ke kalendar tahun berikutnya.</li>
+                            ${policyContent.rulesAL.map(r => `<li>${r}</li>`).join('')}
                           </ul>
                        </div>
-                       
+
                        <div class="neu-panel" style="border-left: 4px solid #eab308; padding-left: 1.5rem;">
                           <h3 style="font-size: 1rem; color: #eab308; margin-bottom: 0.5rem;">2. Cuti Sakit (Medical Leave - MC)</h3>
                           <ul style="color: var(--text-muted); font-size: 0.9rem; padding-left: 1.5rem; line-height: 1.6; margin: 0;">
-                              <li>Sijil Cuti Sakit (MC) yang asal <strong>mesti</strong> diserahkan kepada pihak pengurusan pada hari pertama kembali bekerja.</li>
-                              <li>Staff wajib memaklumkan kepada pihak pengurusan atau HOD sekurang-kurangnya <strong>2 jam sebelum</strong> shift kerja bermula.</li>
+                            ${policyContent.rulesMC.map(r => `<li>${r}</li>`).join('')}
                           </ul>
+                          ${policyContent.entitlementMC && policyContent.entitlementMC.length > 0 ? `
+                          <div style="margin-top:1rem;">
+                            <div style="font-size:0.78rem;font-weight:700;color:#eab308;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.5px;">Jadual Kelayakan MC</div>
+                            <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                              <thead><tr style="background:rgba(234,179,8,0.1);">
+                                <th style="padding:0.45rem 0.6rem;border:1px solid rgba(234,179,8,0.25);text-align:left;color:#eab308;">Tempoh Berkhidmat</th>
+                                <th style="padding:0.45rem 0.6rem;border:1px solid rgba(234,179,8,0.25);text-align:center;color:#eab308;">Hari Kelayakan</th>
+                              </tr></thead>
+                              <tbody>${policyContent.entitlementMC.map((r,i) => `
+                                <tr style="${i%2===1?'background:rgba(234,179,8,0.05);':''}">
+                                  <td style="padding:0.4rem 0.6rem;border:1px solid rgba(163,177,198,0.2);color:var(--text-muted);">${r.period}</td>
+                                  <td style="padding:0.4rem 0.6rem;border:1px solid rgba(163,177,198,0.2);text-align:center;font-weight:700;color:#eab308;">${r.days}</td>
+                                </tr>`).join('')}
+                              </tbody>
+                            </table>
+                          </div>` : ''}
                        </div>
 
                        <div class="neu-panel" style="border-left: 4px solid var(--danger); padding-left: 1.5rem;">
@@ -8035,48 +8892,100 @@ function renderView() {
                        <div class="neu-panel" style="border-left: 4px solid #c084fc; padding-left: 1.5rem;">
                           <h3 style="font-size: 1rem; color: var(--secondary); margin-bottom: 0.5rem;">4. Cuti Pendidikan (CME Leave)</h3>
                           <ul style="color: var(--text-muted); font-size: 0.9rem; padding-left: 1.5rem; line-height: 1.6; margin: 0;">
-                              <li>Kelayakan cuti CME ini ditetapkan sebanyak maksimum <strong>5 hari sahaja</strong> bagi setiap kalendar.</li>
-                              <li>Tujuannya dikhususkan semata-mata untuk melibatkan diri dalam kursus, seminar, dan latihan luaran berkaitan dengan skop kerja.</li>
-                              <li>Memerlukan surat sokongan bertulis berserta pengesahan daripada Pengurus dan Ketua Jabatan HOD.</li>
+                            ${policyContent.rulesCME.map(r => `<li>${r}</li>`).join('')}
                           </ul>
                        </div>
 
                        <div class="neu-panel" style="border-left: 4px solid #94a3b8; padding-left: 1.5rem;">
                           <h3 style="font-size: 1rem; color: #94a3b8; margin-bottom: 0.5rem;">5. Notis Berhenti Kerja (Notice Period)</h3>
                           <ul style="color: var(--text-muted); font-size: 0.9rem; padding-left: 1.5rem; line-height: 1.6; margin: 0;">
-                              <li>Notis penamatan kontrak pekerjaan mesti mematuhi garis panduan ditandatangani sewaktu penerimaan jawatan (1 atau 3 bulan lazimnya bergantung pada jawatan).</li>
-                              <li>Kegagalan untuk memberikan peringatan dan notis yang mencukupi bermaksud staff bersetuju untuk membayar denda kerugian / ganti rugi <i>(indemnity)</i> kepada pihak klinik mengikut kekurangan hari notis tersebut.</li>
+                            ${policyContent.rulesNotice.map(r => `<li>${r}</li>`).join('')}
                           </ul>
                        </div>
                    </div>
                 </section>
             </div>
 
-            <!-- Side Information: Public Holidays -->
+            <!-- Side Information: Public Holidays (dynamic) -->
             <div>
                <section class="glass-card fade-in" style="position: sticky; top: 2rem; padding: 2rem;">
-                  <h2 style="font-size: 1.1rem; font-weight: 600; color: var(--text); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg> Cuti Umum / Public Holidays (Pahang 2026)</h2>
-                  
+                  ${(() => {
+                    const branchObj = branches.find(b => b.name === user.branch);
+                    const isTerengganu = branchObj && branchObj.state === 'Terengganu';
+                    const state = isTerengganu ? 'terengganu' : 'pahang';
+                    const stateLabel = isTerengganu ? 'Terengganu' : 'Pahang';
+                    const list = (publicHolidays[state] || []).slice().sort((a,b) => a.date.localeCompare(b.date));
+                    const year = list.length ? list[0].date.substring(0,4) : new Date().getFullYear();
+                    return `
+                  <h2 style="font-size: 1.1rem; font-weight: 600; color: var(--text); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    Cuti Umum ${stateLabel} ${year}
+                  </h2>
                   <div style="border-radius: 12px; padding: 1.5rem; font-size: 0.85rem; border: 1px solid var(--border); box-shadow: var(--shadow-inset-sm);">
-                      <div style="color: var(--primary); font-weight: 600; margin-bottom: 1.5rem; text-align: center; border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; text-transform: uppercase;">Jumlah: 15 Hari Pelepasan Am</div>
-                      <table style="width: 100%; border-collapse: collapse; color: var(--text-muted); font-weight: 600; font-size: 0.8rem;">
-                          <tr style="border-bottom: 1px solid var(--border);"><td style="padding: 0.75rem 0;">1 Jan</td><td style="text-align: right; color: var(--text);">New Year's Day</td></tr>
-                          <tr style="border-bottom: 1px solid var(--border); color: var(--danger);"><td style="padding: 0.75rem 0;">29-30 Jan</td><td style="text-align: right; color: var(--text);">Chinese New Year</td></tr>
-                          <tr style="border-bottom: 1px solid var(--border); color: var(--accent);"><td style="padding: 0.75rem 0;">20-21 Mar</td><td style="text-align: right; color: var(--text);">Hari Raya Puasa</td></tr>
-                          <tr style="border-bottom: 1px solid var(--border); color: #eab308;"><td style="padding: 0.75rem 0;">1 May</td><td style="text-align: right; color: var(--text);">Labour Day</td></tr>
-                          <tr style="border-bottom: 1px solid var(--border);"><td style="padding: 0.75rem 0;">7 May</td><td style="text-align: right; color: var(--text);">Hari Hol Pahang</td></tr>
-                          <tr style="border-bottom: 1px solid var(--border); color: var(--accent);"><td style="padding: 0.75rem 0;">27 May</td><td style="text-align: right; color: var(--text);">Hari Raya Haji</td></tr>
-                          <tr style="border-bottom: 1px solid var(--border);"><td style="padding: 0.75rem 0;">6 Jul</td><td style="text-align: right; color: var(--text);">Awal Muharram</td></tr>
-                          <tr style="border-bottom: 1px solid var(--border);"><td style="padding: 0.75rem 0;">31 Aug</td><td style="text-align: right; color: var(--text);">National Day</td></tr>
-                          <tr style="border-bottom: 1px solid var(--border);"><td style="padding: 0.75rem 0;">14 Sep</td><td style="text-align: right; color: var(--text);">Maulidur Rasul</td></tr>
-                          <tr style="border-bottom: 1px solid var(--border);"><td style="padding: 0.75rem 0;">16 Sep</td><td style="text-align: right; color: var(--text);">Malaysia Day</td></tr>
-                          <tr><td style="padding: 0.75rem 0;">25 Dec</td><td style="text-align: right; color: var(--text);">Christmas Day</td></tr>
-                      </table>
-                  </div>
+                    <div style="color: var(--primary); font-weight: 600; margin-bottom: 1.5rem; text-align: center; border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; text-transform: uppercase;">Jumlah: ${list.length} Hari Pelepasan Am</div>
+                    <table style="width: 100%; border-collapse: collapse; color: var(--text-muted); font-weight: 600; font-size: 0.8rem;">
+                      ${list.map((h, i) => {
+                        const d = new Date(h.date + 'T00:00:00');
+                        const label = d.toLocaleDateString('ms-MY', { day: 'numeric', month: 'short' });
+                        const isLast = i === list.length - 1;
+                        return `<tr style="${isLast ? '' : 'border-bottom: 1px solid var(--border);'}"><td style="padding: 0.6rem 0;">${label}</td><td style="text-align: right; color: var(--text);">${h.name}</td></tr>`;
+                      }).join('')}
+                    </table>
+                  </div>`;
+                  })()}
                </section>
             </div>
         </div>
       `;
+
+    case 'inbox': {
+      const unread = inboxNotifs.filter(n => !n.read).length;
+      const typeIcon = { leave_submitted:'📋', leave_approved:'✅', leave_rejected:'❌', leave_p1_approved:'📋', leave_tl_approved:'📋', reminder_start:'🔔', reminder_balance:'⚠️', system:'ℹ️' };
+      const typeColor = { leave_submitted:'#3b82f6', leave_approved:'#10b981', leave_rejected:'#ef4444', leave_p1_approved:'#f59e0b', leave_tl_approved:'#f59e0b', reminder_start:'#8b5cf6', reminder_balance:'#f59e0b', system:'#64748b' };
+      return `
+        <header class="top-bar">
+          <h1 style="display:flex;align-items:center;gap:0.6rem;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+            Inbox
+            ${unread > 0 ? `<span style="background:var(--danger);color:#fff;font-size:0.7rem;font-weight:800;padding:0.1rem 0.5rem;border-radius:999px;">${unread} belum baca</span>` : ''}
+          </h1>
+          <button class="neu-btn primary-text" onclick="window.setView('dashboard')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            Kembali
+          </button>
+        </header>
+        <div class="main-content" style="max-width:700px;margin:0 auto;padding:1.5rem 1rem;">
+          ${inboxNotifs.length === 0 ? `
+            <div class="glass-card fade-in" style="padding:3.5rem;text-align:center;color:var(--text-muted);">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3;margin-bottom:1rem;display:block;margin-inline:auto;"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+              <p style="font-size:0.95rem;font-weight:600;margin-bottom:0.4rem;">Inbox kosong</p>
+              <p style="font-size:0.8rem;">Notifikasi berkaitan cuti anda akan muncul di sini.</p>
+            </div>
+          ` : `
+            <div style="display:flex;flex-direction:column;gap:0.6rem;">
+              ${inboxNotifs.map(n => {
+                const icon = typeIcon[n.type] || 'ℹ️';
+                const color = typeColor[n.type] || '#64748b';
+                const d = new Date(n.createdAt);
+                const timeStr = d.toLocaleDateString('ms-MY', { day:'2-digit', month:'short', year:'numeric' }) + ' ' + d.toLocaleTimeString('ms-MY', { hour:'2-digit', minute:'2-digit' });
+                return `
+                <div class="glass-card fade-in" onclick="window.markNotifRead('${n.id}')" style="padding:1rem 1.25rem;cursor:pointer;border-left:3px solid ${color};${!n.read ? 'background:rgba(59,130,246,0.04);' : 'opacity:0.75;'}display:flex;align-items:flex-start;gap:1rem;transition:opacity 0.2s;">
+                  <div style="font-size:1.5rem;flex-shrink:0;margin-top:0.1rem;">${icon}</div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.25rem;">
+                      <span style="font-size:0.9rem;font-weight:${n.read ? '600' : '800'};color:var(--text);">${n.title}</span>
+                      ${!n.read ? `<span style="background:var(--danger);color:#fff;font-size:0.6rem;font-weight:800;padding:0.1rem 0.4rem;border-radius:999px;">BARU</span>` : ''}
+                    </div>
+                    <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 0.35rem;line-height:1.5;">${n.body}</p>
+                    <span style="font-size:0.7rem;color:var(--text-muted);opacity:0.7;">${timeStr}</span>
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>
+          `}
+        </div>
+      `;
+    }
 
     case 'settings':
       return `
@@ -8129,8 +9038,8 @@ function renderView() {
                     </div>
 
                     <div style="display: flex; flex-direction: column; gap: 0.25rem; border-bottom: 1px solid rgba(163,177,198,0.25); padding-bottom: 1rem;">
-                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Address</span>
-                        <span style="font-weight: 600; font-size: 0.9rem;">System Root</span>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Alamat</span>
+                        <span style="font-weight: 600; font-size: 0.9rem;">${user.address || '—'}</span>
                     </div>
 
                     <div style="display: flex; flex-direction: column; gap: 0.25rem; border-bottom: 1px solid rgba(163,177,198,0.25); padding-bottom: 1rem;">
@@ -8485,8 +9394,8 @@ function renderSelfProfileModal() {
          <form id="edit-self-profile" style="padding: 2.5rem;" onsubmit="window.saveSelfProfile(event)">
             
             <div style="margin-bottom: 1.5rem;">
-               <label style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 0.5rem;">Address</label>
-               <input type="text" value="System Root" style="width: 100%; padding: 1rem; border-radius: 12px; background: rgba(0,0,0,0.03); border: 1px inset rgba(255,255,255,0.5); outline: none; box-shadow: inset 2px 2px 5px rgba(0,0,0,0.05), inset -2px -2px 5px white; color: #374151;">
+               <label style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 0.5rem;">Alamat</label>
+               <input id="self-address" type="text" value="${(user.address || '').replace(/"/g,'&quot;')}" placeholder="Masukkan alamat anda..." style="width: 100%; padding: 1rem; border-radius: 12px; background: rgba(0,0,0,0.03); border: 1px inset rgba(255,255,255,0.5); outline: none; box-shadow: inset 2px 2px 5px rgba(0,0,0,0.05), inset -2px -2px 5px white; color: #374151; box-sizing: border-box;">
             </div>
 
             <div style="margin-bottom: 1.5rem;">
@@ -8590,6 +9499,205 @@ function renderAddStaffModal() {
   `;
 }
 
+// ── Public Holiday Management ─────────────────────────────────────────────────
+window.addHoliday = function(state) {
+  publicHolidays[state].push({ date: '', name: '' });
+  render();
+};
+window.deleteHoliday = function(state, idx) {
+  publicHolidays[state].splice(idx, 1);
+  render();
+};
+window.updateHolidayField = function(state, idx, field, value) {
+  if (publicHolidays[state] && publicHolidays[state][idx] !== undefined) {
+    publicHolidays[state][idx][field] = value;
+  }
+};
+window.savePublicHolidays = async function(state) {
+  const list = publicHolidays[state];
+  for (let i = 0; i < list.length; i++) {
+    if (!list[i].date || !list[i].name.trim()) {
+      alert('Sila lengkapkan semua tarikh dan nama cuti sebelum menyimpan.');
+      return;
+    }
+  }
+  publicHolidays[state] = list.slice().sort((a, b) => a.date.localeCompare(b.date));
+  try {
+    const payload = {};
+    payload[state] = publicHolidays[state];
+    await setDoc(doc(db, 'config', 'publicHolidays'), payload, { merge: true });
+    alert(`✅ Cuti Umum ${state === 'pahang' ? 'Pahang' : 'Terengganu'} berjaya disimpan!`);
+    render();
+  } catch(e) {
+    console.error('savePublicHolidays error:', e);
+    alert('Ralat menyimpan. Sila cuba lagi.');
+  }
+};
+
+window.printPublicHolidays = function(state) {
+  const list = publicHolidays[state] || [];
+  const label = state === 'pahang' ? 'Pahang' : 'Terengganu';
+  const color = state === 'pahang' ? '#3b82f6' : '#f59e0b';
+  const year = list.length ? list[0].date.substring(0, 4) : new Date().getFullYear();
+  const DAYS = ['Ahad','Isnin','Selasa','Rabu','Khamis','Jumaat','Sabtu'];
+  const rows = list.map((h, i) => {
+    const d = new Date(h.date + 'T00:00:00');
+    const dayName = DAYS[d.getDay()];
+    const dateStr = d.toLocaleDateString('ms-MY', { day:'2-digit', month:'long', year:'numeric' });
+    return `<tr style="${i % 2 === 0 ? '' : 'background:#f8fafc;'}">
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;text-align:center;">${i + 1}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;">${dateStr}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;">${dayName}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;">${h.name}</td>
+    </tr>`;
+  }).join('');
+
+  const pw = window.open('', '_blank');
+  pw.document.write(`<!DOCTYPE html><html lang="ms"><head>
+    <meta charset="UTF-8">
+    <title>Cuti Umum ${label} ${year}</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box;}
+      body{font-family:Arial,sans-serif;color:#1a1a1a;padding:32px;background:#fff;}
+      .watermark{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;opacity:0.07;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+      .header{display:flex;align-items:center;gap:16px;border-bottom:3px solid ${color};padding-bottom:14px;margin-bottom:20px;}
+      .logo{width:56px;height:56px;border-radius:10px;object-fit:contain;}
+      .header-text h1{font-size:15px;font-weight:800;color:${color};text-transform:uppercase;letter-spacing:1px;}
+      .header-text h2{font-size:13px;color:#555;margin-top:2px;}
+      .header-text p{font-size:11px;color:#888;margin-top:2px;}
+      .badge{display:inline-block;background:${color}22;color:${color};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid ${color}44;margin-top:6px;}
+      table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px;}
+      thead tr{background:${color};color:#fff;}
+      th{padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;}
+      th:first-child{width:42px;text-align:center;}
+      .footer{margin-top:28px;display:flex;justify-content:space-between;align-items:flex-end;border-top:1px solid #ddd;padding-top:14px;}
+      .sign-box{text-align:center;width:180px;}
+      .sign-box .line{border-top:1px solid #333;margin-bottom:6px;height:40px;}
+      .sign-box p{font-size:10px;color:#555;}
+      .print-btn{margin-bottom:18px;text-align:right;}
+      .print-btn button{padding:9px 22px;background:${color};color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;}
+      @media print{.print-btn{display:none;} body{padding:20px;}}
+    </style>
+  </head><body>
+    <img src="${logos.ksb}" class="watermark" alt="">
+    <div class="print-btn"><button onclick="window.print()">🖨️ CETAK / JANA PDF</button></div>
+    <div class="header">
+      <img src="${logos.ksb}" class="logo" alt="KSB Logo">
+      <div class="header-text">
+        <h1>Klinik Syed Badaruddin (KSB)</h1>
+        <h2>Senarai Cuti Umum ${label} ${year}</h2>
+        <p>Hari Pelepasan Am — Rujukan Staf</p>
+        <span class="badge">${list.length} Hari Cuti Umum</span>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>Bil.</th><th>Tarikh</th><th>Hari</th><th>Nama Cuti Umum</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4" style="padding:14px;text-align:center;color:#888;">Tiada cuti umum ditetapkan.</td></tr>'}</tbody>
+    </table>
+    <div class="footer">
+      <div>
+        <p style="font-size:10px;color:#888;">Dicetak: ${new Date().toLocaleString('ms-MY')}</p>
+        <p style="font-size:10px;color:#888;">Disediakan oleh: ${user ? user.name : 'HR/Admin'} — KSB Leave System</p>
+      </div>
+      <div class="sign-box">
+        <div class="line"></div>
+        <p>Tandatangan HR / Admin</p>
+        <p style="margin-top:3px;">Tarikh: _______________</p>
+      </div>
+    </div>
+  </body></html>`);
+  pw.document.close();
+};
+
+// ── Policy Editor helpers ──
+window.updatePolicyNotice = function(val) { policyContent.notice = val; };
+window.updatePolicyGlossary = function(i, field, val) { if (policyContent.glossary[i]) policyContent.glossary[i][field] = val; };
+window.addPolicyGlossaryRow = function() { policyContent.glossary.push({ code:'', name:'' }); render(); };
+window.deletePolicyGlossaryRow = function(i) { policyContent.glossary.splice(i,1); render(); };
+window.updateEntitlement = function(section, i, field, val) { if (policyContent[section] && policyContent[section][i]) policyContent[section][i][field] = val; };
+window.addEntitlementRow = function(section) { const row = section==='entitlementDoktor' ? {days:''} : {period:'',days:''}; policyContent[section].push(row); render(); };
+window.deleteEntitlementRow = function(section, i) { policyContent[section].splice(i,1); render(); };
+window.updatePolicyRule = function(section, i, val) { if (policyContent[section]) policyContent[section][i] = val; };
+window.addPolicyRule = function(section) { policyContent[section].push(''); render(); };
+window.deletePolicyRule = function(section, i) { policyContent[section].splice(i,1); render(); };
+window.savePolicySection = async function(section) {
+  try {
+    const payload = section === 'notice' ? { notice: policyContent.notice } : { [section]: policyContent[section] };
+    await setDoc(doc(db, 'config', 'policyContent'), payload, { merge: true });
+    const btn = document.getElementById('save-policy-' + section);
+    if (btn) { btn.textContent = '✅ Tersimpan'; btn.disabled = true; }
+    setTimeout(() => render(), 1200);
+  } catch(e) { alert('Ralat menyimpan: ' + e.message); }
+};
+
+window.dismissPhoneReminder = function() { showPhoneReminderModal = false; render(); };
+window.savePhoneFromReminder = async function() {
+  const input = document.getElementById('reminder-phone-input');
+  if (!input) return;
+  const clean = input.value.trim().replace(/\D/g, '');
+  if (!clean) { alert('Sila masukkan nombor telefon.'); return; }
+  if (!clean.startsWith('6')) {
+    alert('⚠️ Nombor MESTI bermula dengan 6.\n\nContoh: 60171234678\n(bukan 0171234678)');
+    return;
+  }
+  if (clean.length < 10 || clean.length > 12) {
+    alert('⚠️ Nombor telefon tidak sah.\n\nContoh: 60171234678');
+    return;
+  }
+  try {
+    await updateDoc(doc(db, 'staff', user.ic), { phone: clean });
+    user.phone = clean;
+    const s = staffList.find(i => i.ic === user.ic);
+    if (s) s.phone = clean;
+    showPhoneReminderModal = false;
+    render();
+    alert('✅ Nombor WhatsApp berjaya disimpan! Anda kini akan menerima notifikasi kelulusan cuti.');
+  } catch(err) {
+    console.error('savePhoneFromReminder error:', err);
+    alert('Ralat menyimpan nombor. Sila cuba lagi.');
+  }
+};
+
+function renderPhoneReminderModal() {
+  if (!showPhoneReminderModal || !user) return '';
+  const cur = (user.phone || '').replace(/\D/g, '');
+  return `
+  <div style="position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:1rem;">
+    <div class="glass-pane fade-in" style="width:100%;max-width:460px;border-radius:1.75rem;padding:2rem;position:relative;border:2px solid rgba(59,130,246,0.5);box-shadow:0 0 40px rgba(59,130,246,0.25);">
+      <div style="display:flex;justify-content:center;margin-bottom:1.25rem;">
+        <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#16a34a);display:flex;align-items:center;justify-content:center;box-shadow:0 0 24px rgba(34,197,94,0.5);animation:pulse 2s infinite;">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.44 2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.9a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.72 17z"></path></svg>
+        </div>
+      </div>
+      <h2 style="text-align:center;font-size:1.2rem;font-weight:800;color:#22c55e;margin-bottom:0.5rem;">📲 Daftar Nombor WhatsApp Anda</h2>
+      <p style="text-align:center;font-size:0.875rem;color:var(--text-muted);line-height:1.6;margin-bottom:1rem;">
+        Nombor WhatsApp diperlukan supaya anda boleh menerima<br>
+        <strong style="color:var(--text);">notifikasi kelulusan cuti</strong> daripada sistem.
+      </p>
+      <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:0.75rem;padding:0.75rem 1rem;margin-bottom:1.25rem;font-size:0.8rem;color:var(--text-muted);line-height:1.7;">
+        <strong style="color:#22c55e;">Format yang betul:</strong><br>
+        ✅ <strong>60171234678</strong> &nbsp;←&nbsp; bermula dengan <strong>6</strong><br>
+        ❌ <span style="text-decoration:line-through;">0171234678</span> &nbsp;←&nbsp; jangan bermula dengan <strong>0</strong>
+      </div>
+      <input id="reminder-phone-input" type="tel" inputmode="numeric" class="neu-inset"
+        value="${cur}"
+        placeholder="Contoh: 60171234678"
+        style="width:100%;padding:0.85rem 1rem;border-radius:0.75rem;font-size:1.05rem;letter-spacing:1px;margin-bottom:1rem;box-sizing:border-box;text-align:center;"
+        oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+      <div style="display:flex;flex-direction:column;gap:0.75rem;">
+        <button onclick="window.savePhoneFromReminder()" class="btn-primary" style="width:100%;padding:1rem;font-size:1rem;font-weight:800;display:flex;align-items:center;justify-content:center;gap:0.6rem;background:linear-gradient(135deg,#22c55e,#16a34a);box-shadow:0 8px 24px rgba(34,197,94,0.35);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+          Simpan Nombor WhatsApp
+        </button>
+        <button onclick="window.dismissPhoneReminder()" style="width:100%;padding:0.75rem;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:12px;color:var(--text-muted);cursor:pointer;font-size:0.82rem;">
+          Abaikan buat masa ini
+        </button>
+      </div>
+    </div>
+  </div>
+  `;
+}
+
 window.dismissFirstLoginWarning = function() { showFirstLoginWarning = false; render(); };
 window.goChangePassword = function() { showFirstLoginWarning = false; view = 'settings'; render(); };
 
@@ -8629,8 +9737,28 @@ function renderFirstLoginModal() {
 
 // ── Service Worker Registration ──────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
+  let _swRefreshing = false;
+  // Bila SW baru ambil alih kawalan, muat semula halaman sekali sahaja
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (_swRefreshing) return;
+    _swRefreshing = true;
+    window.location.reload();
+  });
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(err => {
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      // Periksa kemaskini setiap kali app dibuka
+      reg.update();
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener('statechange', () => {
+          // SW baru siap dipasang & ada SW lama → aktifkan terus
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            newWorker.postMessage('SKIP_WAITING');
+          }
+        });
+      });
+    }).catch(err => {
       console.warn('SW registration failed:', err);
     });
   });
