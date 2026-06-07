@@ -9745,23 +9745,40 @@ function renderFirstLoginModal() {
 // ── Service Worker Registration ──────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   let _swRefreshing = false;
-  // Bila SW baru ambil alih kawalan, muat semula halaman sekali sahaja
+  // Reload HANYA selepas SW baru ambil alih — dicetus oleh butang "Muat Semula", bukan automatik
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (_swRefreshing) return;
     _swRefreshing = true;
     window.location.reload();
   });
+
+  // Papar bar "Versi baru tersedia" dengan butang — staf kawal bila nak muat semula
+  function showUpdateBanner(worker) {
+    if (!worker || document.getElementById('app-update-banner')) return;
+    const bar = document.createElement('div');
+    bar.id = 'app-update-banner';
+    bar.style.cssText = 'position:fixed;left:50%;bottom:1rem;transform:translateX(-50%);z-index:99999;background:#1e293b;color:#fff;padding:0.7rem 1rem;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.35);display:flex;align-items:center;gap:0.85rem;font-size:0.85rem;max-width:92vw;';
+    bar.innerHTML = '<span>✨ Versi baru tersedia.</span>'
+      + '<button id="app-update-btn" style="background:#3b82f6;color:#fff;border:none;padding:0.45rem 0.95rem;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.82rem;white-space:nowrap;">Muat Semula</button>'
+      + '<button id="app-update-dismiss" title="Tutup" style="background:transparent;color:#94a3b8;border:none;cursor:pointer;font-size:1.15rem;line-height:1;padding:0 0.2rem;">&times;</button>';
+    document.body.appendChild(bar);
+    document.getElementById('app-update-btn').onclick = () => { worker.postMessage('SKIP_WAITING'); };
+    document.getElementById('app-update-dismiss').onclick = () => bar.remove();
+  }
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(reg => {
       // Periksa kemaskini setiap kali app dibuka
       reg.update();
+      // Versi baru sudah menunggu sejak sesi lepas → terus tawarkan
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdateBanner(reg.waiting);
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
         if (!newWorker) return;
         newWorker.addEventListener('statechange', () => {
-          // SW baru siap dipasang & ada SW lama → aktifkan terus
+          // SW baru siap dipasang & ada SW lama → tawarkan muat semula (TIDAK paksa)
           if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            newWorker.postMessage('SKIP_WAITING');
+            showUpdateBanner(newWorker);
           }
         });
       });

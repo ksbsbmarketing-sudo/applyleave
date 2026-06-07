@@ -1,11 +1,25 @@
-const CACHE = 'ksb-leave-v1';
+const CACHE = 'ksb-leave-v2-2';
 
 // On install: cache the app shell
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE).then(cache => cache.addAll(['/', '/index.html', '/icon.svg', '/manifest.json']))
+    caches.open(CACHE).then(cache => cache.addAll([
+      '/',
+      '/index.html',
+      '/manifest.json',
+      '/icon-192.png',
+      '/icon-512.png',
+      '/apple-touch-icon.png',
+      '/icon-maskable-512.png'
+    ]))
   );
-  self.skipWaiting();
+  // TIDAK skipWaiting di sini — SW baru menunggu sehingga staf tekan "Muat Semula"
+  // (app hantar mesej 'SKIP_WAITING' bila butang ditekan)
+});
+
+// Terima arahan dari app untuk aktifkan SW baru serta-merta
+self.addEventListener('message', event => {
+  if (event.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
 // On activate: remove old caches
