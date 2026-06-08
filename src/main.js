@@ -555,7 +555,17 @@ const HELP_FAQ = [
     a:'Pada borang cuti, tanda kotak <strong>Half Day</strong>. Tempoh akan ditolak <strong>0.5 hari</strong> dari baki.' },
   { id:'who-approves', cat:'Kelulusan', popular:true, keywords:['pelulus','siapa lulus','kelulusan','siapa pelulus','approve cuti'],
     q:'Siapa pelulus cuti saya?',
-    a:'Peringkat 1 (sokongan) bergantung pada peranan & cawangan anda:<br>• <strong>Doctor PIC</strong> — staf cawangan biasa (Pahang & Terengganu).<br>• <strong>HOD Balok</strong> — staff admin di Balok HQ.<br>• <strong>Supervisor Balok</strong> — staf operasi Balok & doktor Pahang.<br>Selepas Peringkat 1, <strong>HR/Admin</strong> beri kelulusan akhir (Peringkat 2). Cuti Terengganu hanya 1 peringkat (HOD/PIC).' },
+    a: function(u) {
+      const generic = 'Peringkat 1 bergantung peranan & cawangan: <strong>Doctor PIC</strong> (staf cawangan), <strong>HOD Balok</strong> (admin Balok HQ), atau <strong>Supervisor Balok</strong> (operasi Balok & doktor Pahang). Selepas itu <strong>HR/Admin</strong> beri kelulusan akhir (Peringkat 2). Terengganu 1 peringkat sahaja.';
+      try {
+        if (!u || typeof window.getRoutingP1Approvers !== 'function') return generic;
+        const apps = window.getRoutingP1Approvers(u) || [];
+        const names = apps.map(s => s.name).filter(Boolean);
+        const who = names.length ? names.join(', ') : 'tiada pelulus berdaftar — permohonan akan terus ke HR/Admin';
+        return 'Bagi anda (<strong>' + (u.name||'') + '</strong> — ' + (u.branch||'') + '):<br>🔹 <strong>Pelulus Peringkat 1:</strong> ' + who + '<br>🔹 <strong>Peringkat 2 (akhir):</strong> HR/Admin.<br><br>' + generic;
+      } catch(e) { return generic; }
+    },
+  },
   { id:'stages', cat:'Kelulusan', keywords:['peringkat','stage','peringkat 1','peringkat 2','p1','p2'],
     q:'Apa maksud Peringkat 1 dan Peringkat 2?',
     a:'<strong>Peringkat 1</strong> = sokongan pelulus pertama (Doctor PIC / HOD Balok / Supervisor).<br><strong>Peringkat 2</strong> = kelulusan akhir oleh <strong>HR/Admin</strong>.<br>Cuti dikira <strong>SAH</strong> hanya selepas Peringkat 2 (kecuali cawangan Terengganu — 1 peringkat sahaja).' },
@@ -573,7 +583,17 @@ const HELP_FAQ = [
     a:'Nombor telefon & maklumat profil dikemas kini oleh <strong>HR/Admin</strong>. Sila hubungi mereka untuk sebarang perubahan.' },
   { id:'balance-check', cat:'Akaun', keywords:['baki','balance','berapa baki','baki cuti','baki saya'],
     q:'Berapa baki cuti saya?',
-    a:'Anda boleh lihat <strong>"Baki Cuti Anda"</strong> pada panel kanan di borang Mohon Cuti (AL / MC / Hospitalisasi).' },
+    a: function(u) {
+      const generic = 'Lihat panel <strong>"Baki Cuti Anda"</strong> di borang Mohon Cuti (AL / MC / Hospitalisasi).';
+      try {
+        if (!u || typeof window.getLeaveStats !== 'function') return generic;
+        const al = window.getLeaveStats(u, 'AL'); const mc = window.getLeaveStats(u, 'MC');
+        // getLeaveStats returns { used, ent, bal } — use bal directly (already clamped to 0)
+        const fmt = s => (s && s.ent !== undefined) ? (s.bal + ' hari (baki) / ' + s.ent + ' (kelayakan)') : '—';
+        return 'Baki cuti anda (<strong>' + (u.name||'') + '</strong>):<br>• <strong>AL:</strong> ' + fmt(al) + '<br>• <strong>MC:</strong> ' + fmt(mc) + '<br><br>' + generic;
+      } catch(e) { return generic; }
+    },
+  },
   { id:'contact-hr', cat:'Akaun', keywords:['hubungi','hr','admin','bantuan','contact'],
     q:'Macam mana hubungi HR/Admin?',
     a:'Anda boleh hubungi HR/Admin melalui <strong>Messenger</strong> dalam app ini, atau melalui nombor telefon rasmi yang disediakan oleh klinik.' }
