@@ -4253,17 +4253,15 @@ function renderDashboard() {
     </div>
 
     <div class="dashboard-layout fade-in">
-      <aside class="sidebar">
-        <div class="sidebar-header">
-          <div class="sidebar-brand-top">
-            <img src="${logos.ksb}" alt="Logo" class="sidebar-logo-img">
-            <span class="sidebar-version">v2.0.0</span>
-          </div>
-          <div class="sidebar-title-group">
-            <span class="sidebar-company-title">KLINIK SYED BADARUDDIN SDN. BHD.</span>
-            <span class="sidebar-app-subtitle">Sistem Permohonan Cuti & Rekod Pekerja</span>
-          </div>
+      <header class="app-topbar">
+        <img src="${logos.ksb}" alt="Logo KSB" class="app-topbar-logo">
+        <div class="app-topbar-titles">
+          <span class="app-topbar-company">KLINIK SYED BADARUDDIN SDN. BHD.</span>
+          <span class="app-topbar-system">Sistem Permohonan Cuti &amp; Rekod Pekerja</span>
         </div>
+        <span class="app-topbar-version">v2.0.0</span>
+      </header>
+      <aside class="sidebar">
         <nav class="nav-menu">
           ${(() => {
             const rKey = window.rbacMatrix[user.role] ? user.role : 'staff';
