@@ -428,8 +428,8 @@ let inboxUnsub = null;
 let waSettingsSubTab = 'token_log'; // 'token_log' | 'rbac_notif'
 let waNotifRbac = {
   balok:      { p1_submit: ['team_leader','hod_balok'], tl_approved: ['supervisor'], p2_p1_approved: ['hr','admin','super_admin'], p3_final: [], overdue_reminder: ['team_leader','supervisor','hr'] },
-  pahang:     { p1_submit: ['doctor_pic','hod_cawangan'], tl_approved: [],         p2_p1_approved: ['hr','admin'],              p3_final: [], overdue_reminder: ['hr','admin','doctor_pic'] },
-  terengganu: { p1_submit: ['doctor_pic','hod_cawangan'], tl_approved: [],         p2_p1_approved: [],                          p3_final: [], overdue_reminder: ['doctor_pic'] }
+  pahang:     { p1_submit: ['doctor_pic','hod_balok'], tl_approved: [],         p2_p1_approved: ['hr','admin'],              p3_final: [], overdue_reminder: ['hr','admin','doctor_pic'] },
+  terengganu: { p1_submit: ['doctor_pic'], tl_approved: [],         p2_p1_approved: [],                          p3_final: [], overdue_reminder: ['doctor_pic'] }
 };
 
 const DEFAULT_HOLIDAYS_PAHANG = [
@@ -6181,7 +6181,7 @@ function renderView() {
         const activeGroup = _tabToGroup[managementTab] || managementGroup;
         const pendingCount = userPerms.manage_pending ? (() => {
           const isFullBoss = ['admin','hr','super_admin'].includes(user.role);
-          const isHODRole  = ['doctor_pic','hod_cawangan','hod_balok','supervisor'].includes(user.role);
+          const isHODRole  = ['doctor_pic','hod_balok','supervisor'].includes(user.role);
           const isTL = user.role === 'team_leader';
           if (isFullBoss) return leaveRecords.filter(r => window.canManageRequest(user, r) && ['HOD APPROVED','HOD RECOMMENDED','PENDING'].includes(r.status)).length;
           if (isTL) return leaveRecords.filter(r => window.canManageRequest(user, r) && r.status === 'PENDING').length;
@@ -6216,7 +6216,7 @@ function renderView() {
           ${activeGroup === 'approvals' ? `
             ${userPerms.manage_pending ? (() => {
               const isFullBoss = ['admin','hr','super_admin'].includes(user.role);
-              const isHODRole  = ['doctor_pic','hod_cawangan','hod_balok','supervisor'].includes(user.role);
+              const isHODRole  = ['doctor_pic','hod_balok','supervisor'].includes(user.role);
               const isTL = user.role === 'team_leader';
               let label = 'Kelulusan Tertunggak';
               if (isFullBoss) { const p2=leaveRecords.filter(r=>window.canManageRequest(user,r)&&['HOD APPROVED','HOD RECOMMENDED'].includes(r.status)).length; const by=leaveRecords.filter(r=>window.canManageRequest(user,r)&&r.status==='PENDING').length; label=`Kelulusan${p2>0?` ✅${p2}`:''}${by>0?` ⚡${by}`:''}`; }
@@ -6259,7 +6259,7 @@ function renderView() {
                   if (['REJECTED', 'CANCELLED', 'APPROVED'].includes(r.status)) return false;
                   if (!window.canManageRequest(user, r)) return false;
                   const isFullBoss = ['admin', 'hr', 'super_admin'].includes(user.role);
-                  const isHODRole = ['doctor_pic','hod_cawangan','hod_balok','supervisor'].includes(user.role);
+                  const isHODRole = ['doctor_pic','hod_balok','supervisor'].includes(user.role);
                   const isTL = user.role === 'team_leader';
                   if (isTL) {
                       // Team Leader hanya nampak PENDING staf operasi Balok
@@ -6349,7 +6349,7 @@ function renderView() {
                   </div>
 
                   ${(() => {
-                      const isHODRole = ['doctor_pic','hod_cawangan','hod_balok','supervisor'].includes(user.role);
+                      const isHODRole = ['doctor_pic','hod_balok','supervisor'].includes(user.role);
                       const isTLRole = user.role === 'team_leader';
                       const isLocumEditMode = isHODRole && req.status === 'HOD APPROVED';
                       if (isLocumEditMode) {
@@ -6828,7 +6828,7 @@ function renderView() {
         ` : ''}
 
         ${managementTab === 'locum_records' ? (() => {
-          const isSupervisorRole = ['supervisor', 'doctor_pic', 'hod_cawangan', 'hod_balok'].includes(user.role);
+          const isSupervisorRole = ['supervisor', 'doctor_pic', 'hod_balok'].includes(user.role);
           const locumRecs = leaveRecords.filter(r => r.locum1Name && (!isSupervisorRole || r.branch === user.branch));
           return `
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;margin-top:1rem;">
@@ -6941,7 +6941,7 @@ function renderView() {
           });
           const sortedBranches = Object.keys(byBranch).sort();
 
-          const roleColor = { super_admin:'#3b82f6', admin:'#f59e0b', hr:'#a855f7', hod:'#38bdf8', pic_hod:'#fb923c', supervisor:'#10b981', team_leader:'#f43f5e', staff:'#64748b', juru_xray:'#ec4899', sonographer:'#6366f1', juru_audio:'#0d9488' };
+          const roleColor = { super_admin:'#3b82f6', admin:'#f59e0b', hr:'#a855f7', hod_cawangan:'#38bdf8', hod_balok:'#0ea5e9', doctor_pic:'#818cf8', supervisor:'#10b981', team_leader:'#f43f5e', staff:'#64748b', juru_xray:'#ec4899', sonographer:'#6366f1', juru_audio:'#0d9488' };
 
           return `
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;margin-top:0.5rem;flex-wrap:wrap;gap:0.75rem;">
@@ -8400,7 +8400,7 @@ function renderView() {
 
         ${managementTab === 'public_holidays' && userPerms.manage_holidays ? (() => {
           const canEditPahang     = ['super_admin','admin','hr'].includes(user.role);
-          const canEditTerengganu = ['super_admin','admin','hr','hod'].includes(user.role);
+          const canEditTerengganu = ['super_admin','admin','hr','hod_cawangan'].includes(user.role);
           const rowStyle = 'display:grid;grid-template-columns:150px 1fr auto;gap:0.5rem;align-items:center;padding:0.45rem 0.75rem;border-bottom:1px solid rgba(163,177,198,0.1);';
 
           const renderPanel = (state, label, color, canEdit) => {
@@ -8473,7 +8473,7 @@ function renderView() {
           const allRoleKeys = Object.keys(window.rbacMatrix).filter(k => k !== 'super_admin');
           const categoryRowStyle = 'display:flex;align-items:center;justify-content:space-between;padding:0.55rem 1rem;border-bottom:1px solid rgba(163,177,198,0.12);';
           const pillStyle = (color) => `font-size:0.75rem;font-weight:700;color:#fff;background:${color};padding:0.2rem 0.6rem;border-radius:6px;`;
-          const roleColors = { admin:'#3b82f6', hr:'#10b981', hod:'#f59e0b', pic_hod:'#f97316', supervisor:'#8b5cf6', team_leader:'#f43f5e', staff:'#64748b' };
+          const roleColors = { admin:'#3b82f6', hr:'#10b981', hod_cawangan:'#38bdf8', hod_balok:'#0ea5e9', doctor_pic:'#818cf8', supervisor:'#8b5cf6', team_leader:'#f43f5e', staff:'#64748b' };
 
           return `
           <header class="top-bar">
