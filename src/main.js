@@ -427,9 +427,9 @@ let inboxNotifs = [];
 let inboxUnsub = null;
 let waSettingsSubTab = 'token_log'; // 'token_log' | 'rbac_notif'
 let waNotifRbac = {
-  balok:      { p1_submit: ['team_leader','hod'], tl_approved: ['supervisor'], p2_p1_approved: ['hr','admin','super_admin'], p3_final: [], overdue_reminder: ['team_leader','supervisor','hr'] },
-  pahang:     { p1_submit: ['hod','pic_hod'],     tl_approved: [],             p2_p1_approved: ['hr','admin'],              p3_final: [], overdue_reminder: ['hr','admin','hod'] },
-  terengganu: { p1_submit: ['hod','pic_hod'],     tl_approved: [],             p2_p1_approved: [],                          p3_final: [], overdue_reminder: ['hod'] }
+  balok:      { p1_submit: ['team_leader','hod_balok'], tl_approved: ['supervisor'], p2_p1_approved: ['hr','admin','super_admin'], p3_final: [], overdue_reminder: ['team_leader','supervisor','hr'] },
+  pahang:     { p1_submit: ['doctor_pic','hod_cawangan'], tl_approved: [],         p2_p1_approved: ['hr','admin'],              p3_final: [], overdue_reminder: ['hr','admin','doctor_pic'] },
+  terengganu: { p1_submit: ['doctor_pic','hod_cawangan'], tl_approved: [],         p2_p1_approved: [],                          p3_final: [], overdue_reminder: ['doctor_pic'] }
 };
 
 const DEFAULT_HOLIDAYS_PAHANG = [
@@ -5610,7 +5610,7 @@ function renderView() {
                         ${(() => {
                             const approvers = window.getRoutingP1Approvers(user);
                             if (!approvers.length) return '<option value="" disabled>-- Tiada Pelulus (HR/Admin akan luluskan terus) --</option>';
-                            const rl = { hod:'HOD', pic_hod:'PIC/HOD', supervisor:'Supervisor' };
+                            const rl = { doctor_pic:'Doctor PIC', hod_balok:'HOD Balok', supervisor:'Supervisor' };
                             return approvers.map(s => `<option value="${s.ic}">${s.name} (${rl[s.role]||s.role.toUpperCase()})</option>`).join('');
                         })()}
                     </select>
@@ -5640,30 +5640,31 @@ function renderView() {
                         flowColor = '#4361ee';
                         flowIcon = 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z';
                     } else if (isBentong) {
-                        step1Who = 'HOD / PIC_HOD — Uni Klinik Bentong';
-                        step1Note = 'Doktor Bentong memohon kelulusan HOD/PIC_HOD cawangan sendiri.';
+                        step1Who = 'Doctor PIC — Uni Klinik Bentong';
+                        step1Note = 'Doktor Bentong mendapat kelulusan Doctor PIC cawangan sendiri.';
                         flowColor = '#7c3aed';
                         flowIcon = 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z';
                     } else if (isMCKIP) {
-                        step1Who = 'HOD / PIC_HOD — Klinik Syed Badaruddin MCKIP';
-                        step1Note = 'Doktor MCKIP memohon kelulusan HOD/PIC_HOD cawangan sendiri.';
+                        step1Who = 'Doctor PIC — Klinik Syed Badaruddin MCKIP';
+                        step1Note = 'Doktor MCKIP mendapat kelulusan Doctor PIC cawangan sendiri.';
                         flowColor = '#7c3aed';
                         flowIcon = 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z';
                     } else if (isTerengganu) {
-                        step1Who = 'HOD / PIC_HOD — Cawangan Terengganu';
-                        step1Note = 'Doktor Terengganu memohon kelulusan HOD/PIC_HOD cawangan masing-masing.';
+                        step1Who = 'Doctor PIC — Cawangan Terengganu';
+                        step1Note = 'Doktor Terengganu mendapat kelulusan Doctor PIC cawangan masing-masing.';
                         flowColor = '#0d9488';
                         flowIcon = 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z';
                     } else {
-                        step1Who = 'HOD / PIC_HOD Cawangan';
-                        step1Note = 'Sila pilih HOD/PIC_HOD daripada senarai di atas.';
+                        step1Who = 'Doctor PIC Cawangan';
+                        step1Note = 'Sila pilih Doctor PIC daripada senarai di atas.';
                         flowColor = '#059669';
                         flowIcon = 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z';
                     }
                 } else if (user.category === 'Admin Staff') {
-                    step1Who = `HOD / PIC — ${user.branch || 'Klinik Anda'}`;
-                    step1Note = 'Staff admin mendapat kelulusan HOD klinik masing-masing. Jika tiada HOD, PIC cawangan akan meluluskan pada peringkat pertama.';
-                    flowColor = '#b45309';
+                    const _isBalokHQ = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
+                    step1Who = _isBalokHQ ? 'HOD Balok — Klinik Syed Badaruddin Balok (HQ)' : `Doctor PIC — ${user.branch || 'Klinik Anda'}`;
+                    step1Note = _isBalokHQ ? 'Staff admin Balok HQ mendapat kelulusan HOD Balok pada peringkat pertama.' : 'Staff admin mendapat kelulusan Doctor PIC klinik masing-masing pada peringkat pertama.';
+                    flowColor = '#0ea5e9';
                     flowIcon = 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z';
                 } else {
                     // Operation staff
@@ -5881,9 +5882,10 @@ function renderView() {
                 let step1Who;
                 if (isDoctor) {
                   if (isPahang && !isBentong && !isMCKIP) step1Who = 'Supervisor Balok';
-                  else step1Who = 'HOD / PIC_HOD Cawangan';
+                  else step1Who = 'Doctor PIC Cawangan';
                 } else if (user.category === 'Admin Staff') {
-                  step1Who = 'HOD / PIC — ' + (user.branch||'').split(' ').slice(0,3).join(' ');
+                  const _isBalokHQ2 = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
+                  step1Who = _isBalokHQ2 ? 'HOD Balok — Balok (HQ)' : 'Doctor PIC — ' + (user.branch||'').split(' ').slice(0,3).join(' ');
                 } else {
                   step1Who = isBalokStaff ? 'Supervisor Balok' : 'Doctor PIC Cawangan';
                 }
@@ -6179,7 +6181,7 @@ function renderView() {
         const activeGroup = _tabToGroup[managementTab] || managementGroup;
         const pendingCount = userPerms.manage_pending ? (() => {
           const isFullBoss = ['admin','hr','super_admin'].includes(user.role);
-          const isHODRole  = ['hod','pic_hod','supervisor'].includes(user.role);
+          const isHODRole  = ['doctor_pic','hod_cawangan','hod_balok','supervisor'].includes(user.role);
           const isTL = user.role === 'team_leader';
           if (isFullBoss) return leaveRecords.filter(r => window.canManageRequest(user, r) && ['HOD APPROVED','HOD RECOMMENDED','PENDING'].includes(r.status)).length;
           if (isTL) return leaveRecords.filter(r => window.canManageRequest(user, r) && r.status === 'PENDING').length;
@@ -6214,7 +6216,7 @@ function renderView() {
           ${activeGroup === 'approvals' ? `
             ${userPerms.manage_pending ? (() => {
               const isFullBoss = ['admin','hr','super_admin'].includes(user.role);
-              const isHODRole  = ['hod','pic_hod','supervisor'].includes(user.role);
+              const isHODRole  = ['doctor_pic','hod_cawangan','hod_balok','supervisor'].includes(user.role);
               const isTL = user.role === 'team_leader';
               let label = 'Kelulusan Tertunggak';
               if (isFullBoss) { const p2=leaveRecords.filter(r=>window.canManageRequest(user,r)&&['HOD APPROVED','HOD RECOMMENDED'].includes(r.status)).length; const by=leaveRecords.filter(r=>window.canManageRequest(user,r)&&r.status==='PENDING').length; label=`Kelulusan${p2>0?` ✅${p2}`:''}${by>0?` ⚡${by}`:''}`; }
@@ -6257,7 +6259,7 @@ function renderView() {
                   if (['REJECTED', 'CANCELLED', 'APPROVED'].includes(r.status)) return false;
                   if (!window.canManageRequest(user, r)) return false;
                   const isFullBoss = ['admin', 'hr', 'super_admin'].includes(user.role);
-                  const isHODRole = ['hod', 'pic_hod', 'supervisor'].includes(user.role);
+                  const isHODRole = ['doctor_pic','hod_cawangan','hod_balok','supervisor'].includes(user.role);
                   const isTL = user.role === 'team_leader';
                   if (isTL) {
                       // Team Leader hanya nampak PENDING staf operasi Balok
@@ -6347,7 +6349,7 @@ function renderView() {
                   </div>
 
                   ${(() => {
-                      const isHODRole = ['hod', 'pic_hod', 'supervisor'].includes(user.role);
+                      const isHODRole = ['doctor_pic','hod_cawangan','hod_balok','supervisor'].includes(user.role);
                       const isTLRole = user.role === 'team_leader';
                       const isLocumEditMode = isHODRole && req.status === 'HOD APPROVED';
                       if (isLocumEditMode) {
@@ -6826,7 +6828,7 @@ function renderView() {
         ` : ''}
 
         ${managementTab === 'locum_records' ? (() => {
-          const isSupervisorRole = ['supervisor', 'hod', 'pic_hod'].includes(user.role);
+          const isSupervisorRole = ['supervisor', 'doctor_pic', 'hod_cawangan', 'hod_balok'].includes(user.role);
           const locumRecs = leaveRecords.filter(r => r.locum1Name && (!isSupervisorRole || r.branch === user.branch));
           return `
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;margin-top:1rem;">
@@ -7772,8 +7774,9 @@ function renderView() {
                   { val: 'super_admin', label: 'Super Admin' },
                   { val: 'admin', label: 'Admin' },
                   { val: 'hr', label: 'HR' },
-                  { val: 'hod', label: 'HOD' },
-                  { val: 'pic_hod', label: 'PIC HOD' },
+                  { val: 'hod_cawangan', label: 'HOD Cawangan' },
+                  { val: 'hod_balok', label: 'HOD Balok' },
+                  { val: 'doctor_pic', label: 'Doctor PIC' },
                   { val: 'supervisor', label: 'Supervisor' },
                   { val: 'team_leader', label: 'Team Leader' },
                   { val: 'staff', label: 'Staff' },
@@ -7872,17 +7875,18 @@ function renderView() {
           const rows = [
             { key:'terengganu',       label:'Semua Kakitangan',  sub:'Terengganu',           color:'#0d9488', bg:'rgba(13,148,136,0.06)'  },
             { key:'pahang_lain',      label:'Semua Kakitangan',  sub:'Pahang (Selain Balok)', color:'#3b82f6', bg:'rgba(59,130,246,0.06)'  },
+            { key:'admin_balok',      label:'Kakitangan Admin',  sub:'Balok (HQ)',            color:'#0ea5e9', bg:'rgba(14,165,233,0.06)'  },
             { key:'doctor_pahang',    label:'Doktor',            sub:'Pahang (Selain Bentong)', color:'#d97706', bg:'rgba(217,119,6,0.06)'  },
             { key:'operation_balok',  label:'Kakitangan Operasi',sub:'Balok (HQ)',            color:'#10b981', bg:'rgba(16,185,129,0.06)'  },
             { key:'xray_sono_balok',  label:'Juru X-Ray / Sono', sub:'Balok (HQ)',            color:'#ec4899', bg:'rgba(236,72,153,0.06)'  },
             { key:'juru_audio_balok', label:'Juru Audio',        sub:'Balok (HQ)',            color:'#0d9488', bg:'rgba(13,148,136,0.06)'  },
           ];
           const cols = [
-            { field:'needs_tl',     label:'Team Leader', grp:'p0', color:'#f43f5e' },
-            { field:'p1_hod',       label:'HOD',         grp:'p1', color:'#38bdf8' },
-            { field:'p1_pic_hod',   label:'PIC / HOD',   grp:'p1', color:'#818cf8' },
-            { field:'p1_supervisor',label:'Supervisor',   grp:'p1', color:'#34d399', note:'★ Balok Spvsr bagi Doktor Pahang (Selain Bentong) & Op. Balok' },
-            { field:'needs_p2',     label:'Perlu P2?',   grp:'p2', color:'#f97316' },
+            { field:'needs_tl',      label:'Team Leader', grp:'p0', color:'#f43f5e' },
+            { field:'p1_doctor_pic', label:'Doctor PIC',  grp:'p1', color:'#818cf8' },
+            { field:'p1_hod_balok',  label:'HOD Balok',   grp:'p1', color:'#38bdf8' },
+            { field:'p1_supervisor', label:'Supervisor',  grp:'p1', color:'#34d399', note:'★ Supervisor Balok bagi Operasi/Doktor Balok' },
+            { field:'needs_p2',      label:'Perlu P2?',   grp:'p2', color:'#f97316' },
           ];
           const mkCell = (group, field, checked, color) =>
             `<td style="padding:0.55rem 0.5rem;border-right:1px solid rgba(163,177,198,0.12);cursor:pointer;text-align:center;" onclick="window.toggleRouting('${group}','${field}')">
@@ -7997,6 +8001,7 @@ function renderView() {
                       const flowRows = [
                         { key:'terengganu',       grp:'Semua Kakitangan',          scope:'Terengganu',                     gColor:'#0d9488' },
                         { key:'pahang_lain',      grp:'Semua Kakitangan',          scope:'Pahang (Selain Balok)',           gColor:'#3b82f6' },
+                        { key:'admin_balok',      grp:'Kakitangan Admin',          scope:'Balok (HQ)',                     gColor:'#0ea5e9' },
                         { key:'doctor_pahang',    grp:'Doktor',                    scope:'Pahang (Selain Bentong)',         gColor:'#d97706' },
                         { key:'operation_balok',  grp:'Kakitangan Operasi',        scope:'Balok (HQ)',                     gColor:'#10b981' },
                         { key:'xray_sono_balok',  grp:'Juru X-Ray / Sonographer', scope:'Balok (HQ)',                     gColor:'#ec4899' },
@@ -8005,13 +8010,9 @@ function renderView() {
 
                       const getP1Label = (key, cfg) => {
                         if (cfg.needs_tl && cfg.p1_supervisor) return 'Supervisor Balok';
-                        if (cfg.p1_supervisor) {
-                          if (key === 'operation_balok' || key === 'xray_sono_balok' || key === 'doctor_pahang') return 'Supervisor Balok';
-                          return 'Supervisor';
-                        }
-                        if (cfg.p1_hod && cfg.p1_pic_hod) return 'HOD / PIC HOD';
-                        if (cfg.p1_hod)     return 'HOD';
-                        if (cfg.p1_pic_hod) return 'PIC HOD';
+                        if (cfg.p1_supervisor) return 'Supervisor Balok';
+                        if (cfg.p1_hod_balok) return 'HOD Balok';
+                        if (cfg.p1_doctor_pic) return 'Doctor PIC';
                         return null;
                       };
 
@@ -8105,8 +8106,9 @@ function renderView() {
             { key: 'super_admin', label: 'Super Admin', color: '#3b82f6', bg: 'rgba(59,130,246,0.06)', bottomBorder: '2px solid rgba(59,130,246,0.25)', desc: 'Akses penuh' },
             { key: 'admin',       label: 'Admin',       color: '#f59e0b', bg: 'rgba(245,158,11,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Pentadbiran' },
             { key: 'hr',          label: 'HR',           color: '#a855f7', bg: 'rgba(168,85,247,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Sumber Manusia' },
-            { key: 'hod',         label: 'HOD',          color: '#38bdf8', bg: 'rgba(56,189,248,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Ketua Jabatan' },
-            { key: 'pic_hod',     label: 'PIC / HOD',    color: '#fb923c', bg: 'rgba(251,146,60,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Ketua Cawangan' },
+            { key: 'hod_cawangan', label: 'HOD Cawangan', color: '#38bdf8', bg: 'rgba(56,189,248,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Ketua Cawangan' },
+            { key: 'hod_balok',   label: 'HOD Balok',    color: '#0ea5e9', bg: 'rgba(14,165,233,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Ketua Balok HQ' },
+            { key: 'doctor_pic',  label: 'Doctor PIC',   color: '#fb923c', bg: 'rgba(251,146,60,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Doktor Penanggung Cawangan' },
             { key: 'supervisor',  label: 'Supervisor',   color: '#10b981', bg: 'rgba(16,185,129,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Penyelia Balok' },
             { key: 'team_leader', label: 'Team Leader',  color: '#f43f5e', bg: 'rgba(244,63,94,0.04)',   bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Ketua Kumpulan Balok' },
             { key: 'staff',       label: 'Staff',        color: '#94a3b8', bg: 'rgba(148,163,184,0.04)', bottomBorder: '2px solid rgba(163,177,198,0.3)',  desc: 'Kakitangan Am' },
@@ -8581,8 +8583,8 @@ function renderView() {
                     <th style="padding:0.45rem 0.9rem;font-weight:600;font-size:0.63rem;color:var(--text-muted);border-right:1px solid rgba(163,177,198,0.12);text-align:left;white-space:nowrap;">Kategori</th>
                     <th style="padding:0.45rem 0.75rem;font-weight:600;font-size:0.63rem;color:var(--text-muted);border-right:2px solid rgba(163,177,198,0.25);text-align:left;white-space:nowrap;">Skop</th>
                     <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#f43f5e;border-right:2px solid rgba(163,177,198,0.25);text-align:center;white-space:nowrap;">Team Leader</th>
-                    <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#38bdf8;border-right:1px solid rgba(163,177,198,0.12);text-align:center;white-space:nowrap;">HOD</th>
-                    <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#818cf8;border-right:1px solid rgba(163,177,198,0.12);text-align:center;white-space:nowrap;">PIC / HOD</th>
+                    <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#818cf8;border-right:1px solid rgba(163,177,198,0.12);text-align:center;white-space:nowrap;">Doctor PIC</th>
+                    <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#38bdf8;border-right:1px solid rgba(163,177,198,0.12);text-align:center;white-space:nowrap;">HOD Balok</th>
                     <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#34d399;border-right:2px solid rgba(163,177,198,0.25);text-align:center;white-space:nowrap;">Supervisor ★</th>
                     <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#f97316;text-align:center;white-space:nowrap;">Perlu P2?</th>
                   </tr>
@@ -8591,6 +8593,7 @@ function renderView() {
                   ${[
                     { key:'terengganu',       label:'Semua Kakitangan',  sub:'Terengganu',             color:'#0d9488', bg:'rgba(13,148,136,0.04)'  },
                     { key:'pahang_lain',      label:'Semua Kakitangan',  sub:'Pahang (Selain Balok)',   color:'#3b82f6', bg:'rgba(59,130,246,0.04)'  },
+                    { key:'admin_balok',      label:'Kakitangan Admin',  sub:'Balok (HQ)',              color:'#0ea5e9', bg:'rgba(14,165,233,0.04)'  },
                     { key:'doctor_pahang',    label:'Doktor',            sub:'Pahang (Selain Bentong)', color:'#d97706', bg:'rgba(217,119,6,0.04)'  },
                     { key:'operation_balok',  label:'Kakitangan Operasi',sub:'Balok (HQ)',             color:'#10b981', bg:'rgba(16,185,129,0.04)'  },
                     { key:'xray_sono_balok',  label:'Juru X-Ray / Sono', sub:'Balok (HQ)',             color:'#ec4899', bg:'rgba(236,72,153,0.04)'  },
@@ -8613,8 +8616,8 @@ function renderView() {
                       </td>
                       <td style="padding:0.55rem 0.75rem;border-right:2px solid rgba(163,177,198,0.25);font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">${row.sub}</td>
                       ${mkCell('needs_tl',      cfg.needs_tl,      '#f43f5e', true)}
-                      ${mkCell('p1_hod',        cfg.p1_hod,        '#38bdf8', false)}
-                      ${mkCell('p1_pic_hod',    cfg.p1_pic_hod,    '#818cf8', false)}
+                      ${mkCell('p1_doctor_pic', cfg.p1_doctor_pic, '#818cf8', false)}
+                      ${mkCell('p1_hod_balok',  cfg.p1_hod_balok,  '#38bdf8', false)}
                       ${mkCell('p1_supervisor', cfg.p1_supervisor,  '#34d399', true)}
                       ${mkCell('needs_p2',      cfg.needs_p2,       '#f97316', false)}
                     </tr>`;
