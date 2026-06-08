@@ -593,6 +593,53 @@ function helpSearch(query) {
   }).filter(x => x.sc > 0).sort((a, b) => b.sc - a.sc).slice(0, 6).map(x => x.e);
 }
 
+// ============================================================
+// HELP WIDGET — floating button + searchable FAQ panel
+// ============================================================
+let helpOpen = false;
+let helpQuery = '';
+let helpSelectedId = null;
+
+window.toggleHelp = function(v) { helpOpen = (v !== undefined) ? v : !helpOpen; if (!helpOpen) { helpQuery=''; helpSelectedId=null; } renderHelpWidget(); };
+window.helpOnInput = function(val) { helpQuery = val; helpSelectedId = null; renderHelpWidget(); };
+window.helpSelect = function(id) { helpSelectedId = id; renderHelpWidget(); };
+window.helpBack = function() { helpSelectedId = null; renderHelpWidget(); };
+window.helpAction = function(view) { helpOpen = false; helpSelectedId = null; renderHelpWidget(); if (typeof window.setView === 'function') window.setView(view); };
+
+function helpAnswerHtml(entry) {
+  return (typeof entry.a === 'function') ? entry.a(window.user) : entry.a;
+}
+
+function renderHelpWidget() {
+  let host = document.getElementById('help-widget');
+  if (!host) { host = document.createElement('div'); host.id = 'help-widget'; document.body.appendChild(host); }
+  if (!window.user) { host.innerHTML = ''; return; }
+  const btn = `<button onclick="window.toggleHelp()" aria-label="Bantuan" style="position:fixed;right:1rem;bottom:1rem;z-index:99998;width:54px;height:54px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;box-shadow:0 8px 24px rgba(59,130,246,0.4);font-size:1.5rem;font-weight:800;display:flex;align-items:center;justify-content:center;">${helpOpen ? '×' : '?'}</button>`;
+  let panel = '';
+  if (helpOpen) {
+    const sel = helpSelectedId ? HELP_FAQ.find(e => e.id === helpSelectedId) : null;
+    let body;
+    if (sel) {
+      const act = sel.action ? `<button onclick="window.helpAction('${sel.action.view}')" style="margin-top:0.85rem;width:100%;padding:0.6rem;border:none;border-radius:10px;cursor:pointer;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;font-weight:700;font-size:0.82rem;">${sel.action.label}</button>` : '';
+      body = `<button onclick="window.helpBack()" style="background:none;border:none;color:#3b82f6;cursor:pointer;font-size:0.78rem;font-weight:700;padding:0;margin-bottom:0.6rem;">← Kembali</button>
+        <div style="font-size:0.9rem;font-weight:800;margin-bottom:0.5rem;color:var(--text);">${sel.q}</div>
+        <div style="font-size:0.82rem;line-height:1.6;color:var(--text-muted);">${helpAnswerHtml(sel)}</div>${act}`;
+    } else {
+      const results = helpSearch(helpQuery);
+      const list = results.length
+        ? results.map(e => `<button onclick="window.helpSelect('${e.id}')" style="display:block;width:100%;text-align:left;background:rgba(163,177,198,0.08);border:1px solid rgba(163,177,198,0.2);border-radius:10px;padding:0.6rem 0.75rem;margin-bottom:0.4rem;cursor:pointer;font-size:0.8rem;color:var(--text);"><span style="font-size:0.62rem;color:#3b82f6;font-weight:700;text-transform:uppercase;">${e.cat}</span><br>${e.q}</button>`).join('')
+        : `<div style="font-size:0.8rem;color:var(--text-muted);padding:0.5rem 0;">Tiada padanan. Cuba kata kunci lain (cth. "MC", "pelulus", "baki"), tekan topik popular, atau hubungi HR/Admin.</div>`;
+      const hint = helpQuery ? '' : `<div style="font-size:0.66rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin:0.3rem 0 0.5rem;">Topik popular</div>`;
+      body = `<input value="${helpQuery.replace(/"/g,'&quot;')}" oninput="window.helpOnInput(this.value)" placeholder="Taip soalan anda… cth. macam mana hantar MC" style="width:100%;padding:0.6rem 0.8rem;border-radius:10px;border:1.5px solid rgba(59,130,246,0.3);font-size:0.82rem;margin-bottom:0.6rem;color-scheme:light;">${hint}${list}`;
+    }
+    panel = `<div style="position:fixed;right:1rem;bottom:5rem;z-index:99998;width:min(360px,calc(100vw - 2rem));max-height:70vh;overflow-y:auto;background:var(--bg,#fff);border:1px solid rgba(163,177,198,0.3);border-radius:16px;box-shadow:0 16px 48px rgba(0,0,0,0.25);padding:1rem;">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;"><span style="font-size:1.1rem;">👋</span><div style="font-size:0.9rem;font-weight:800;color:var(--text);">Bantuan KSB</div></div>
+      ${body}</div>`;
+  }
+  host.innerHTML = btn + panel;
+}
+window.renderHelpWidget = renderHelpWidget;
+
 window.rbacMatrix = {
     super_admin: {
         dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: true, messenger: true, inbox: true,
@@ -2963,6 +3010,9 @@ function render() {
 
     // Render Chart.js charts if analytics view is active
     requestAnimationFrame(() => { initCharts(); });
+
+    // Help widget — lives outside #app so survives innerHTML swaps
+    try { renderHelpWidget(); } catch(e) {}
 
   } catch (err) {
     console.error("[CRITICAL] Render error:", err);
