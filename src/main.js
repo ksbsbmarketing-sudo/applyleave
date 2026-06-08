@@ -634,7 +634,8 @@ function renderHelpWidget() {
   let host = document.getElementById('help-widget');
   if (!host) { host = document.createElement('div'); host.id = 'help-widget'; document.body.appendChild(host); }
   if (!user) { host.innerHTML = ''; return; }
-  const btn = `<button onclick="window.toggleHelp()" aria-label="Bantuan" style="position:fixed;right:1rem;bottom:1rem;z-index:99998;width:54px;height:54px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;box-shadow:0 8px 24px rgba(59,130,246,0.4);font-size:1.5rem;font-weight:800;display:flex;align-items:center;justify-content:center;">${helpOpen ? '×' : '?'}</button>`;
+  const robotIcon = `<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="3.4" r="1.15" fill="#fff" stroke="none"/><path d="M12 4.6V7"/><rect x="4.5" y="7" width="15" height="11" rx="3.6"/><path d="M3 11v3M21 11v3"/><circle cx="9.3" cy="12" r="1.45" fill="#fff" stroke="none"/><circle cx="14.7" cy="12" r="1.45" fill="#fff" stroke="none"/><path d="M9.6 15.3h4.8"/></svg>`;
+  const btn = `<button onclick="window.toggleHelp()" aria-label="Bantuan" style="position:fixed;right:1rem;bottom:1rem;z-index:99998;width:54px;height:54px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;box-shadow:0 8px 24px rgba(59,130,246,0.4);font-size:1.5rem;font-weight:800;display:flex;align-items:center;justify-content:center;">${helpOpen ? '×' : robotIcon}</button>`;
   let panel = '';
   if (helpOpen) {
     const sel = helpSelectedId ? HELP_FAQ.find(e => e.id === helpSelectedId) : null;
