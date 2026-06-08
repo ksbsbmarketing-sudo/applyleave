@@ -519,13 +519,19 @@ window.rbacMatrix = {
         report_kuantan_only: true, report_own_branch_only: false, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
     },
-    hod: {
+    hod_cawangan: {
+        dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: true, manage_policy: false,
+        report_kuantan_only: false, report_own_branch_only: true, report_attendance: true,
+        can_cancel: true, os_balok: true, os_pahang: true, locum_records: false
+    },
+    hod_balok: {
         dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
         manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: true, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: true, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: false
     },
-    pic_hod: {
+    doctor_pic: {
         dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
         manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
@@ -594,10 +600,10 @@ const _rbacCodeDefaults = JSON.parse(JSON.stringify(window.rbacMatrix));
 
 // Staff config — categories & role labels loaded from Firestore
 const CORE_CATEGORIES = ['Admin Staff', 'Operation Staff', 'Doctor'];
-const CORE_ROLES = ['super_admin', 'admin', 'hr', 'hod', 'pic_hod', 'supervisor', 'team_leader', 'staff', 'juru_xray', 'sonographer', 'juru_audio'];
+const CORE_ROLES = ['super_admin', 'admin', 'hr', 'hod_cawangan', 'hod_balok', 'doctor_pic', 'supervisor', 'team_leader', 'staff', 'juru_xray', 'sonographer', 'juru_audio'];
 window.staffConfig = {
     staffCategories: [...CORE_CATEGORIES],
-    roleLabels: { super_admin:'Super Admin', admin:'Admin', hr:'HR', hod:'HOD', pic_hod:'PIC HOD', supervisor:'Supervisor', team_leader:'Team Leader', staff:'Staff', juru_xray:'Juru X-Ray', sonographer:'Sonographer', juru_audio:'Juru Audio' },
+    roleLabels: { super_admin:'Super Admin', admin:'Admin', hr:'HR', hod_cawangan:'HOD Cawangan', hod_balok:'HOD Balok', doctor_pic:'Doctor PIC', supervisor:'Supervisor', team_leader:'Team Leader', staff:'Staff', juru_xray:'Juru X-Ray', sonographer:'Sonographer', juru_audio:'Juru Audio' },
     customRoles: []
 };
 window.resetRbac = function() {
