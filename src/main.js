@@ -1177,12 +1177,13 @@ const STATE_DAERAH = { Pahang: PAHANG_DAERAH, Terengganu: TERENGGANU_DAERAH };
 // APPROVAL ROUTING CONFIG
 // ============================================================
 const ROUTING_DEFAULTS = {
-  terengganu:       { needs_tl: false, p1_hod: true,  p1_pic_hod: true,  p1_supervisor: false, needs_p2: false },
-  pahang_lain:      { needs_tl: false, p1_hod: true,  p1_pic_hod: true,  p1_supervisor: false, needs_p2: true  },
-  doctor_pahang:    { needs_tl: false, p1_hod: false, p1_pic_hod: false, p1_supervisor: true,  needs_p2: true  },
-  operation_balok:  { needs_tl: true,  p1_hod: false, p1_pic_hod: false, p1_supervisor: true,  needs_p2: true  },
-  xray_sono_balok:  { needs_tl: false, p1_hod: false, p1_pic_hod: false, p1_supervisor: true,  needs_p2: true  },
-  juru_audio_balok: { needs_tl: false, p1_hod: true,  p1_pic_hod: false, p1_supervisor: false, needs_p2: true  },
+  terengganu:       { needs_tl: false, p1_doctor_pic: true,  p1_supervisor: false, p1_hod_balok: false, needs_p2: false },
+  pahang_lain:      { needs_tl: false, p1_doctor_pic: true,  p1_supervisor: false, p1_hod_balok: false, needs_p2: true  },
+  admin_balok:      { needs_tl: false, p1_doctor_pic: false, p1_supervisor: false, p1_hod_balok: true,  needs_p2: true  },
+  doctor_pahang:    { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
+  operation_balok:  { needs_tl: true,  p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
+  xray_sono_balok:  { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
+  juru_audio_balok: { needs_tl: false, p1_doctor_pic: false, p1_supervisor: false, p1_hod_balok: true,  needs_p2: true  },
 };
 let approvalRouting = JSON.parse(JSON.stringify(ROUTING_DEFAULTS));
 
@@ -1197,6 +1198,8 @@ window.getStaffGroup = function(s) {
 
   // Hanya Operation Staff di Balok → TL → Supervisor → HR
   if (isBalok && s.category === 'Operation Staff') return 'operation_balok';
+  // Admin Staff di Balok HQ → HOD Balok
+  if (isBalok && s.category === 'Admin Staff') return 'admin_balok';
   if (isTerengganu)  return 'terengganu';
 
   // Doktor di Pahang KECUALI Bentong & MCKIP → Supervisor Balok (HQ) → HR, bukan HOD
