@@ -632,7 +632,7 @@ function renderHelpWidget() {
       const hint = helpQuery ? '' : `<div style="font-size:0.66rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin:0.3rem 0 0.5rem;">Topik popular</div>`;
       body = `<input value="${helpQuery.replace(/"/g,'&quot;')}" oninput="window.helpOnInput(this.value)" placeholder="Taip soalan anda… cth. macam mana hantar MC" style="width:100%;padding:0.6rem 0.8rem;border-radius:10px;border:1.5px solid rgba(59,130,246,0.3);font-size:0.82rem;margin-bottom:0.6rem;color-scheme:light;">${hint}${list}`;
     }
-    panel = `<div style="position:fixed;right:1rem;bottom:5rem;z-index:99998;width:min(360px,calc(100vw - 2rem));max-height:70vh;overflow-y:auto;background:var(--bg,#fff);border:1px solid rgba(163,177,198,0.3);border-radius:16px;box-shadow:0 16px 48px rgba(0,0,0,0.25);padding:1rem;">
+    panel = `<div style="position:fixed;right:1rem;bottom:5rem;z-index:100000;width:min(360px,calc(100vw - 2rem));max-height:70vh;overflow-y:auto;background:var(--bg,#fff);border:1px solid rgba(163,177,198,0.3);border-radius:16px;box-shadow:0 16px 48px rgba(0,0,0,0.25);padding:1rem;">
       <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;"><span style="font-size:1.1rem;">👋</span><div style="font-size:0.9rem;font-weight:800;color:var(--text);">Bantuan KSB</div></div>
       ${body}</div>`;
   }
