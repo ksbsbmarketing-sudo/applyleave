@@ -500,6 +500,166 @@ const leaveCategories = [
     { id: 'CME', name: 'Latihan CME', entitlement: 5, icon: 'icon-cme', color: '#8b5cf6', description: 'Cuti Pendidikan Perubatan Berterusan (Doktor sahaja).' }
 ];
 
+// ============================================================
+// BOT BANTUAN — FAQ Pintar (rule-based, tiada backend)
+// ============================================================
+const HELP_SYNONYMS = {
+  sakit:'mc', medical:'mc', sijil:'mc',
+  tahunan:'al', annual:'al',
+  emergency:'kecemasan',
+  kematian:'ehsan',
+  ganti:'locum',
+  lulus:'kelulusan', pelulus:'kelulusan', approve:'kelulusan',
+  baki:'balance',
+  password:'kata laluan', lupa:'kata laluan',
+  telefon:'profil', phone:'profil'
+};
+
+const HELP_FAQ = [
+  { id:'al-submit', cat:'Cuti', popular:true, keywords:['al','tahunan','annual','cuti tahunan','mohon cuti','hantar cuti'],
+    q:'Macam mana mohon Cuti Tahunan (AL)?',
+    a:'<strong>Langkah mohon AL:</strong><br>1. Tekan <em>Mohon Cuti</em> → pilih jenis <strong>Annual Leave (AL)</strong>.<br>2. Pilih tarikh mula & tamat (boleh tanda <em>Half Day</em> untuk separuh hari).<br>3. Pilih <strong>Pelulus Peringkat 1</strong> dari senarai.<br>4. Tekan <strong>Hantar Permohonan</strong>.<br><br>⚠️ AL mesti dimohon awal: <strong>3 hari</strong> (Staff Admin) / <strong>7 hari</strong> (Operasi & Doktor) sebelum tarikh cuti. Baki AL ditolak automatik; jika tak cukup, lebihan jadi <em>Unpaid Leave</em>.',
+    action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
+  { id:'mc-submit', cat:'Cuti', popular:true, keywords:['mc','sakit','medical','sijil','cuti sakit','hantar mc'],
+    q:'Macam mana mohon Cuti Sakit (MC)?',
+    a:'<strong>Langkah mohon MC:</strong><br>1. <em>Mohon Cuti</em> → pilih <strong>Medical Leave (MC)</strong>.<br>2. Pilih tarikh (boleh tarikh hari ini / ke belakang — <strong>tiada had notis 3/7 hari</strong> untuk MC).<br>3. <strong>WAJIB muat naik Sijil Sakit (MC)</strong> sebelum hantar.<br>4. Tekan Hantar.<br><br>MC dihantar <strong>terus untuk semakan & kelulusan</strong>: cawangan <strong>Pahang → HR</strong>; cawangan <strong>Terengganu → HOD/PIC</strong>. Anda tak perlu pilih pelulus.',
+    action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
+  { id:'emergency-submit', cat:'Cuti', keywords:['kecemasan','emergency','cuti kecemasan','el'],
+    q:'Macam mana mohon Cuti Kecemasan?',
+    a:'<strong>Cuti Kecemasan:</strong><br>1. <em>Mohon Cuti</em> → pilih <strong>Cuti Kecemasan</strong>.<br>2. <strong>WAJIB muat naik dokumen/gambar bukti</strong>.<br>3. Pilih pelulus & hantar.<br><br>Tanpa bukti, borang akan ditolak.',
+    action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
+  { id:'ehsan-submit', cat:'Cuti', keywords:['ehsan','kematian','cuti ehsan','kematian keluarga'],
+    q:'Cuti Ehsan (kematian) — macam mana & syarat?',
+    a:'<strong>Cuti Ehsan</strong> hanya untuk kematian <strong>ayah, ibu, suami, isteri, atau anak</strong>. Had: <strong>3 hari</strong>. <strong>WAJIB muat naik Salinan Sijil Kematian</strong> semasa memohon.',
+    action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
+  { id:'cme-submit', cat:'Cuti', keywords:['cme','latihan','kursus','seminar','doktor'],
+    q:'Cuti CME (doktor) — macam mana?',
+    a:'<strong>Cuti CME</strong> untuk <strong>doktor sahaja</strong>, maksimum <strong>5 hari setiap kalendar</strong>, khusus untuk kursus/seminar/latihan luaran berkaitan kerja. Perlu surat sokongan + pengesahan daripada Pengurus dan Ketua Jabatan (HOD).' },
+  { id:'locum-info', cat:'Cuti', keywords:['locum','ganti','doktor locum','penggantian'],
+    q:'Maklumat Locum untuk doktor',
+    a:'Untuk doktor, maklumat <strong>Locum</strong> (nama, tarikh, masa penggantian) boleh diisi untuk rujukan. Ia biasanya dilengkapkan oleh HOD/Supervisor sebelum meluluskan, dan <strong>tidak diwajibkan</strong> untuk meluluskan permohonan.' },
+  { id:'no-submit-approver', cat:'Masalah', popular:true, keywords:['tak boleh hantar','pelulus','wajib pilih','borang ditolak','peringkat 1'],
+    q:'Borang tak boleh hantar — "Wajib pilih Pelulus"',
+    a:'Anda perlu <strong>pilih Pelulus Peringkat 1</strong> dari menu dropdown sebelum hantar. Jika <strong>tiada pelulus berdaftar</strong> untuk cawangan/kategori anda, sistem akan benarkan hantar terus dan <strong>HR/Admin</strong> akan luluskan. (MC tidak perlu pilih pelulus.)' },
+  { id:'no-submit-mc', cat:'Masalah', keywords:['mc tak hantar','sijil belum','muat naik mc','upload mc'],
+    q:'MC tak boleh hantar — sijil belum dimuat naik',
+    a:'Cuti Sakit (MC) <strong>wajib</strong> ada <strong>Sijil Sakit</strong> dimuat naik (gambar JPG/PNG atau PDF) sebelum boleh dihantar. Tekan kotak muat naik MC, pilih fail, kemudian hantar.' },
+  { id:'notice-policy', cat:'Masalah', keywords:['notis','policy violation','3 hari','7 hari','days notice','terlalu lewat'],
+    q:'Mesej "Policy Violation — days notice"',
+    a:'Cuti Tahunan (AL) mesti dimohon awal: <strong>3 hari</strong> untuk Staff Admin, <strong>7 hari</strong> untuk Operasi & Doktor, sebelum tarikh cuti. <strong>MC dikecualikan</strong> (boleh hari ini/ke belakang). Jika perlu kecemasan, guna Cuti Kecemasan.' },
+  { id:'balance-insufficient', cat:'Masalah', keywords:['baki tak cukup','unpaid','split','ul','kurang baki'],
+    q:'Baki cuti tak cukup / jadi Unpaid Leave',
+    a:'Jika hari AL yang dimohon <strong>melebihi baki</strong> anda, sistem akan <strong>bahagikan automatik</strong>: sebahagian sebagai AL (baki yang ada) dan selebihnya sebagai <strong>Unpaid Leave (UL)</strong>. Notis akan dipaparkan semasa hantar.' },
+  { id:'half-day', cat:'Masalah', keywords:['separuh hari','half day','setengah hari'],
+    q:'Macam mana mohon cuti separuh hari?',
+    a:'Pada borang cuti, tanda kotak <strong>Half Day</strong>. Tempoh akan ditolak <strong>0.5 hari</strong> dari baki.' },
+  { id:'who-approves', cat:'Kelulusan', popular:true, keywords:['pelulus','siapa lulus','kelulusan','siapa pelulus','approve cuti'],
+    q:'Siapa pelulus cuti saya?',
+    a: function(u) {
+      const generic = 'Peringkat 1 bergantung peranan & cawangan: <strong>Doctor PIC</strong> (staf cawangan), <strong>HOD Balok</strong> (admin Balok HQ), atau <strong>Supervisor Balok</strong> (operasi Balok & doktor Pahang). Selepas itu <strong>HR/Admin</strong> beri kelulusan akhir (Peringkat 2). Terengganu 1 peringkat sahaja.';
+      try {
+        if (!u || typeof window.getRoutingP1Approvers !== 'function') return generic;
+        const apps = window.getRoutingP1Approvers(u) || [];
+        const names = apps.map(s => s.name).filter(Boolean);
+        const who = names.length ? names.join(', ') : 'tiada pelulus berdaftar — permohonan akan terus ke HR/Admin';
+        return 'Bagi anda (<strong>' + (u.name||'') + '</strong> — ' + (u.branch||'') + '):<br>🔹 <strong>Pelulus Peringkat 1:</strong> ' + who + '<br>🔹 <strong>Peringkat 2 (akhir):</strong> HR/Admin.<br><br>' + generic;
+      } catch(e) { return generic; }
+    },
+  },
+  { id:'stages', cat:'Kelulusan', keywords:['peringkat','stage','peringkat 1','peringkat 2','p1','p2'],
+    q:'Apa maksud Peringkat 1 dan Peringkat 2?',
+    a:'<strong>Peringkat 1</strong> = sokongan pelulus pertama (Doctor PIC / HOD Balok / Supervisor).<br><strong>Peringkat 2</strong> = kelulusan akhir oleh <strong>HR/Admin</strong>.<br>Cuti dikira <strong>SAH</strong> hanya selepas Peringkat 2 (kecuali cawangan Terengganu — 1 peringkat sahaja).' },
+  { id:'status-pending', cat:'Kelulusan', keywords:['menunggu','pending','status','masih menunggu','lama tak lulus'],
+    q:'Kenapa cuti saya masih "Menunggu"?',
+    a:'Permohonan sedang menunggu pelulus (Peringkat 1) atau HR (Peringkat 2). Selepas <strong>7 hari</strong> tertangguh, peringatan WhatsApp dihantar automatik kepada pelulus. Anda boleh hubungi pelulus/HR untuk tindakan segera.' },
+  { id:'mc-auto', cat:'Kelulusan', keywords:['mc lulus','mc terus','mc auto','mc hr'],
+    q:'MC saya terus diluluskan?',
+    a:'MC <strong>tidak</strong> auto-lulus sepenuhnya. Ia dihantar terus untuk semakan & kelulusan: cawangan <strong>Pahang → HR</strong>; <strong>Terengganu → HOD/PIC</strong> — tanpa melalui Peringkat 1 biasa. HR/HOD akan semak Sijil MC kemudian luluskan/tolak.' },
+  { id:'forgot-password', cat:'Akaun', popular:true, keywords:['lupa','password','kata laluan','lupa kata laluan','reset'],
+    q:'Lupa kata laluan',
+    a:'Di skrin log masuk, tekan <strong>"Lupa Kata Laluan?"</strong> → kata laluan akan dihantar ke <strong>WhatsApp</strong> anda. Pastikan nombor telefon anda telah didaftarkan oleh HR/Admin.' },
+  { id:'update-phone', cat:'Akaun', keywords:['tukar telefon','profil','kemaskini','nombor telefon','tukar nombor'],
+    q:'Tukar nombor telefon / kemas kini profil',
+    a:'Nombor telefon & maklumat profil dikemas kini oleh <strong>HR/Admin</strong>. Sila hubungi mereka untuk sebarang perubahan.' },
+  { id:'balance-check', cat:'Akaun', keywords:['baki','balance','berapa baki','baki cuti','baki saya'],
+    q:'Berapa baki cuti saya?',
+    a: function(u) {
+      const generic = 'Lihat panel <strong>"Baki Cuti Anda"</strong> di borang Mohon Cuti (AL / MC / Hospitalisasi).';
+      try {
+        if (!u || typeof window.getLeaveStats !== 'function') return generic;
+        const al = window.getLeaveStats(u, 'AL'); const mc = window.getLeaveStats(u, 'MC');
+        // getLeaveStats returns { used, ent, bal } — use bal directly (already clamped to 0)
+        const fmt = s => (s && s.ent !== undefined) ? (s.bal + ' hari (baki) / ' + s.ent + ' (kelayakan)') : '—';
+        return 'Baki cuti anda (<strong>' + (u.name||'') + '</strong>):<br>• <strong>AL:</strong> ' + fmt(al) + '<br>• <strong>MC:</strong> ' + fmt(mc) + '<br><br>' + generic;
+      } catch(e) { return generic; }
+    },
+  },
+  { id:'contact-hr', cat:'Akaun', keywords:['hubungi','hr','admin','bantuan','contact'],
+    q:'Macam mana hubungi HR/Admin?',
+    a:'Anda boleh hubungi HR/Admin melalui <strong>Messenger</strong> dalam app ini, atau melalui nombor telefon rasmi yang disediakan oleh klinik.' }
+];
+
+function helpSearch(query) {
+  const q = (query || '').toLowerCase().trim();
+  if (!q) return HELP_FAQ.filter(e => e.popular);
+  const tokens = q.split(/[^a-z0-9]+/).filter(t => t.length >= 2);
+  const exp = new Set(tokens);
+  tokens.forEach(t => { if (HELP_SYNONYMS[t]) HELP_SYNONYMS[t].split(' ').forEach(s => exp.add(s)); });
+  return HELP_FAQ.map(e => {
+    const hay = (e.keywords.join(' ') + ' ' + e.q).toLowerCase();
+    let sc = 0;
+    exp.forEach(t => { if (e.keywords.includes(t)) sc += 3; else if (hay.includes(t)) sc += 1; });
+    return { e, sc };
+  }).filter(x => x.sc > 0).sort((a, b) => b.sc - a.sc).slice(0, 6).map(x => x.e);
+}
+
+// ============================================================
+// HELP WIDGET — floating button + searchable FAQ panel
+// ============================================================
+let helpOpen = false;
+let helpQuery = '';
+let helpSelectedId = null;
+
+window.toggleHelp = function(v) { helpOpen = (v !== undefined) ? v : !helpOpen; if (!helpOpen) { helpQuery=''; helpSelectedId=null; } renderHelpWidget(); };
+window.helpOnInput = function(val) { helpQuery = val; helpSelectedId = null; renderHelpWidget(); };
+window.helpSelect = function(id) { helpSelectedId = id; renderHelpWidget(); };
+window.helpBack = function() { helpSelectedId = null; renderHelpWidget(); };
+window.helpAction = function(view) { helpOpen = false; helpSelectedId = null; renderHelpWidget(); if (typeof window.setView === 'function') window.setView(view); };
+
+function helpAnswerHtml(entry) {
+  return (typeof entry.a === 'function') ? entry.a(window.user) : entry.a;
+}
+
+function renderHelpWidget() {
+  let host = document.getElementById('help-widget');
+  if (!host) { host = document.createElement('div'); host.id = 'help-widget'; document.body.appendChild(host); }
+  if (!window.user) { host.innerHTML = ''; return; }
+  const btn = `<button onclick="window.toggleHelp()" aria-label="Bantuan" style="position:fixed;right:1rem;bottom:1rem;z-index:99998;width:54px;height:54px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;box-shadow:0 8px 24px rgba(59,130,246,0.4);font-size:1.5rem;font-weight:800;display:flex;align-items:center;justify-content:center;">${helpOpen ? '×' : '?'}</button>`;
+  let panel = '';
+  if (helpOpen) {
+    const sel = helpSelectedId ? HELP_FAQ.find(e => e.id === helpSelectedId) : null;
+    let body;
+    if (sel) {
+      const act = sel.action ? `<button onclick="window.helpAction('${sel.action.view}')" style="margin-top:0.85rem;width:100%;padding:0.6rem;border:none;border-radius:10px;cursor:pointer;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;font-weight:700;font-size:0.82rem;">${sel.action.label}</button>` : '';
+      body = `<button onclick="window.helpBack()" style="background:none;border:none;color:#3b82f6;cursor:pointer;font-size:0.78rem;font-weight:700;padding:0;margin-bottom:0.6rem;">← Kembali</button>
+        <div style="font-size:0.9rem;font-weight:800;margin-bottom:0.5rem;color:var(--text);">${sel.q}</div>
+        <div style="font-size:0.82rem;line-height:1.6;color:var(--text-muted);">${helpAnswerHtml(sel)}</div>${act}`;
+    } else {
+      const results = helpSearch(helpQuery);
+      const list = results.length
+        ? results.map(e => `<button onclick="window.helpSelect('${e.id}')" style="display:block;width:100%;text-align:left;background:rgba(163,177,198,0.08);border:1px solid rgba(163,177,198,0.2);border-radius:10px;padding:0.6rem 0.75rem;margin-bottom:0.4rem;cursor:pointer;font-size:0.8rem;color:var(--text);"><span style="font-size:0.62rem;color:#3b82f6;font-weight:700;text-transform:uppercase;">${e.cat}</span><br>${e.q}</button>`).join('')
+        : `<div style="font-size:0.8rem;color:var(--text-muted);padding:0.5rem 0;">Tiada padanan. Cuba kata kunci lain (cth. "MC", "pelulus", "baki"), tekan topik popular, atau hubungi HR/Admin.</div>`;
+      const hint = helpQuery ? '' : `<div style="font-size:0.66rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin:0.3rem 0 0.5rem;">Topik popular</div>`;
+      body = `<input value="${helpQuery.replace(/"/g,'&quot;')}" oninput="window.helpOnInput(this.value)" placeholder="Taip soalan anda… cth. macam mana hantar MC" style="width:100%;padding:0.6rem 0.8rem;border-radius:10px;border:1.5px solid rgba(59,130,246,0.3);font-size:0.82rem;margin-bottom:0.6rem;color-scheme:light;">${hint}${list}`;
+    }
+    panel = `<div style="position:fixed;right:1rem;bottom:5rem;z-index:100000;width:min(360px,calc(100vw - 2rem));max-height:70vh;overflow-y:auto;background:var(--bg,#fff);border:1px solid rgba(163,177,198,0.3);border-radius:16px;box-shadow:0 16px 48px rgba(0,0,0,0.25);padding:1rem;">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;"><span style="font-size:1.1rem;">👋</span><div style="font-size:0.9rem;font-weight:800;color:var(--text);">Bantuan KSB</div></div>
+      ${body}</div>`;
+  }
+  host.innerHTML = btn + panel;
+}
+window.renderHelpWidget = renderHelpWidget;
+
 window.rbacMatrix = {
     super_admin: {
         dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: true, messenger: true, inbox: true,
@@ -2870,6 +3030,9 @@ function render() {
 
     // Render Chart.js charts if analytics view is active
     requestAnimationFrame(() => { initCharts(); });
+
+    // Help widget — lives outside #app so survives innerHTML swaps
+    try { renderHelpWidget(); } catch(e) {}
 
   } catch (err) {
     console.error("[CRITICAL] Render error:", err);
