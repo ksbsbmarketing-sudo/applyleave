@@ -685,7 +685,7 @@ window.canManageRequest = function(user, req) {
         return true; // rekod lama tanpa tlIC — semua TL Balok boleh urus
     }
 
-    if (!['hod', 'pic_hod', 'supervisor'].includes(user.role)) return false;
+    if (!['doctor_pic', 'hod_balok', 'supervisor'].includes(user.role)) return false;
 
     // Supervisor: jangan urus PENDING staf operasi Balok jika needs_tl aktif — mesti TL approve dulu
     if (user.role === 'supervisor' && req.status === 'PENDING') {
@@ -714,8 +714,8 @@ window.canManageRequest = function(user, req) {
     const cfg   = approvalRouting[group] || {};
 
     const isP1 = (
-        (cfg.p1_hod       && user.role === 'hod') ||
-        (cfg.p1_pic_hod   && user.role === 'pic_hod') ||
+        (cfg.p1_doctor_pic && user.role === 'doctor_pic') ||
+        (cfg.p1_hod_balok  && user.role === 'hod_balok') ||
         (cfg.p1_supervisor && user.role === 'supervisor')
     );
     if (!isP1) return false;
@@ -726,6 +726,10 @@ window.canManageRequest = function(user, req) {
         if (useBalok) return (user.branch || '').includes('Balok');
         return req.branch === user.branch;
     }
+    if (cfg.p1_hod_balok && user.role === 'hod_balok') {
+        return (user.branch || '') === 'Klinik Syed Badaruddin Balok (HQ)';
+    }
+    // Doctor PIC — cawangan sama dengan pemohon
     return req.branch === user.branch;
 };
 
@@ -1227,16 +1231,12 @@ window.getRoutingP1Approvers = function(staffMember) {
     const supBranch = useBalok ? 'Klinik Syed Badaruddin Balok (HQ)' : staffMember.branch;
     candidates.push(...staffList.filter(s => s.role === 'supervisor' && s.branch === supBranch && !s.inactive && s.ic !== staffMember.ic));
   }
-  if (cfg.p1_hod) {
-    candidates.push(...staffList.filter(s => s.role === 'hod' && s.branch === staffMember.branch && !s.inactive && s.ic !== staffMember.ic));
-    // HOD memohon → guna supervisor jika ada
-    if (staffMember.role === 'hod') {
-      const sups = staffList.filter(s => s.role === 'supervisor' && s.branch === staffMember.branch && !s.inactive && s.ic !== staffMember.ic);
-      if (sups.length) candidates = sups;
-    }
+  if (cfg.p1_doctor_pic) {
+    candidates.push(...staffList.filter(s => s.role === 'doctor_pic' && s.branch === staffMember.branch && !s.inactive && s.ic !== staffMember.ic));
   }
-  if (cfg.p1_pic_hod) {
-    candidates.push(...staffList.filter(s => s.role === 'pic_hod' && s.branch === staffMember.branch && !s.inactive && s.ic !== staffMember.ic));
+  if (cfg.p1_hod_balok) {
+    // HOD Balok duduk di Balok HQ — pelulus pusat untuk admin Balok & juru audio Balok
+    candidates.push(...staffList.filter(s => s.role === 'hod_balok' && s.branch === 'Klinik Syed Badaruddin Balok (HQ)' && !s.inactive && s.ic !== staffMember.ic));
   }
   return [...new Map(candidates.map(c => [c.ic, c])).values()];
 };
