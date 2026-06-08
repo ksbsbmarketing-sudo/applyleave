@@ -7884,7 +7884,7 @@ function renderView() {
           const cols = [
             { field:'needs_tl',      label:'Team Leader', grp:'p0', color:'#f43f5e' },
             { field:'p1_doctor_pic', label:'Doctor PIC',  grp:'p1', color:'#818cf8' },
-            { field:'p1_hod_balok',  label:'HOD Balok',   grp:'p1', color:'#38bdf8' },
+            { field:'p1_hod_balok',  label:'HOD Balok',   grp:'p1', color:'#0ea5e9' },
             { field:'p1_supervisor', label:'Supervisor',  grp:'p1', color:'#34d399', note:'★ Supervisor Balok bagi Operasi/Doktor Balok' },
             { field:'needs_p2',      label:'Perlu P2?',   grp:'p2', color:'#f97316' },
           ];
@@ -8108,7 +8108,7 @@ function renderView() {
             { key: 'hr',          label: 'HR',           color: '#a855f7', bg: 'rgba(168,85,247,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Sumber Manusia' },
             { key: 'hod_cawangan', label: 'HOD Cawangan', color: '#38bdf8', bg: 'rgba(56,189,248,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Ketua Cawangan' },
             { key: 'hod_balok',   label: 'HOD Balok',    color: '#0ea5e9', bg: 'rgba(14,165,233,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Ketua Balok HQ' },
-            { key: 'doctor_pic',  label: 'Doctor PIC',   color: '#fb923c', bg: 'rgba(251,146,60,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Doktor Penanggung Cawangan' },
+            { key: 'doctor_pic',  label: 'Doctor PIC',   color: '#818cf8', bg: 'rgba(129,140,248,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Doktor Penanggung Cawangan' },
             { key: 'supervisor',  label: 'Supervisor',   color: '#10b981', bg: 'rgba(16,185,129,0.04)',  bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Penyelia Balok' },
             { key: 'team_leader', label: 'Team Leader',  color: '#f43f5e', bg: 'rgba(244,63,94,0.04)',   bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Ketua Kumpulan Balok' },
             { key: 'staff',       label: 'Staff',        color: '#94a3b8', bg: 'rgba(148,163,184,0.04)', bottomBorder: '2px solid rgba(163,177,198,0.3)',  desc: 'Kakitangan Am' },
@@ -8584,7 +8584,7 @@ function renderView() {
                     <th style="padding:0.45rem 0.75rem;font-weight:600;font-size:0.63rem;color:var(--text-muted);border-right:2px solid rgba(163,177,198,0.25);text-align:left;white-space:nowrap;">Skop</th>
                     <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#f43f5e;border-right:2px solid rgba(163,177,198,0.25);text-align:center;white-space:nowrap;">Team Leader</th>
                     <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#818cf8;border-right:1px solid rgba(163,177,198,0.12);text-align:center;white-space:nowrap;">Doctor PIC</th>
-                    <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#38bdf8;border-right:1px solid rgba(163,177,198,0.12);text-align:center;white-space:nowrap;">HOD Balok</th>
+                    <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#0ea5e9;border-right:1px solid rgba(163,177,198,0.12);text-align:center;white-space:nowrap;">HOD Balok</th>
                     <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#34d399;border-right:2px solid rgba(163,177,198,0.25);text-align:center;white-space:nowrap;">Supervisor ★</th>
                     <th style="padding:0.45rem 0.5rem;font-weight:600;font-size:0.63rem;color:#f97316;text-align:center;white-space:nowrap;">Perlu P2?</th>
                   </tr>
@@ -8617,7 +8617,7 @@ function renderView() {
                       <td style="padding:0.55rem 0.75rem;border-right:2px solid rgba(163,177,198,0.25);font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">${row.sub}</td>
                       ${mkCell('needs_tl',      cfg.needs_tl,      '#f43f5e', true)}
                       ${mkCell('p1_doctor_pic', cfg.p1_doctor_pic, '#818cf8', false)}
-                      ${mkCell('p1_hod_balok',  cfg.p1_hod_balok,  '#38bdf8', false)}
+                      ${mkCell('p1_hod_balok',  cfg.p1_hod_balok,  '#0ea5e9', false)}
                       ${mkCell('p1_supervisor', cfg.p1_supervisor,  '#34d399', true)}
                       ${mkCell('needs_p2',      cfg.needs_p2,       '#f97316', false)}
                     </tr>`;
