@@ -8633,10 +8633,14 @@ function renderView() {
         })() : ''}
 
         ${managementTab === 'roles_categories' && userPerms.manage_roles_categories ? (() => {
-          const allRoleKeys = Object.keys(window.rbacMatrix).filter(k => k !== 'super_admin');
+          const _validRoleKeys = new Set([...CORE_ROLES, ...((window.staffConfig.customRoles)||[]).map(r => r.key)]);
+          const allRoleKeys = Object.keys(window.rbacMatrix).filter(k => k !== 'super_admin' && _validRoleKeys.has(k));
           const categoryRowStyle = 'display:flex;align-items:center;justify-content:space-between;padding:0.55rem 1rem;border-bottom:1px solid rgba(163,177,198,0.12);';
+          const roleRowStyle = 'display:flex;align-items:flex-start;justify-content:space-between;gap:0.75rem;padding:0.6rem 1rem;border-bottom:1px solid rgba(163,177,198,0.12);';
           const pillStyle = (color) => `font-size:0.75rem;font-weight:700;color:#fff;background:${color};padding:0.2rem 0.6rem;border-radius:6px;`;
-          const roleColors = { admin:'#3b82f6', hr:'#10b981', hod_cawangan:'#38bdf8', hod_balok:'#0ea5e9', doctor_pic:'#818cf8', supervisor:'#8b5cf6', team_leader:'#f43f5e', staff:'#64748b' };
+          const roleColors = { admin:'#3b82f6', hr:'#10b981', hod_balok:'#0ea5e9', doctor_pic:'#818cf8', supervisor:'#8b5cf6', team_leader:'#f43f5e', hod_cawangan:'#38bdf8', juru_xray:'#14b8a6', sonographer:'#06b6d4', juru_audio:'#0891b2', staff:'#64748b' };
+          const roleDesc = { admin:'Pentadbir penuh sistem', hr:'Kelulusan akhir (Peringkat 2), urus staf & laporan', hod_balok:'Pelulus Peringkat 1 — staff admin Balok HQ', doctor_pic:'Pelulus Peringkat 1 di cawangan (doktor bertugas)', supervisor:'Pelulus Peringkat 1 — operasi Balok & doktor Pahang', team_leader:'Sokongan Peringkat 0 — staf operasi Balok', hod_cawangan:'Pantau dashboard & laporan cawangan sendiri (tidak meluluskan cuti)', juru_xray:'Juru X-Ray', sonographer:'Sonographer', juru_audio:'Juru Audio', staff:'Staf biasa — mohon cuti sahaja' };
+          const roleGroups = [ { title:'🛡️ Pentadbiran', keys:['admin','hr'] }, { title:'✅ Pelulus Cuti', keys:['hod_balok','doctor_pic','supervisor','team_leader'] }, { title:'👁️ Pemantau', keys:['hod_cawangan'] }, { title:'🩺 Paramedik', keys:['juru_xray','sonographer','juru_audio'] }, { title:'👤 Staf', keys:['staff'] } ];
 
           return `
           <header class="top-bar">
@@ -8655,25 +8659,42 @@ function renderView() {
                 </div>
                 <button onclick="window.addCustomRole()" style="padding:0.3rem 0.8rem;border-radius:999px;border:1px solid rgba(67,97,238,0.4);background:rgba(67,97,238,0.08);font-size:0.78rem;font-weight:600;color:#4361ee;cursor:pointer;">+ Tambah</button>
               </div>
-              ${allRoleKeys.map(key => {
-                const label = window.staffConfig.roleLabels[key] || key;
-                const isCore = CORE_ROLES.includes(key);
-                const color = roleColors[key] || '#94a3b8';
-                return `<div style="${categoryRowStyle}">
-                  <div style="display:flex;align-items:center;gap:0.6rem;">
-                    <span style="${pillStyle(color)}">${label}</span>
-                    <span style="font-size:0.72rem;color:var(--text-muted);font-family:monospace;">${key}</span>
-                    ${isCore ? '<span style="font-size:0.62rem;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.06rem 0.4rem;border-radius:4px;">TERAS</span>' : ''}
-                  </div>
-                  <div style="display:flex;gap:0.4rem;align-items:center;">
-                    <button onclick="window.setManageTab(\'access_control\')" title="Tetapkan kebenaran" style="padding:0.2rem 0.55rem;border-radius:6px;border:1px solid rgba(67,97,238,0.3);background:rgba(67,97,238,0.07);font-size:0.72rem;color:#4361ee;cursor:pointer;">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                      RBAC
-                    </button>
-                    ${!isCore ? `<button data-rolekey="${key}" onclick="window.deleteCustomRole(this.dataset.rolekey)" title="Padam peranan" style="padding:0.2rem 0.5rem;border-radius:6px;border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.07);font-size:0.72rem;color:#ef4444;cursor:pointer;">&#10005;</button>` : ''}
-                  </div>
-                </div>`;
-              }).join('')}
+              ${(() => {
+                const renderRow = (key) => {
+                  const label = window.staffConfig.roleLabels[key] || key;
+                  const isCore = CORE_ROLES.includes(key);
+                  const color = roleColors[key] || '#94a3b8';
+                  const desc = roleDesc[key] || '';
+                  return `<div style="${roleRowStyle}">
+                    <div style="display:flex;flex-direction:column;gap:0.25rem;min-width:0;">
+                      <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+                        <span style="${pillStyle(color)}">${label}</span>
+                        <span style="font-size:0.72rem;color:var(--text-muted);font-family:monospace;">${key}</span>
+                        ${isCore ? '<span style="font-size:0.62rem;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.06rem 0.4rem;border-radius:4px;">TERAS</span>' : ''}
+                      </div>
+                      ${desc ? `<span style="font-size:0.7rem;color:var(--text-muted);line-height:1.35;">${desc}</span>` : ''}
+                    </div>
+                    <div style="display:flex;gap:0.4rem;align-items:center;flex-shrink:0;">
+                      <button onclick="window.setManageTab(\'access_control\')" title="Tetapkan kebenaran" style="padding:0.2rem 0.55rem;border-radius:6px;border:1px solid rgba(67,97,238,0.3);background:rgba(67,97,238,0.07);font-size:0.72rem;color:#4361ee;cursor:pointer;">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        RBAC
+                      </button>
+                      ${!isCore ? `<button data-rolekey="${key}" onclick="window.deleteCustomRole(this.dataset.rolekey)" title="Padam peranan" style="padding:0.2rem 0.5rem;border-radius:6px;border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.07);font-size:0.72rem;color:#ef4444;cursor:pointer;">&#10005;</button>` : ''}
+                    </div>
+                  </div>`;
+                };
+                const groupHeader = (t) => `<div style="padding:0.45rem 1rem;background:rgba(67,97,238,0.05);border-bottom:1px solid rgba(163,177,198,0.12);font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:#4361ee;">${t}</div>`;
+                const grouped = new Set();
+                roleGroups.forEach(g => g.keys.forEach(k => grouped.add(k)));
+                let html = '';
+                roleGroups.forEach(g => {
+                  const present = g.keys.filter(k => allRoleKeys.includes(k));
+                  if (present.length) html += groupHeader(g.title) + present.map(renderRow).join('');
+                });
+                const leftover = allRoleKeys.filter(k => !grouped.has(k));
+                if (leftover.length) html += groupHeader('🧩 Tersuai') + leftover.map(renderRow).join('');
+                return html;
+              })()}
               <div style="padding:0.65rem 1rem;background:rgba(163,177,198,0.03);border-top:1px solid rgba(163,177,198,0.1);">
                 <p style="font-size:0.7rem;color:var(--text-muted);margin:0;">Peranan teras tidak boleh dipadam. Peranan baharu akan ditambah ke RBAC dengan kebenaran minimum — tetapkan akses di tab <strong>Access Control</strong>.</p>
               </div>
