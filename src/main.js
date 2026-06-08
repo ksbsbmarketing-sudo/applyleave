@@ -500,6 +500,99 @@ const leaveCategories = [
     { id: 'CME', name: 'Latihan CME', entitlement: 5, icon: 'icon-cme', color: '#8b5cf6', description: 'Cuti Pendidikan Perubatan Berterusan (Doktor sahaja).' }
 ];
 
+// ============================================================
+// BOT BANTUAN — FAQ Pintar (rule-based, tiada backend)
+// ============================================================
+const HELP_SYNONYMS = {
+  sakit:'mc', medical:'mc', sijil:'mc',
+  tahunan:'al', annual:'al',
+  emergency:'kecemasan',
+  kematian:'ehsan',
+  ganti:'locum',
+  lulus:'kelulusan', pelulus:'kelulusan', approve:'kelulusan',
+  baki:'balance',
+  password:'kata laluan', lupa:'kata laluan',
+  telefon:'profil', phone:'profil'
+};
+
+const HELP_FAQ = [
+  { id:'al-submit', cat:'Cuti', popular:true, keywords:['al','tahunan','annual','cuti tahunan','mohon cuti','hantar cuti'],
+    q:'Macam mana mohon Cuti Tahunan (AL)?',
+    a:'<strong>Langkah mohon AL:</strong><br>1. Tekan <em>Mohon Cuti</em> → pilih jenis <strong>Annual Leave (AL)</strong>.<br>2. Pilih tarikh mula & tamat (boleh tanda <em>Half Day</em> untuk separuh hari).<br>3. Pilih <strong>Pelulus Peringkat 1</strong> dari senarai.<br>4. Tekan <strong>Hantar Permohonan</strong>.<br><br>⚠️ AL mesti dimohon awal: <strong>3 hari</strong> (Staff Admin) / <strong>7 hari</strong> (Operasi & Doktor) sebelum tarikh cuti. Baki AL ditolak automatik; jika tak cukup, lebihan jadi <em>Unpaid Leave</em>.',
+    action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
+  { id:'mc-submit', cat:'Cuti', popular:true, keywords:['mc','sakit','medical','sijil','cuti sakit','hantar mc'],
+    q:'Macam mana mohon Cuti Sakit (MC)?',
+    a:'<strong>Langkah mohon MC:</strong><br>1. <em>Mohon Cuti</em> → pilih <strong>Medical Leave (MC)</strong>.<br>2. Pilih tarikh (boleh tarikh hari ini / ke belakang — <strong>tiada had notis 3/7 hari</strong> untuk MC).<br>3. <strong>WAJIB muat naik Sijil Sakit (MC)</strong> sebelum hantar.<br>4. Tekan Hantar.<br><br>MC dihantar <strong>terus untuk semakan & kelulusan</strong>: cawangan <strong>Pahang → HR</strong>; cawangan <strong>Terengganu → HOD/PIC</strong>. Anda tak perlu pilih pelulus.',
+    action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
+  { id:'emergency-submit', cat:'Cuti', keywords:['kecemasan','emergency','cuti kecemasan','el'],
+    q:'Macam mana mohon Cuti Kecemasan?',
+    a:'<strong>Cuti Kecemasan:</strong><br>1. <em>Mohon Cuti</em> → pilih <strong>Cuti Kecemasan</strong>.<br>2. <strong>WAJIB muat naik dokumen/gambar bukti</strong>.<br>3. Pilih pelulus & hantar.<br><br>Tanpa bukti, borang akan ditolak.',
+    action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
+  { id:'ehsan-submit', cat:'Cuti', keywords:['ehsan','kematian','cuti ehsan','kematian keluarga'],
+    q:'Cuti Ehsan (kematian) — macam mana & syarat?',
+    a:'<strong>Cuti Ehsan</strong> hanya untuk kematian <strong>ayah, ibu, suami, isteri, atau anak</strong>. Had: <strong>3 hari</strong>. <strong>WAJIB muat naik Salinan Sijil Kematian</strong> semasa memohon.',
+    action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
+  { id:'cme-submit', cat:'Cuti', keywords:['cme','latihan','kursus','seminar','doktor'],
+    q:'Cuti CME (doktor) — macam mana?',
+    a:'<strong>Cuti CME</strong> untuk <strong>doktor sahaja</strong>, maksimum <strong>5 hari setiap kalendar</strong>, khusus untuk kursus/seminar/latihan luaran berkaitan kerja. Perlu surat sokongan + pengesahan daripada Pengurus dan Ketua Jabatan (HOD).' },
+  { id:'locum-info', cat:'Cuti', keywords:['locum','ganti','doktor locum','penggantian'],
+    q:'Maklumat Locum untuk doktor',
+    a:'Untuk doktor, maklumat <strong>Locum</strong> (nama, tarikh, masa penggantian) boleh diisi untuk rujukan. Ia biasanya dilengkapkan oleh HOD/Supervisor sebelum meluluskan, dan <strong>tidak diwajibkan</strong> untuk meluluskan permohonan.' },
+  { id:'no-submit-approver', cat:'Masalah', popular:true, keywords:['tak boleh hantar','pelulus','wajib pilih','borang ditolak','peringkat 1'],
+    q:'Borang tak boleh hantar — "Wajib pilih Pelulus"',
+    a:'Anda perlu <strong>pilih Pelulus Peringkat 1</strong> dari menu dropdown sebelum hantar. Jika <strong>tiada pelulus berdaftar</strong> untuk cawangan/kategori anda, sistem akan benarkan hantar terus dan <strong>HR/Admin</strong> akan luluskan. (MC tidak perlu pilih pelulus.)' },
+  { id:'no-submit-mc', cat:'Masalah', keywords:['mc tak hantar','sijil belum','muat naik mc','upload mc'],
+    q:'MC tak boleh hantar — sijil belum dimuat naik',
+    a:'Cuti Sakit (MC) <strong>wajib</strong> ada <strong>Sijil Sakit</strong> dimuat naik (gambar JPG/PNG atau PDF) sebelum boleh dihantar. Tekan kotak muat naik MC, pilih fail, kemudian hantar.' },
+  { id:'notice-policy', cat:'Masalah', keywords:['notis','policy violation','3 hari','7 hari','days notice','terlalu lewat'],
+    q:'Mesej "Policy Violation — days notice"',
+    a:'Cuti Tahunan (AL) mesti dimohon awal: <strong>3 hari</strong> untuk Staff Admin, <strong>7 hari</strong> untuk Operasi & Doktor, sebelum tarikh cuti. <strong>MC dikecualikan</strong> (boleh hari ini/ke belakang). Jika perlu kecemasan, guna Cuti Kecemasan.' },
+  { id:'balance-insufficient', cat:'Masalah', keywords:['baki tak cukup','unpaid','split','ul','kurang baki'],
+    q:'Baki cuti tak cukup / jadi Unpaid Leave',
+    a:'Jika hari AL yang dimohon <strong>melebihi baki</strong> anda, sistem akan <strong>bahagikan automatik</strong>: sebahagian sebagai AL (baki yang ada) dan selebihnya sebagai <strong>Unpaid Leave (UL)</strong>. Notis akan dipaparkan semasa hantar.' },
+  { id:'half-day', cat:'Masalah', keywords:['separuh hari','half day','setengah hari'],
+    q:'Macam mana mohon cuti separuh hari?',
+    a:'Pada borang cuti, tanda kotak <strong>Half Day</strong>. Tempoh akan ditolak <strong>0.5 hari</strong> dari baki.' },
+  { id:'who-approves', cat:'Kelulusan', popular:true, keywords:['pelulus','siapa lulus','kelulusan','siapa pelulus','approve cuti'],
+    q:'Siapa pelulus cuti saya?',
+    a:'Peringkat 1 (sokongan) bergantung pada peranan & cawangan anda:<br>• <strong>Doctor PIC</strong> — staf cawangan biasa (Pahang & Terengganu).<br>• <strong>HOD Balok</strong> — staff admin di Balok HQ.<br>• <strong>Supervisor Balok</strong> — staf operasi Balok & doktor Pahang.<br>Selepas Peringkat 1, <strong>HR/Admin</strong> beri kelulusan akhir (Peringkat 2). Cuti Terengganu hanya 1 peringkat (HOD/PIC).' },
+  { id:'stages', cat:'Kelulusan', keywords:['peringkat','stage','peringkat 1','peringkat 2','p1','p2'],
+    q:'Apa maksud Peringkat 1 dan Peringkat 2?',
+    a:'<strong>Peringkat 1</strong> = sokongan pelulus pertama (Doctor PIC / HOD Balok / Supervisor).<br><strong>Peringkat 2</strong> = kelulusan akhir oleh <strong>HR/Admin</strong>.<br>Cuti dikira <strong>SAH</strong> hanya selepas Peringkat 2 (kecuali cawangan Terengganu — 1 peringkat sahaja).' },
+  { id:'status-pending', cat:'Kelulusan', keywords:['menunggu','pending','status','masih menunggu','lama tak lulus'],
+    q:'Kenapa cuti saya masih "Menunggu"?',
+    a:'Permohonan sedang menunggu pelulus (Peringkat 1) atau HR (Peringkat 2). Selepas <strong>7 hari</strong> tertangguh, peringatan WhatsApp dihantar automatik kepada pelulus. Anda boleh hubungi pelulus/HR untuk tindakan segera.' },
+  { id:'mc-auto', cat:'Kelulusan', keywords:['mc lulus','mc terus','mc auto','mc hr'],
+    q:'MC saya terus diluluskan?',
+    a:'MC <strong>tidak</strong> auto-lulus sepenuhnya. Ia dihantar terus untuk semakan & kelulusan: cawangan <strong>Pahang → HR</strong>; <strong>Terengganu → HOD/PIC</strong> — tanpa melalui Peringkat 1 biasa. HR/HOD akan semak Sijil MC kemudian luluskan/tolak.' },
+  { id:'forgot-password', cat:'Akaun', popular:true, keywords:['lupa','password','kata laluan','lupa kata laluan','reset'],
+    q:'Lupa kata laluan',
+    a:'Di skrin log masuk, tekan <strong>"Lupa Kata Laluan?"</strong> → kata laluan akan dihantar ke <strong>WhatsApp</strong> anda. Pastikan nombor telefon anda telah didaftarkan oleh HR/Admin.' },
+  { id:'update-phone', cat:'Akaun', keywords:['tukar telefon','profil','kemaskini','nombor telefon','tukar nombor'],
+    q:'Tukar nombor telefon / kemas kini profil',
+    a:'Nombor telefon & maklumat profil dikemas kini oleh <strong>HR/Admin</strong>. Sila hubungi mereka untuk sebarang perubahan.' },
+  { id:'balance-check', cat:'Akaun', keywords:['baki','balance','berapa baki','baki cuti','baki saya'],
+    q:'Berapa baki cuti saya?',
+    a:'Anda boleh lihat <strong>"Baki Cuti Anda"</strong> pada panel kanan di borang Mohon Cuti (AL / MC / Hospitalisasi).' },
+  { id:'contact-hr', cat:'Akaun', keywords:['hubungi','hr','admin','bantuan','contact'],
+    q:'Macam mana hubungi HR/Admin?',
+    a:'Anda boleh hubungi HR/Admin melalui <strong>Messenger</strong> dalam app ini, atau melalui nombor telefon rasmi yang disediakan oleh klinik.' }
+];
+
+function helpSearch(query) {
+  const q = (query || '').toLowerCase().trim();
+  if (!q) return HELP_FAQ.filter(e => e.popular);
+  const tokens = q.split(/[^a-z0-9]+/).filter(t => t.length >= 2);
+  const exp = new Set(tokens);
+  tokens.forEach(t => { if (HELP_SYNONYMS[t]) HELP_SYNONYMS[t].split(' ').forEach(s => exp.add(s)); });
+  return HELP_FAQ.map(e => {
+    const hay = (e.keywords.join(' ') + ' ' + e.q).toLowerCase();
+    let sc = 0;
+    exp.forEach(t => { if (e.keywords.includes(t)) sc += 3; else if (hay.includes(t)) sc += 1; });
+    return { e, sc };
+  }).filter(x => x.sc > 0).sort((a, b) => b.sc - a.sc).slice(0, 6).map(x => x.e);
+}
+
 window.rbacMatrix = {
     super_admin: {
         dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: true, messenger: true, inbox: true,
