@@ -546,7 +546,7 @@ const HELP_FAQ = [
     a:'Cuti Sakit (MC) <strong>wajib</strong> ada <strong>Sijil Sakit</strong> dimuat naik (gambar JPG/PNG atau PDF) sebelum boleh dihantar. Tekan kotak muat naik MC, pilih fail, kemudian hantar.' },
   { id:'notice-policy', cat:'Masalah', keywords:['notis','policy violation','3 hari','7 hari','days notice','terlalu lewat'],
     q:'Mesej "Policy Violation — days notice"',
-    a:'Cuti Tahunan (AL) mesti dimohon awal: <strong>3 hari</strong> untuk Staff Admin, <strong>7 hari</strong> untuk Operasi & Doktor, sebelum tarikh cuti. <strong>MC dikecualikan</strong> (boleh hari ini/ke belakang). Jika perlu kecemasan, guna Cuti Kecemasan.' },
+    a:'Cuti Tahunan (AL) mesti dimohon awal: <strong>3 hari</strong> untuk Staff Admin, <strong>7 hari</strong> untuk Operasi & Doktor, sebelum tarikh cuti. <strong>MC, Cuti Kecemasan & Cuti Ehsan dikecualikan</strong> (boleh hari ini/ke belakang) — tetapi wajib pilih pelulus & muat naik bukti.' },
   { id:'balance-insufficient', cat:'Masalah', keywords:['baki tak cukup','unpaid','split','ul','kurang baki'],
     q:'Baki cuti tak cukup / jadi Unpaid Leave',
     a:'Jika hari AL yang dimohon <strong>melebihi baki</strong> anda, sistem akan <strong>bahagikan automatik</strong>: sebahagian sebagai AL (baki yang ada) dan selebihnya sebagai <strong>Unpaid Leave (UL)</strong>. Notis akan dipaparkan semasa hantar.' },
@@ -4389,8 +4389,9 @@ function renderDashboard() {
 
       const isAdmin = user.category === 'Admin Staff' || user.category === 'Admin' || user.role === 'admin' || user.role === 'super_admin';
 
-      // Cuti Sakit (MC) dikecualikan daripada polisi notis awal (3/7 hari) — sakit tidak boleh dirancang.
-      if (selectedLeaveType !== 'MC' && !validateNotice(startDate, user.category)) {
+      // Cuti tak boleh dirancang (MC sakit, Kecemasan, Ehsan/kematian) dikecualikan dari polisi notis awal (3/7 hari) — tetapi tetap perlu pelulus + bukti.
+      const _noticeExempt = ['MC', 'EL_EMG', 'EL'].includes(selectedLeaveType);
+      if (!_noticeExempt && !validateNotice(startDate, user.category)) {
         const minDays = isAdmin ? 3 : 7;
         alert(`Policy Violation: ${user.category} staff require at least ${minDays} days notice.`);
         return;
@@ -5408,6 +5409,7 @@ function renderView() {
       const isAL = selectedLeaveType === 'AL';
       const isMC = selectedLeaveType === 'MC';
       const isEhsan = selectedLeaveType === 'EL';
+      const isNoticeExempt = ['MC', 'EL_EMG', 'EL'].includes(selectedLeaveType);
       const isEMG = selectedLeaveType === 'EL_EMG';
       const isHosp = selectedLeaveType === 'HL';
       
@@ -5954,8 +5956,8 @@ function renderView() {
           <!-- Right Panel: Summary Widgets -->
           <div class="info-panel" style="display:flex;flex-direction:column;gap:1.25rem;">
 
-            <!-- Notice: Polisi Notis — sembunyi untuk MC (tiada had notis 3/7 hari) -->
-            ${!isMC ? `
+            <!-- Notice: Polisi Notis — sembunyi untuk cuti dikecualikan (MC/Kecemasan/Ehsan — tiada had notis 3/7 hari) -->
+            ${!isNoticeExempt ? `
             <div class="glass-card" style="padding:1.25rem;border:1px solid rgba(59,130,246,0.2);background:rgba(59,130,246,0.03);">
               <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:1rem;">
                 <div style="width:32px;height:32px;border-radius:9px;background:rgba(59,130,246,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
