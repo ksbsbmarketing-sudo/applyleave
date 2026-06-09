@@ -1148,31 +1148,28 @@ window.changePassword = async function(event) {
   event.preventDefault();
   const current = document.getElementById('pwd-current')?.value;
   const next    = document.getElementById('pwd-new')?.value;
-  const confirm = document.getElementById('pwd-confirm')?.value;
+  const confirm  = document.getElementById('pwd-confirm')?.value;
 
   if (!user) { alert('Sesi tidak sah. Sila log masuk semula.'); return; }
-  if (current !== (user.password || user.ic)) {
-    alert('❌ Kata laluan semasa tidak betul. Sila cuba lagi.'); return;
-  }
-  if (next !== confirm) {
-    alert('❌ Kata laluan baharu tidak sepadan. Sila cuba lagi.'); return;
-  }
-  if (next.length < 4) {
-    alert('❌ Kata laluan baharu mesti sekurang-kurangnya 4 aksara.'); return;
-  }
+  if (!auth.currentUser || auth.currentUser.isAnonymous) { alert('Sesi tidak sah. Sila log masuk semula.'); return; }
+  if (next !== confirm) { alert('❌ Kata laluan baharu tidak sepadan. Sila cuba lagi.'); return; }
+  if ((next || '').length < 6) { alert('❌ Kata laluan baharu mesti sekurang-kurangnya 6 aksara.'); return; }
 
   try {
-    await updateDoc(doc(db, 'staff', user.ic), { password: next });
-    user.password = next;
-    const s = staffList.find(i => i.ic === user.ic);
-    if (s) s.password = next;
+    const cred = EmailAuthProvider.credential(emailForIC(user.ic), current);
+    await reauthenticateWithCredential(auth.currentUser, cred);
+    await updatePassword(auth.currentUser, next);
     alert('✅ Kata laluan berjaya ditukar!');
     document.getElementById('pwd-current').value = '';
     document.getElementById('pwd-new').value = '';
     document.getElementById('pwd-confirm').value = '';
   } catch (err) {
     console.error('changePassword error:', err);
-    alert('Ralat menyimpan kata laluan. Sila cuba lagi.');
+    if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+      alert('❌ Kata laluan semasa tidak betul. Sila cuba lagi.');
+    } else {
+      alert('Ralat menukar kata laluan. Sila cuba lagi.');
+    }
   }
 };
 
