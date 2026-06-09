@@ -59,8 +59,8 @@ export const setStaffPassword = onCall(async (request) => {
   }
   const ic = request.data?.ic;
   const newPassword = request.data?.newPassword;
-  if (!ic || !newPassword || String(newPassword).length < 4) {
-    throw new HttpsError("invalid-argument", "IC dan kata laluan (min 4 aksara) diperlukan.");
+  if (!ic || !newPassword || String(newPassword).length < 6) {
+    throw new HttpsError("invalid-argument", "IC dan kata laluan (min 6 aksara) diperlukan.");
   }
   const u = await admin.auth().getUserByEmail(emailForIC(ic));
   await admin.auth().updateUser(u.uid, { password: String(newPassword) });

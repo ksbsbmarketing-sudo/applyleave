@@ -216,8 +216,7 @@ window.forgotPassword = async function() {
     return;
   }
 
-  const pwd = staff.password || staff.ic;
-  const msg = `🔐 *PEMULIHAN KATA LALUAN — KSB Leave Apply*\n\nSalam ${staff.name},\n\nKata laluan akaun anda adalah:\n\n📌 *${pwd}*\n\nSila log masuk ke sistem menggunakan kata laluan di atas.\n\n⚠️ Demi keselamatan, sila tukar kata laluan anda selepas berjaya masuk melalui Settings → Security.\n\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+  const msg = `🔐 *PEMULIHAN KATA LALUAN — KSB Leave Apply*\n\nSalam ${staff.name},\n\nDemi keselamatan, kata laluan tidak boleh dipaparkan semula.\n\nSila hubungi HR/Admin untuk menetapkan semula (reset) kata laluan anda. Selepas reset, kata laluan sementara anda ialah No. IC anda, dan anda boleh menukarnya melalui Settings → Security selepas log masuk.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
 
   try {
     await window.sendWhatsApp(staff.phone, msg, true);
@@ -1173,6 +1172,20 @@ window.changePassword = async function(event) {
   }
 };
 
+window.adminSetPassword = async function(ic, newPassword) {
+  if (!newPassword || newPassword.length < 6) { alert('Kata laluan mesti sekurang-kurangnya 6 aksara.'); return false; }
+  try {
+    const fn = httpsCallable(functions, 'setStaffPassword');
+    await fn({ ic, newPassword });
+    alert('✅ Kata laluan staf berjaya ditetapkan.');
+    return true;
+  } catch (err) {
+    console.error('adminSetPassword error:', err);
+    alert('Ralat menetapkan kata laluan: ' + (err.message || err.code));
+    return false;
+  }
+};
+
 window.saveSelfProfile = async function(event) {
     if (event) event.preventDefault();
     const phone   = document.getElementById('self-phone')?.value?.trim() || '';
@@ -1316,7 +1329,7 @@ window.approveRegistration = async function(docId) {
   try {
     const newStaff = {
       name: req.name, ic: req.ic, branch: req.branch, category: req.category,
-      role: 'staff', phone: req.phone, password: req.ic, inactive: false,
+      role: 'staff', phone: req.phone, inactive: false,
       startDate: new Date().toISOString().split('T')[0]
     };
     await setDoc(doc(db, 'staff', req.ic), newStaff);
@@ -1355,7 +1368,7 @@ window.submitAddStaff = async function(event) {
   const category = form.querySelector('#as-category').value;
   const role     = form.querySelector('#as-role').value;
   const phone    = form.querySelector('#as-phone').value.trim();
-  const password = form.querySelector('#as-password').value || ic;
+  const initialPassword = form.querySelector('#as-password')?.value || ic;
 
   if (!name || !ic || !branch) {
     alert('Sila lengkapkan Nama, No. IC, dan Cawangan.');
@@ -1366,12 +1379,17 @@ window.submitAddStaff = async function(event) {
     return;
   }
 
-  const newStaff = { name, ic, branch, category, role, phone, password, inactive: false, startDate: new Date().toISOString().split('T')[0] };
+  const newStaff = { name, ic, branch, category, role, phone, inactive: false, startDate: new Date().toISOString().split('T')[0] };
 
   try {
     await setDoc(doc(db, 'staff', ic), newStaff);
     window.logSystemActivity(`Added new staff: ${name}`);
     alert(`✅ Staf baharu "${name}" berjaya ditambah!`);
+    // The onStaffWrite Cloud Function creates the Auth account from this staff doc; give it
+    // a moment, then set the chosen initial password (if different from the default IC).
+    if (initialPassword && initialPassword !== ic) {
+      setTimeout(() => window.adminSetPassword(ic, initialPassword), 4000);
+    }
     window.closeAddStaff();
   } catch (err) {
     console.error('submitAddStaff error:', err);
@@ -4726,7 +4744,6 @@ function renderDashboard() {
                   if(branchSelect) updates.branch = branchSelect.value;
                   if(categorySelect) updates.category = categorySelect.value;
                   if(roleSelect) updates.role = roleSelect.value;
-                  if(passwordInput) updates.password = passwordInput.value;
                   if(phoneInput) updates.phone = phoneInput.value;
 
                   // Save Entitlements
@@ -4749,6 +4766,8 @@ function renderDashboard() {
                   try {
                       await updateDoc(doc(db, "staff", staffObj.ic), updates);
                       window.logSystemActivity(`Updated System Profile details for ${staffObj.name}`);
+                      const newPwd = passwordInput && passwordInput.value.trim();
+                      if (newPwd) { await window.adminSetPassword(staffObj.ic, newPwd); }
                       alert('Profil pekerja berjaya dikemaskini!');
                       closeEditModal();
                   } catch (err) {
@@ -9512,7 +9531,7 @@ function renderModal() {
 
               <div style="display: flex; flex-direction: column;">
                  <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">Account Password</label>
-                 <input type="text" id="edit-password" class="neu-inset" value="${staff.password || staff.ic}">
+                 <input type="text" id="edit-password" class="neu-inset" value="" placeholder="Biarkan kosong jika tidak menukar kata laluan">
               </div>
           </div>
 
