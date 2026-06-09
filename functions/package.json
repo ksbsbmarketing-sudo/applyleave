@@ -1,0 +1,11 @@
+{
+  "name": "ksb-leave-functions",
+  "description": "Auth claim sync + admin password reset for KSB Leave Apply",
+  "type": "module",
+  "engines": { "node": "20" },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^13.7.0",
+    "firebase-functions": "^6.0.0"
+  }
+}
