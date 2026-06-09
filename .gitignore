@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Local data snapshots pulled from Firestore (contain staff IC numbers / PII).
+# Regenerate anytime with `npm run pull`; never commit to the public repo.
+public/data/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
