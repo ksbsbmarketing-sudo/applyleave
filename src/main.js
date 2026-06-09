@@ -4,7 +4,16 @@ Chart.register(...registerables);
 
 import { initializeApp } from "firebase/app";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
-import { getAuth, signInAnonymously } from "firebase/auth";
+import {
+  getAuth,
+  signInAnonymously,
+  signInWithEmailAndPassword,
+  signOut,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+} from "firebase/auth";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { getAnalytics } from "firebase/analytics";
 import {
   getFirestore,
@@ -54,6 +63,18 @@ const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
 const analytics = getAnalytics(firebaseApp);
 const storage = getStorage(firebaseApp);
+const functions = getFunctions(firebaseApp);
+const AUTH_EMAIL_DOMAIN = 'ksb-leave.local';
+const emailForIC = (ic) => `${String(ic).replace(/[^a-zA-Z0-9]/g, '')}@${AUTH_EMAIL_DOMAIN}`;
+
+// Pre-login directory (branch + name + ic) loaded under the anonymous bootstrap session.
+let directoryList = [];
+async function loadDirectory() {
+  try {
+    const snap = await getDocs(collection(db, 'directory'));
+    directoryList = snap.docs.map(d => d.data()).filter(s => !s.inactive);
+  } catch (e) { console.error('loadDirectory failed:', e); directoryList = []; }
+}
 
 const app = document.querySelector('#app')
 
