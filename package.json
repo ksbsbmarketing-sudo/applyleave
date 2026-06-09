@@ -1,14 +1,27 @@
 {
   "name": "applyleave",
-  "version": "0.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pull": "node pull_from_prod.js",
+    "start:mcp": "node src/mcp-server/index.js"
   },
   "devDependencies": {
+    "firebase-tools": "^15.13.0",
+    "playwright": "^1.60.0",
+    "puppeteer": "^24.43.0",
     "vite": "^8.0.1"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "chart.js": "^4.5.1",
+    "docx": "^9.6.1",
+    "firebase": "^12.11.0",
+    "firebase-admin": "^13.7.0",
+    "zod": "^4.3.6"
   }
 }
