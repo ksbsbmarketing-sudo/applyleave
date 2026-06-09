@@ -2757,13 +2757,10 @@ async function initData() {
             ic: 'super-admin',
             role: 'super_admin',
             branch: 'Management / HQ',
-            category: 'Super Admin',
-            password: 'superpassword'
+            category: 'Super Admin'
         });
     }
 
-    // Default password to IC if missing
-    staffList.forEach(s => { if(!s.password) s.password = s.ic; });
     // Re-sync logged-in user so edits (e.g. ent_CME) are reflected immediately
     if (user) {
       const refreshed = staffList.find(s => s.ic === user.ic);
@@ -2774,7 +2771,7 @@ async function initData() {
     if (!user) {
       const savedIC  = localStorage.getItem('ksb_logged_in_ic');
       const savedSID = localStorage.getItem('ksb_logged_in_sid');
-      if (savedIC && savedSID) {
+      if (savedIC && savedSID && auth.currentUser && !auth.currentUser.isAnonymous) {
         const storedSID  = localStorage.getItem('ksb_session_' + savedIC);
         const savedUser  = staffList.find(s => s.ic === savedIC && !s.inactive);
         if (savedUser && storedSID === savedSID) {
@@ -2796,6 +2793,9 @@ async function initData() {
           localStorage.removeItem('ksb_logged_in_ic');
           localStorage.removeItem('ksb_logged_in_sid');
         }
+      } else if (savedIC || savedSID) {
+        localStorage.removeItem('ksb_logged_in_ic');
+        localStorage.removeItem('ksb_logged_in_sid');
       }
     }
 
@@ -3606,6 +3606,7 @@ window.toggleMobileMenu = function(val) {
 window.logout = function() {
   localStorage.removeItem('ksb_logged_in_ic');
   localStorage.removeItem('ksb_logged_in_sid');
+  signOut(auth).catch(() => {});
   if (sessionUnsubscribe) { sessionUnsubscribe(); sessionUnsubscribe = null; }
   if (messengerMsgUnsub) { messengerMsgUnsub(); messengerMsgUnsub = null; }
   if (messengerRoomsUnsub) { messengerRoomsUnsub(); messengerRoomsUnsub = null; }
