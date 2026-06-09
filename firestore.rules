@@ -1,12 +1,76 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // App ini tiada identiti per-pengguna di Firebase (login custom), jadi rules
-    // tidak boleh kuatkuasa peranan. Lapisan minimum: WAJIB ada token auth
-    // (anonymous sign-in) — menyekat akses REST tanpa token. App Check (reCAPTCHA)
-    // menambah lapisan "hanya app ini" apabila di-enforce di console.
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
+    function myIC() { return request.auth.token.ic; }
+    function canApprove() { return signedIn() && request.auth.token.canApprove == true; }
+    function manageStaff() { return signedIn() && request.auth.token.manageStaff == true; }
+
+    // Pre-login picker — readable by anyone (incl. anonymous bootstrap). Written only by the Cloud Function (Admin SDK bypasses rules).
+    match /directory/{id} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Account signup is created by not-yet-staff (anonymous allowed); managed by HR/Admin.
+    match /registration_requests/{id} {
+      allow read, update, delete: if manageStaff();
+      allow create: if request.auth != null;
+    }
+
+    match /staff/{ic} {
+      allow read: if signedIn();
+      allow create, delete: if manageStaff();
+      allow update: if manageStaff()
+        || ( myIC() == ic
+             && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['phone', 'email', 'address']) );
+    }
+
+    match /leaves/{id} {
+      allow read: if signedIn();
+      allow create: if canApprove()
+        || ( signedIn()
+             && request.resource.data.ic == myIC()
+             && request.resource.data.status in ['PENDING', 'HOD APPROVED'] );
+      allow update: if canApprove()
+        || ( signedIn()
+             && resource.data.ic == myIC()
+             && request.resource.data.status == 'PENDING'
+             && request.resource.data.ic == resource.data.ic
+             && request.resource.data.name == resource.data.name
+             && request.resource.data.branch == resource.data.branch
+             && request.resource.data.type == resource.data.type
+             && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['startDate', 'endDate', 'reason', 'days', 'status']) );
+      allow delete: if canApprove();
+    }
+
+    match /branches/{id} {
+      allow read: if signedIn();
+      allow write: if manageStaff();
+    }
+
+    match /config/{id}        { allow read: if signedIn(); allow write: if canApprove(); }
+    match /system_config/{id} { allow read: if signedIn(); allow write: if canApprove(); }
+    match /settings/{id}      { allow read: if signedIn(); allow write: if canApprove(); }
+
+    match /sessions/{ic} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && myIC() == ic;
+      allow delete: if signedIn();
+    }
+
+    match /messenger_rooms/{id}    { allow read, write: if signedIn(); }
+    match /messenger_messages/{id} { allow read, write: if signedIn(); }
+    match /notifications/{id}      { allow read, write: if signedIn(); }
+    match /user_presence/{id}      { allow read, write: if signedIn(); }
+
+    match /audit_logs/{id} { allow read, create: if signedIn(); allow update: if false; allow delete: if manageStaff(); }
+    match /wa_logs/{id}    { allow read, create: if signedIn(); allow update: if false; allow delete: if manageStaff(); }
   }
 }
