@@ -1,36 +1,39 @@
 {
-  "name": "KSB Leave Apply",
-  "short_name": "KSB Leave",
-  "description": "Sistem Pengurusan Cuti Klinik Syed Badaruddin",
+  "name": "KLINIK SYED BADARUDDIN SDN. BHD - SISTEM PERMOHONAN CUTI DAN REKOD PEKERJA",
+  "short_name": "KSB Portal",
+  "description": "Sistem Permohonan Cuti dan Rekod Pekerja — KLINIK SYED BADARUDDIN SDN. BHD.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#0c0e14",
+  "background_color": "#ffffff",
   "theme_color": "#3b82f6",
   "lang": "ms",
   "categories": ["productivity", "medical"],
   "icons": [
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "maskable"
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "/icon.svg",
+      "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
-      "form_factor": "narrow",
-      "label": "KSB Leave Apply Login"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }

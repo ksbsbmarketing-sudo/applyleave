@@ -16,6 +16,9 @@ dist-ssr
 # Regenerate anytime with `npm run pull`; never commit to the public repo.
 public/data/
 
+# Firebase CLI deploy cache
+.firebase/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
