@@ -1,8 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // App ini tiada identiti per-pengguna di Firebase (login custom), jadi rules
+    // tidak boleh kuatkuasa peranan. Lapisan minimum: WAJIB ada token auth
+    // (anonymous sign-in) — menyekat akses REST tanpa token. App Check (reCAPTCHA)
+    // menambah lapisan "hanya app ini" apabila di-enforce di console.
     match /{document=**} {
-      allow read, write: if true; 
+      allow read, write: if request.auth != null;
     }
   }
 }

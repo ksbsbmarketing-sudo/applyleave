@@ -3,6 +3,8 @@ import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
 import { initializeApp } from "firebase/app";
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
+import { getAuth, signInAnonymously } from "firebase/auth";
 import { getAnalytics } from "firebase/analytics";
 import {
   getFirestore,
@@ -34,7 +36,22 @@ const firebaseConfig = {
 };
 
 const firebaseApp = initializeApp(firebaseConfig);
+
+// App Check (reCAPTCHA v3) — pastikan hanya app ini boleh akses backend Firebase.
+// Site key selamat didedah (ia memang untuk klien). Init di-skip selagi placeholder
+// belum diganti, supaya deploy tidak pecah sebelum App Check disediakan di console.
+const RECAPTCHA_V3_SITE_KEY = '6LdGQhUtAAAAAJlrLhFFMQ-cDERPTcbgdbzpSAga';
+if (RECAPTCHA_V3_SITE_KEY && !RECAPTCHA_V3_SITE_KEY.startsWith('__')) {
+  try {
+    initializeAppCheck(firebaseApp, {
+      provider: new ReCaptchaV3Provider(RECAPTCHA_V3_SITE_KEY),
+      isTokenAutoRefreshEnabled: true,
+    });
+  } catch (e) { console.error('App Check init failed:', e); }
+}
+
 const db = getFirestore(firebaseApp);
+const auth = getAuth(firebaseApp);
 const analytics = getAnalytics(firebaseApp);
 const storage = getStorage(firebaseApp);
 
@@ -2876,7 +2893,18 @@ async function initData() {
 // Migration helper removed as data is now live on Firestore.
 console.log('[SYSTEM] Version 1.1.0 - First Login Warning + Policy Flow + System URL');
 
-initData();
+// Pastikan anonymous sign-in siap SEBELUM sebarang akses Firestore, supaya rules
+// `request.auth != null` tidak menolak bacaan/penulisan awal. Jika gagal (cth. provider
+// belum diaktifkan), app tetap diteruskan — selamat selagi rules masih terbuka.
+(async () => {
+  try {
+    await signInAnonymously(auth);
+    console.log('[AUTH] Anonymous sign-in OK:', auth.currentUser && auth.currentUser.uid);
+  } catch (e) {
+    console.error('[AUTH] Anonymous sign-in FAILED:', e.code || e.message);
+  }
+  initData();
+})();
 
 
 // Initialize passwords for all staff (default to IC number if missing)
