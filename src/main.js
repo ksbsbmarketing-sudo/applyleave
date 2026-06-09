@@ -1821,6 +1821,12 @@ window.deleteLeave = async function(id) {
 window.finalizeLeave = async function(id) {
     const record = leaveRecords.find(r => r.id === id);
     if(record) {
+        // Kebenaran: hanya pelulus yang menguruskan staf/cawangan ini boleh meluluskan/menyokong.
+        // Selari dengan tapisan UI senarai kelulusan dan guard rejectLeave/cancelLeave.
+        if (!window.canManageRequest(user, record)) {
+            alert('Anda tidak mempunyai kebenaran untuk meluluskan permohonan cawangan/staf ini.');
+            return;
+        }
         const applicant = staffList.find(s => s.ic === record.ic);
         if (applicant && applicant.category === 'Doctor') {
             const hasLocum2 = showLocum2Set.has(record.id) || record.locum2Name;
@@ -2047,7 +2053,8 @@ window.cancelLeave = async function(id) {
         
         const staff = staffList.find(s => s.ic === req.ic);
         if (staff && staff.phone) {
-            const msg = `🚩 *PEMBATALAN CUTI*\n\nPermohonan cuti anda (${req.type}) pada ${req.startDate} telah *DIBATALKAN* oleh ${(user.role || '').toUpperCase()}.\n\nBaki cuti anda telah dikembalikan.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+            const leaveTypeName = leaveCategories.find(c => c.id === req.type)?.name || req.type;
+            const msg = `🚩 *PEMBATALAN CUTI*\n\nPermohonan cuti anda (${leaveTypeName}) pada ${req.startDate} telah *DIBATALKAN* oleh ${(user.role || '').toUpperCase()}.\n\nBaki cuti anda telah dikembalikan.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
             window.sendWhatsApp(staff.phone, msg);
         }
     } catch (err) {
@@ -2058,22 +2065,33 @@ window.cancelLeave = async function(id) {
 
 window.rejectLeave = async function(id) {
     const record = leaveRecords.find(r => r.id === id);
-    if(record) {
-        try {
-            await updateDoc(doc(db, "leaves", id.toString()), { status: "REJECTED" });
-            window.logSystemActivity(`Rejected Leave for ${record.name}`);
-            window.addNotification(record.ic, 'leave_rejected', '❌ Cuti Ditolak', `Maaf, permohonan cuti anda (${record.type}, ${record.startDate} → ${record.endDate}) telah DITOLAK. Sila hubungi HR/Admin untuk maklumat lanjut.`, id.toString());
+    if (!record) return;
 
-            // Notify applicant of rejection
-            const applicant = staffList.find(s => s.ic === record.ic);
-            if (applicant && applicant.phone) {
-                const msg = `❌ *CUTI TIDAK DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nMaaf, permohonan cuti anda telah *DITOLAK*.\n\n📋 *Butiran Cuti:*\n• Jenis: ${record.type}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n\nSila hubungi HR/Admin untuk maklumat lanjut.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
-                window.sendWhatsApp(applicant.phone, msg);
-            }
-        } catch (err) {
-            console.error("Error rejecting leave: ", err);
-            alert("Ralat menolak permohonan cuti.");
+    // Kebenaran: hanya pelulus yang menguruskan staf/cawangan ini boleh menolak.
+    // canManageRequest membenarkan Team Leader menolak rekod PENDING op-Balok yang diuruskannya.
+    if (!window.canManageRequest(user, record)) {
+        alert('Anda tidak mempunyai kebenaran untuk menolak permohonan cawangan/staf ini.');
+        return;
+    }
+
+    const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
+    if (!confirm(`Adakah anda pasti mahu MENOLAK permohonan cuti ${record.name}?\n(${leaveTypeName}, ${record.startDate} → ${record.endDate})\n\nStatus akan ditukar ke DITOLAK dan pemohon akan dimaklumkan.`)) return;
+
+    try {
+        await updateDoc(doc(db, "leaves", id.toString()), { status: "REJECTED" });
+        window.logSystemActivity(`Rejected Leave for ${record.name}`);
+        window.addNotification(record.ic, 'leave_rejected', '❌ Cuti Ditolak', `Maaf, permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}) telah DITOLAK. Sila hubungi HR/Admin untuk maklumat lanjut.`, id.toString());
+
+        // Notify applicant of rejection
+        const applicant = staffList.find(s => s.ic === record.ic);
+        if (applicant && applicant.phone) {
+            const msg = `❌ *CUTI TIDAK DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nMaaf, permohonan cuti anda telah *DITOLAK*.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n\nSila hubungi HR/Admin untuk maklumat lanjut.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+            window.sendWhatsApp(applicant.phone, msg);
         }
+        alert(`Permohonan cuti ${record.name} telah ditolak.`);
+    } catch (err) {
+        console.error("Error rejecting leave: ", err);
+        alert("Ralat menolak permohonan cuti.");
     }
 };
 
