@@ -2625,6 +2625,8 @@ let branches = [
 ];
 
 async function initData() {
+  if (initData._done) return;
+  initData._done = true;
   console.log('Initializing Firestore listeners...');
 
   // Load WhatsApp token dari Firestore — supaya semua device guna token yang sama
@@ -2932,25 +2934,30 @@ async function initData() {
 // Migration helper removed as data is now live on Firestore.
 console.log('[SYSTEM] Version 1.1.0 - First Login Warning + Policy Flow + System URL');
 
-// Pastikan anonymous sign-in siap SEBELUM sebarang akses Firestore, supaya rules
-// `request.auth != null` tidak menolak bacaan/penulisan awal. Jika gagal (cth. provider
-// belum diaktifkan), app tetap diteruskan — selamat selagi rules masih terbuka.
+// Auth bootstrap. Returning users have a persisted real session (Firebase restores it
+// across reloads) — for them we subscribe to data immediately. Otherwise we sign in
+// anonymously ONLY to let the login screen read the `directory` collection; data
+// listeners are NOT attached under the anonymous session (rules deny anonymous reads) —
+// they are attached after a real login (see the #login-form handler) or here for a
+// restored session.
 (async () => {
   try {
-    await signInAnonymously(auth);
-    console.log('[AUTH] Anonymous sign-in OK:', auth.currentUser && auth.currentUser.uid);
-    await loadDirectory();
+    await auth.authStateReady();
+    if (auth.currentUser && !auth.currentUser.isAnonymous) {
+      console.log('[AUTH] Restored real session:', auth.currentUser.uid);
+      await loadDirectory();
+      initData();
+    } else {
+      if (!auth.currentUser) {
+        await signInAnonymously(auth);
+        console.log('[AUTH] Anonymous bootstrap OK:', auth.currentUser && auth.currentUser.uid);
+      }
+      await loadDirectory();
+    }
   } catch (e) {
-    console.error('[AUTH] Anonymous sign-in FAILED:', e.code || e.message);
+    console.error('[AUTH] bootstrap failed:', e.code || e.message);
   }
-  initData();
 })();
-
-
-// Initialize passwords for all staff (default to IC number if missing)
-staffList.forEach(staff => {
-  if (!staff.password) staff.password = staff.ic;
-});
 
 const auditLogs = [
   { time: '2024-04-03 14:22', user: 'Super Admin', action: 'Approved Annual Leave', target: 'Ahmad bin Zaid' },
@@ -3379,6 +3386,7 @@ function renderLogin() {
     const snap = await getDoc(doc(db, 'staff', ic));
     if (!snap.exists()) { alert('Profil staf tidak dijumpai. Sila hubungi HR/Admin.'); await signOut(auth); return; }
     user = snap.data();
+    initData(); // subscribe to live data now that we have a real (non-anonymous) session
 
     showFirstLoginWarning = (pwd === (user.ic || '').trim());
     const _ph = (user.phone || '').replace(/\D/g, '');
@@ -3606,7 +3614,6 @@ window.toggleMobileMenu = function(val) {
 window.logout = function() {
   localStorage.removeItem('ksb_logged_in_ic');
   localStorage.removeItem('ksb_logged_in_sid');
-  signOut(auth).catch(() => {});
   if (sessionUnsubscribe) { sessionUnsubscribe(); sessionUnsubscribe = null; }
   if (messengerMsgUnsub) { messengerMsgUnsub(); messengerMsgUnsub = null; }
   if (messengerRoomsUnsub) { messengerRoomsUnsub(); messengerRoomsUnsub = null; }
@@ -3632,6 +3639,7 @@ window.logout = function() {
   msgToasts = [];
   view = 'login';
   render();
+  signOut(auth).catch(() => {}).finally(() => window.location.reload());
 };
 
 // ============================================================
