@@ -138,6 +138,26 @@ Helper predicates:
 request.resource.data.status in ['PENDING','HOD APPROVED']))`.
 The `HOD APPROVED` allowance covers the existing Pahang **MC-direct-to-HR** flow.
 
+**Full collection ruleset** (the app uses these collections; default is
+deny). `signedIn()` = non-anonymous:
+
+| Collection | Read | Create | Update | Delete |
+|---|---|---|---|---|
+| `directory` | `request.auth != null` | deny (function only) | deny | deny |
+| `registration_requests` | `manageStaff()` | `request.auth != null` | `manageStaff()` | `manageStaff()` |
+| `staff` | `signedIn()` | `manageStaff()` | `manageStaff()` **or** owner self-profile (`myIC()==id`, only `phone`/`email`/`address` changed) | `manageStaff()` |
+| `leaves` | `signedIn()` | owner or `canApprove()` | owner self-edit or `canApprove()` | `canApprove()` |
+| `branches` | `signedIn()` | `manageStaff()` | `manageStaff()` | `manageStaff()` |
+| `config`, `system_config`, `settings` | `signedIn()` | `canApprove()` | `canApprove()` | `canApprove()` |
+| `sessions` | `signedIn()` | `myIC()==id` | `myIC()==id` | `signedIn()` |
+| `messenger_rooms`, `messenger_messages`, `notifications`, `user_presence` | `signedIn()` | `signedIn()` | `signedIn()` | `signedIn()` |
+| `audit_logs`, `wa_logs` | `signedIn()` | `signedIn()` | deny | `manageStaff()` |
+
+**`staff` self-profile:** `saveSelfProfile` (phone/email/address) must keep
+working for ordinary staff, so the owner may update only those three fields of
+their own doc. `changePassword` stops writing `staff.password` (password moves
+to Auth `updatePassword`).
+
 **`leaves` update:** allowed if `signedIn()` and either
 - **approver:** `canApprove()` — full management (status transitions, locum
   fields, etc.); or
