@@ -47,6 +47,19 @@ const app = document.querySelector('#app')
 let WHATSAPP_TOKEN = localStorage.getItem('ksb_wa_token') || '';
 const WHATSAPP_SENDER = '60129444295'; // No. penghantar
 const WHATSAPP_ENABLED = () => !!WHATSAPP_TOKEN;
+// Nombor peranti penghantar Fonnte (cth. 60178998771). Diisi dari /device.
+// WhatsApp tak boleh hantar kepada nombornya sendiri — kita guna ini untuk kesan & elak.
+let WHATSAPP_DEVICE = '';
+async function refreshWADevice() {
+  if (!WHATSAPP_TOKEN) { WHATSAPP_DEVICE = ''; return; }
+  try {
+    const res = await fetch('https://api.fonnte.com/device', {
+      method: 'POST', headers: { 'Authorization': WHATSAPP_TOKEN }
+    });
+    const d = await res.json();
+    if (d && d.device) WHATSAPP_DEVICE = String(d.device).replace(/\D/g, '');
+  } catch(_) { /* abaikan — guard self-send sekadar lapisan tambahan */ }
+}
 
 window.sendWhatsApp = async function(toPhone, message, throwOnError = false) {
   if (!WHATSAPP_ENABLED() || !toPhone) return;
@@ -64,16 +77,32 @@ window.sendWhatsApp = async function(toPhone, message, throwOnError = false) {
 
   let logStatus = 'sent', logErr = null;
   try {
-    const res = await fetch('https://api.fonnte.com/send', {
-      method: 'POST',
-      headers: { 'Authorization': WHATSAPP_TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target: phone, message, countryCode: '60' })
-    });
-    if (!res.ok) {
+    if (WHATSAPP_DEVICE && phone === WHATSAPP_DEVICE) {
+      // Target = nombor peranti penghantar Fonnte sendiri. Fonnte akan pulangkan
+      // status:true (queue) tetapi WhatsApp TIDAK boleh hantar kepada diri sendiri,
+      // jadi mesej tak sampai. Log sebagai gagal supaya jelas, jangan tipu "sent".
       logStatus = 'failed';
-      logErr = `Fonnte HTTP ${res.status} — token mungkin tidak sah atau had had dihantar`;
+      logErr = `Nombor penerima (${phone}) sama dengan nombor peranti penghantar Fonnte — WhatsApp tidak boleh hantar kepada diri sendiri. Guna nombor penghantar berasingan untuk sistem.`;
+      if (throwOnError) throw new Error(logErr);
+    } else {
+      const res = await fetch('https://api.fonnte.com/send', {
+        method: 'POST',
+        headers: { 'Authorization': WHATSAPP_TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: phone, message, countryCode: '60' })
+      });
+      let body = null;
+      try { body = await res.json(); } catch(_) { /* respons bukan JSON */ }
+      if (!res.ok) {
+        logStatus = 'failed';
+        logErr = `Fonnte HTTP ${res.status} — token mungkin tidak sah atau kuota habis`;
+      } else if (body && body.status === false) {
+        // Fonnte boleh pulangkan HTTP 200 dengan status:false (gagal sebenar) —
+        // sebelum ini app tersilap log sebagai "sent".
+        logStatus = 'failed';
+        logErr = 'Fonnte gagal hantar: ' + (body.reason || JSON.stringify(body).substring(0, 140));
+      }
+      if (throwOnError && logStatus === 'failed') throw new Error(logErr || `Fonnte error: ${res.status}`);
     }
-    if (throwOnError && !res.ok) throw new Error(`Fonnte error: ${res.status}`);
   } catch(err) {
     logStatus = 'failed';
     if (!logErr) logErr = err.message.includes('fetch') ? 'Tiada sambungan internet / Fonnte tidak dapat dihubungi' : err.message;
@@ -114,6 +143,7 @@ window.clearWALogs = async function() {
 window.saveWAToken = async function(token) {
   WHATSAPP_TOKEN = token;
   localStorage.setItem('ksb_wa_token', token);
+  refreshWADevice(); // kemas kini nombor peranti untuk guard self-send
   try {
     await setDoc(doc(db, 'system_config', 'whatsapp'), { token });
   } catch(e) {
@@ -1799,6 +1829,12 @@ window.finalizeLeave = async function(id) {
             );
             const supMsg = `📋 *SOKONGAN TEAM LEADER — PERLU NILAI SUPERVISOR (Peringkat 1)*\n\nPermohonan cuti telah disokong oleh *${user.name} (TEAM LEADER)* dan menunggu penilaian anda.\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\n🔗 *Log masuk untuk menilai:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
             supervisors.forEach(sup => window.sendWhatsApp(sup.phone, supMsg));
+            // Inbox kepada Supervisor Balok (selari dengan WhatsApp)
+            window.notifyApproversInbox(
+                staffList.filter(s => s.role === 'supervisor' && (s.branch || '').includes('Balok')),
+                '📥 Cuti Perlu Penilaian Supervisor (Peringkat 1)',
+                `${record.name} — ${leaveTypeName} (${record.startDate} → ${record.endDate}) telah disokong Team Leader; memerlukan penilaian anda.`,
+                id.toString(), record.ic);
             if (applicant && applicant.phone) {
                 const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *disokong oleh Team Leader*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini menunggu *penilaian Supervisor*. Anda akan dimaklumkan selepas kelulusan akhir.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
                 window.sendWhatsApp(applicant.phone, staffMsg);
@@ -1866,6 +1902,12 @@ window.finalizeLeave = async function(id) {
                     admins.forEach(admin => window.sendWhatsApp(admin.phone, msg));
                     waHRFeedback = `\n\n📲 Notifikasi WA dihantar kepada HR/Admin:\n${admins.map(a => a.name).join(', ')}`;
                 }
+                // Inbox kepada HR/Admin (selari dengan WhatsApp) — perlu kelulusan akhir
+                window.notifyApproversInbox(
+                    staffList.filter(s => ['admin', 'hr', 'super_admin'].includes(s.role)),
+                    '📥 Cuti Perlu Kelulusan Akhir (Peringkat 2)',
+                    `${record.name} — ${leaveTypeName} (${record.startDate} → ${record.endDate}) telah disokong ${p1Label}; memerlukan kelulusan akhir HR/Admin.`,
+                    id.toString(), record.ic);
                 if (applicant && applicant.phone) {
                     const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *dinilai dan disokong oleh ${user.name} (${p1Label})*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini sedang menunggu *kelulusan akhir HR/Admin*. Anda akan dimaklumkan selepas kelulusan akhir.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
                     window.sendWhatsApp(applicant.phone, staffMsg);
@@ -1914,6 +1956,22 @@ window.finalizeLeave = async function(id) {
             } else {
                 window.addNotification(record.ic, 'leave_p1_approved', '📋 Cuti Disokong Peringkat 1', `Permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}) telah disokong oleh ${user.name} dan sedang menunggu kelulusan akhir HR/Admin.`, id.toString());
             }
+
+            // ── Rekod setiap kelulusan yang sudah dibuat ──
+            const _actionLabel = isFinalApproval ? 'meluluskan (kelulusan akhir)'
+                : isTLApproval ? 'menyokong (Peringkat 0 — Team Leader)'
+                : 'menyokong (Peringkat 1)';
+            const _leaveInfo = `${leaveTypeName} oleh ${record.name} (${record.startDate} → ${record.endDate}, ${record.days} hari)`;
+            // (a) Approver yang buat tindakan — rekod dalam inboxnya sendiri
+            window.addNotification(user.ic, 'approval_made', '🗂️ Tindakan Kelulusan Direkod',
+                `Anda telah ${_actionLabel} permohonan ${_leaveInfo}.`, id.toString());
+            // (b) HR/Admin — pemantauan setiap kelulusan (kecuali approver sendiri & pemohon)
+            [...new Map(staffList
+                .filter(s => ['admin', 'hr', 'super_admin'].includes(s.role) && !s.inactive && s.ic !== user.ic && s.ic !== record.ic)
+                .map(s => [s.ic, s])).values()]
+                .forEach(s => window.addNotification(s.ic, 'approval_made', '🗂️ Rekod Kelulusan',
+                    `${user.name} telah ${_actionLabel} permohonan ${_leaveInfo}.`, id.toString()));
+
             alert(isFinalApproval
                 ? `✅ Cuti Diluluskan!${waFinalFeedback}`
                 : isTLApproval
@@ -2521,6 +2579,7 @@ async function initData() {
       localStorage.setItem('ksb_wa_token', WHATSAPP_TOKEN);
     }
   } catch(e) { console.warn('WA token load failed:', e); }
+  refreshWADevice(); // isi WHATSAPP_DEVICE untuk guard self-send (fire-and-forget)
 
   // Load policy content
   try {
@@ -2545,16 +2604,18 @@ async function initData() {
     }
   } catch(e) { console.warn('wa_notif_rbac load failed:', e); }
 
-  // Load approval routing config
-  try {
-    const routingSnap = await getDoc(doc(db, 'config', 'approvalRouting'));
+  // Approval routing config — stay live (onSnapshot) so whatever the admin sets in
+  // "Laluan Kelulusan" propagates to every open staff session immediately. Was a
+  // one-time getDoc, which left already-open sessions on the old/default routing.
+  onSnapshot(doc(db, 'config', 'approvalRouting'), (routingSnap) => {
     if (routingSnap.exists()) {
       const data = routingSnap.data();
       Object.keys(ROUTING_DEFAULTS).forEach(k => {
-        if (data[k]) approvalRouting[k] = { ...ROUTING_DEFAULTS[k], ...data[k] };
+        approvalRouting[k] = data[k] ? { ...ROUTING_DEFAULTS[k], ...data[k] } : { ...ROUTING_DEFAULTS[k] };
       });
     }
-  } catch(e) { console.warn('Routing config load failed:', e); }
+    render();
+  }, (e) => console.warn('Routing config sync failed:', e));
 
   // Load public holidays config
   try {
@@ -2836,10 +2897,12 @@ const recentActivity = [
   { name: 'MUHAMMAD LUKHMAN BIN ISMAIL', type: 'AL', date: '2026-03-20', status: 'APPROVED', duration: '1 Day' },
 ];
 
+// Self-hosted from /public so logos survive project migrations (the old
+// ksbsb-leave-trcker.firebaseapp.com host was deleted, which broke every logo).
 const logos = {
-  ksb: 'https://ksbsb-leave-trcker.firebaseapp.com/logo-ksb.jpg',
-  kr: 'https://ksbsb-leave-trcker.firebaseapp.com/logo-kr.jpg',
-  bentong: 'https://ksbsb-leave-trcker.firebaseapp.com/logo-bentong.jpg'
+  ksb: '/logo-ksb.png',
+  kr: '/logo-kr.png',
+  bentong: '/logo-bentong.png'
 };
 
 // Chart.js instances
@@ -3630,6 +3693,18 @@ window.addNotification = async function(recipientIC, type, title, body, leaveId 
   } catch(e) { console.warn('addNotification failed:', e); }
 };
 
+// ── Inbox: notifikasi kepada senarai pelulus (selari dgn notifikasi WhatsApp) ──
+// staffArr = senarai objek staff pelulus; auto buang yang inactif, tiada IC,
+// dan pemohon sendiri (excludeIC), serta nyahduplikasi ikut IC.
+window.notifyApproversInbox = function(staffArr, title, body, leaveId, excludeIC) {
+  const uniq = [...new Map(
+    (staffArr || [])
+      .filter(s => s && s.ic && s.ic !== excludeIC && !s.inactive)
+      .map(s => [s.ic, s])
+  ).values()];
+  uniq.forEach(s => window.addNotification(s.ic, 'leave_to_approve', title, body, leaveId));
+};
+
 // ── Inbox: mark as read ──
 window.markNotifRead = async function(notifId) {
   try {
@@ -4359,9 +4434,11 @@ function renderDashboard() {
           }
       }
 
-      // Tentukan sama ada staff adalah op-balok dengan needs_tl aktif
-      const _sbmIsBalok = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
-      const _sbmIsOpBalokTL = user.category === 'Operation Staff' && _sbmIsBalok &&
+      // Tentukan sama ada staff adalah op-balok dengan needs_tl aktif.
+      // Guna getStaffGroup (bukan category) supaya juru_audio/juru_xray/sonographer —
+      // yang berkategori 'Operation Staff' tetapi ada laluan sendiri (juru_audio_balok dll,
+      // needs_tl:false) — TIDAK tersilap diminta sokongan Team Leader.
+      const _sbmIsOpBalokTL = window.getStaffGroup(user) === 'operation_balok' &&
           !!(approvalRouting['operation_balok'] || {}).needs_tl;
 
       // Cuti Sakit (MC) — tidak perlu pilih pelulus (TL/HOD); destinasi ikut negeri
@@ -4443,6 +4520,12 @@ function renderDashboard() {
         );
         const hrMcMsg = `🩺 *CUTI SAKIT (MC) BARU — Perlu Semakan & Kelulusan HR*\n\nPermohonan Cuti Sakit dihantar terus kepada HR (tanpa melalui HOD/Supervisor) untuk semakan & kelulusan:\n\n👤 Staf: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📅 Tarikh: ${dateLabel}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\nSila semak Sijil Sakit (MC) dalam sistem, kemudian luluskan / tolak permohonan.\n\n🔗 *Log masuk untuk kelulusan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
         if (WHATSAPP_ENABLED()) hrToNotify.forEach(hr => window.sendWhatsApp(hr.phone, hrMcMsg));
+        // Inbox kepada HR/Admin (selari dengan WhatsApp)
+        window.notifyApproversInbox(
+          staffList.filter(s => ['hr', 'admin', 'super_admin'].includes(s.role)),
+          '📥 Cuti Sakit (MC) Perlu Kelulusan HR',
+          `${user.name} menghantar Cuti Sakit (MC) (${dateLabel}, ${diffDays} hari) terus untuk semakan & kelulusan HR.`,
+          newRecord.id.toString(), user.ic);
         if (WHATSAPP_ENABLED() && user.phone) {
           const mcConfirm = `✅ *CUTI SAKIT (MC) DIHANTAR*\n\nSalam ${user.name},\n\nPermohonan Cuti Sakit anda telah dihantar *terus kepada HR* untuk semakan & kelulusan.\n\n📋 *Butiran:*\n• Tarikh: ${dateLabel}\n• Tempoh: ${diffDays} hari\n• Sebab: ${reason}\n\nAnda akan dimaklumkan setelah HR membuat keputusan. Semoga cepat sembuh. 🌻\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
           window.sendWhatsApp(user.phone, mcConfirm);
@@ -4478,6 +4561,15 @@ function renderDashboard() {
       }
 
       hodToNotify.forEach(hod => window.sendWhatsApp(hod.phone, hodMsg));
+
+      // Inbox kepada pelulus (selari dengan WhatsApp) — peringkat yang sesuai
+      const _apprStaff = _sbmIsOpBalokTL ? staffList.filter(s => s.ic === selectedTL)
+        : selectedHOD ? staffList.filter(s => s.ic === selectedHOD)
+        : window.getRoutingP1Approvers(user);
+      window.notifyApproversInbox(_apprStaff,
+        '📥 Permohonan Cuti Perlu Tindakan',
+        `${user.name} memohon ${leaveTypeName} (${startDate}${startDate !== endDate ? ' → ' + endDate : ''}, ${diffDays} hari). Memerlukan ${_sbmIsOpBalokTL ? 'sokongan Team Leader (Peringkat 0)' : 'kelulusan Peringkat 1'} anda.`,
+        newRecord.id.toString(), user.ic);
 
       // WA pengesahan kepada pemohon sendiri
       if (user.phone) {
@@ -5727,8 +5819,7 @@ function renderView() {
 
             <!-- SECTION: Pelulus Peringkat 0 — TL selector untuk op-balok -->
             ${(() => {
-              const _fIsBalok = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
-              const _fIsOpBalok = user.category === 'Operation Staff' && _fIsBalok &&
+              const _fIsOpBalok = window.getStaffGroup(user) === 'operation_balok' &&
                   !!(approvalRouting['operation_balok'] || {}).needs_tl;
               if (!_fIsOpBalok) return '';
               const _tlList = staffList.filter(s =>
@@ -5757,8 +5848,7 @@ function renderView() {
             <!-- SECTION: Pelulus Peringkat 1 — sembunyikan untuk MC (auto-lulus) & op-balok jika needs_tl aktif -->
             ${(() => {
               if (isMC) return ''; // MC auto-lulus — tiada pelulus diperlukan
-              const _isBalok = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
-              const _isOpBalokTL = user.category === 'Operation Staff' && _isBalok &&
+              const _isOpBalokTL = window.getStaffGroup(user) === 'operation_balok' &&
                   !!(approvalRouting['operation_balok'] || {}).needs_tl;
               if (_isOpBalokTL) return ''; // P1 auto (Supervisor Balok) — pilih auto
               return `
@@ -9144,8 +9234,8 @@ function renderView() {
 
     case 'inbox': {
       const unread = inboxNotifs.filter(n => !n.read).length;
-      const typeIcon = { leave_submitted:'📋', leave_approved:'✅', leave_rejected:'❌', leave_p1_approved:'📋', leave_tl_approved:'📋', reminder_start:'🔔', reminder_balance:'⚠️', system:'ℹ️' };
-      const typeColor = { leave_submitted:'#3b82f6', leave_approved:'#10b981', leave_rejected:'#ef4444', leave_p1_approved:'#f59e0b', leave_tl_approved:'#f59e0b', reminder_start:'#8b5cf6', reminder_balance:'#f59e0b', system:'#64748b' };
+      const typeIcon = { leave_submitted:'📋', leave_approved:'✅', leave_rejected:'❌', leave_p1_approved:'📋', leave_tl_approved:'📋', leave_to_approve:'📥', approval_made:'🗂️', reminder_start:'🔔', reminder_balance:'⚠️', system:'ℹ️' };
+      const typeColor = { leave_submitted:'#3b82f6', leave_approved:'#10b981', leave_rejected:'#ef4444', leave_p1_approved:'#f59e0b', leave_tl_approved:'#f59e0b', leave_to_approve:'#3b82f6', approval_made:'#10b981', reminder_start:'#8b5cf6', reminder_balance:'#f59e0b', system:'#64748b' };
       return `
         <header class="top-bar">
           <h1 style="display:flex;align-items:center;gap:0.6rem;">
