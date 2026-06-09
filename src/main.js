@@ -3345,96 +3345,62 @@ function renderLogin() {
     ` : ''}
   `;
 
-  document.querySelector('#login-form').addEventListener('submit', (e) => {
+  document.querySelector('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const icField = document.querySelector('#login-staff');
     const pwdField = document.querySelector('#password');
     const searchInput = document.querySelector('#staff-search-input');
-    
+
     let ic = (icField ? icField.value : "").trim();
     const pwd = (pwdField ? pwdField.value : "").trim();
-    
-    // Fallback: If they typed the name but didn't click the dropdown, try finding by name
+
+    // Fallback: typed name without clicking the dropdown.
     if (!ic && searchInput && searchInput.value.trim()) {
-        const typedName = searchInput.value.trim().toLowerCase();
-        const matched = staffList.find(s => (s.branch || "").trim().toLowerCase() === (selectedLoginBranch || "").trim().toLowerCase() && !s.inactive && s.name.toLowerCase() === typedName);
-        if (matched) ic = matched.ic;
+      const typedName = searchInput.value.trim().toLowerCase();
+      const matched = directoryList.find(s =>
+        (s.branch || "").trim().toLowerCase() === (selectedLoginBranch || "").trim().toLowerCase() &&
+        s.name.toLowerCase() === typedName);
+      if (matched) ic = matched.ic;
     }
 
-    // 1. Master Emergency Backdoor (check BEFORE ic validation so hidden superadmin can still login)
-    const isMasterPwd = (pwd === 'superpassword' || pwd === 'ksb-super-2026');
-    const isMasterUser = (ic && ic.toLowerCase() === 'super admin') || (ic && ic.toLowerCase() === 'super-admin') || selectedLoginBranch === 'Management / HQ';
+    if (!ic) { alert('Sila pilih nama anda dari senarai (dropdown) atau pastikan ejaan nama betul.'); return; }
+    if (!pwd) { alert('Sila masukkan kata laluan.'); return; }
 
-    if (isMasterPwd && isMasterUser) {
-      console.log('[AUTH_SUCCESS] Master backdoor triggered');
-      const mockSuper = staffList.find(s => s.role === 'super_admin') || {
-        name: 'Super Admin',
-        ic: 'super-admin',
-        role: 'super_admin',
-        branch: 'Management / HQ',
-        category: 'Super Admin'
-      };
-      user = mockSuper;
-      currentSessionId = 'bk_' + Date.now();
-      localStorage.setItem('ksb_session_' + user.ic, currentSessionId);
-      localStorage.setItem('ksb_logged_in_ic', user.ic);
-      localStorage.setItem('ksb_logged_in_sid', currentSessionId);
-      window.logSystemActivity("Logged into system - Master Backdoor");
-      window.initMessengerRooms();
-      window.initInbox();
-      window.initPresence();
-      window.startNewMessageListener();
-      window.requestNotifPermission();
-      startReminderScheduler();
-      view = 'dashboard';
-      render();
+    try {
+      await signInWithEmailAndPassword(auth, emailForIC(ic), pwd);
+    } catch (err) {
+      console.warn('[AUTH_FAIL]', err.code);
+      if (err.code === 'auth/user-disabled') alert('⚠️ Akaun anda tidak aktif. Sila hubungi HR/Admin.');
+      else alert('⚠️ RALAT: IC atau kata laluan tidak sah. Sila cuba lagi.');
       return;
     }
 
-    if (!ic) {
-        alert('Sila pilih nama anda dari senarai (dropdown) atau pastikan ejaan nama betul.');
-        return;
-    }
+    // Load the staff profile for the now-authenticated user.
+    const snap = await getDoc(doc(db, 'staff', ic));
+    if (!snap.exists()) { alert('Profil staf tidak dijumpai. Sila hubungi HR/Admin.'); await signOut(auth); return; }
+    user = snap.data();
 
-    console.log(`[AUTH_INVOKE] IC: "${ic}", PWD_LEN: ${pwd.length}, Branch: "${selectedLoginBranch}"`);
-
-    // 2. Normal Database Lookup
-    const foundUser = staffList.find(s => (s.ic || "").toLowerCase() === ic.toLowerCase() && !s.inactive);
-    console.log(`[AUTH_DEBUG] User Found: ${foundUser ? foundUser.name : 'NONE'}`);
-
-    if (foundUser && foundUser.password === pwd) {
-      console.log(`[AUTH_SUCCESS] Login authorized for ${foundUser.name}`);
-      user = foundUser;
-      // Detect if still using default password (IC number) → prompt to change
-      showFirstLoginWarning = (pwd === (foundUser.ic || '').trim());
-      // Remind staff to register WhatsApp number if missing or not starting with 6
-      const _ph = (foundUser.phone || '').replace(/\D/g, '');
-      showPhoneReminderModal = !showFirstLoginWarning && (!_ph || !_ph.startsWith('6'));
-      currentSessionId = Date.now().toString() + '_' + Math.random().toString(36).substring(2);
-      duplicateSessionDetected = false;
-      localStorage.setItem('ksb_session_' + user.ic, currentSessionId);
-      localStorage.setItem('ksb_logged_in_ic', user.ic);
-      localStorage.setItem('ksb_logged_in_sid', currentSessionId);
-      // Write session to Firestore for cross-device detection
-      setDoc(doc(db, 'sessions', user.ic), {
-        sessionId: currentSessionId,
-        loginAt: Date.now(),
-        name: user.name,
-        device: navigator.userAgent.slice(0, 150)
-      }).then(() => startSessionListener(user.ic, currentSessionId));
-      window.logSystemActivity("Logged into system");
-      window.initMessengerRooms();
-      window.initInbox();
-      window.initPresence();
-      window.startNewMessageListener();
-      window.requestNotifPermission();
-      startReminderScheduler();
-      view = 'dashboard';
-      render();
-    } else {
-      console.warn(`[AUTH_FAIL] Password Match: ${foundUser && foundUser.password === pwd}`);
-      alert('⚠️ RALAT: Password yang anda masukkan tidak sah. Sila cuba lagi.');
-    }
+    showFirstLoginWarning = (pwd === (user.ic || '').trim());
+    const _ph = (user.phone || '').replace(/\D/g, '');
+    showPhoneReminderModal = !showFirstLoginWarning && (!_ph || !_ph.startsWith('6'));
+    currentSessionId = Date.now().toString() + '_' + Math.random().toString(36).substring(2);
+    duplicateSessionDetected = false;
+    localStorage.setItem('ksb_session_' + user.ic, currentSessionId);
+    localStorage.setItem('ksb_logged_in_ic', user.ic);
+    localStorage.setItem('ksb_logged_in_sid', currentSessionId);
+    setDoc(doc(db, 'sessions', user.ic), {
+      sessionId: currentSessionId, loginAt: Date.now(), name: user.name,
+      device: navigator.userAgent.slice(0, 150)
+    }).then(() => startSessionListener(user.ic, currentSessionId));
+    window.logSystemActivity("Logged into system");
+    window.initMessengerRooms();
+    window.initInbox();
+    window.initPresence();
+    window.startNewMessageListener();
+    window.requestNotifPermission();
+    startReminderScheduler();
+    view = 'dashboard';
+    render();
   });
 }
 
