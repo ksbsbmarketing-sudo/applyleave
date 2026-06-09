@@ -2939,6 +2939,7 @@ console.log('[SYSTEM] Version 1.1.0 - First Login Warning + Policy Flow + System
   try {
     await signInAnonymously(auth);
     console.log('[AUTH] Anonymous sign-in OK:', auth.currentUser && auth.currentUser.uid);
+    await loadDirectory();
   } catch (e) {
     console.error('[AUTH] Anonymous sign-in FAILED:', e.code || e.message);
   }
@@ -3180,10 +3181,10 @@ function renderLogin() {
   // Normalize comparison to prevent whitespace and case issues
   const normSelected = (selectedLoginBranch || "").trim().toLowerCase();
   const filteredStaff = selectedLoginBranch
-    ? staffList.filter(s => (s.branch || "").trim().toLowerCase() === normSelected && !s.inactive && s.role !== 'super_admin')
+    ? directoryList.filter(s => (s.branch || "").trim().toLowerCase() === normSelected && !s.inactive && s.role !== 'super_admin')
     : [];
 
-  console.log(`[DEBUG_LOGIN] Branch: "${selectedLoginBranch}", Total: ${staffList.length}, Filtered: ${filteredStaff.length}`);
+  console.log(`[DEBUG_LOGIN] Branch: "${selectedLoginBranch}", Total: ${directoryList.length}, Filtered: ${filteredStaff.length}`);
   
   app.innerHTML = `
     <div class="auth-container">
@@ -3227,7 +3228,7 @@ function renderLogin() {
                 oninput="window.filterStaffDropdown(this.value)"
                 onfocus="window.showStaffDropdown(); this.select();"
                 onblur="setTimeout(() => window.hideStaffDropdown(), 300)"
-                value="${selectedLoginStaffIC ? (staffList.find(s=>s.ic===selectedLoginStaffIC)||{name:''}).name : ''}"
+                value="${selectedLoginStaffIC ? (directoryList.find(s=>s.ic===selectedLoginStaffIC)||{name:''}).name : ''}"
               >
               <div style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
