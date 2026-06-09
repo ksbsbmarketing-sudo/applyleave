@@ -1842,6 +1842,59 @@ window.editLeave = function(id) {
     render();
 };
 
+// Staff edits their OWN leave's dates/reason. Resets to PENDING (re-approval),
+// after a before→after confirmation of exactly what changed.
+window.staffEditOwnLeave = async function(id) {
+  const rec = leaveRecords.find(r => r.id === id);
+  if (!rec) return;
+  if (rec.ic !== user.ic) { alert('Anda hanya boleh mengubah permohonan anda sendiri.'); return; }
+  if (['APPROVED', 'REJECTED', 'CANCELLED'].includes(rec.status)) {
+    alert('Permohonan ini sudah selesai dan tidak boleh diubah.'); return;
+  }
+
+  const newStart = prompt('Tarikh Mula (YYYY-MM-DD):', rec.startDate);
+  if (newStart === null) return;
+  const newEnd = prompt('Tarikh Akhir (YYYY-MM-DD):', rec.endDate);
+  if (newEnd === null) return;
+  const newReason = prompt('Sebab:', rec.reason);
+  if (newReason === null) return;
+
+  // Build a diff of only what changed.
+  const changes = [];
+  if (newStart !== rec.startDate) changes.push(`• Tarikh Mula: ${rec.startDate} → ${newStart}`);
+  if (newEnd !== rec.endDate)     changes.push(`• Tarikh Akhir: ${rec.endDate} → ${newEnd}`);
+  if (newReason !== rec.reason)   changes.push(`• Sebab: "${rec.reason}" → "${newReason}"`);
+  if (!changes.length) { alert('Tiada perubahan dibuat.'); return; }
+
+  const days = window.computeLeaveDays ? window.computeLeaveDays(newStart, newEnd)
+    : (Math.round((new Date(newEnd) - new Date(newStart)) / 86400000) + 1);
+
+  const warn = rec.status !== 'PENDING'
+    ? '\n\n⚠️ Permohonan ini telah disokong/diluluskan separa. Mengubahnya akan MENETAPKAN SEMULA status ke PENDING dan proses kelulusan akan bermula semula.'
+    : '';
+  if (!confirm(`Sahkan perubahan berikut?\n\n${changes.join('\n')}\n\nTempoh baharu: ${days} hari${warn}`)) return;
+
+  try {
+    await updateDoc(doc(db, 'leaves', id.toString()), {
+      startDate: newStart, endDate: newEnd, reason: newReason, days, status: 'PENDING',
+    });
+    window.logSystemActivity(`Staff edited own leave ${id} (reset to PENDING)`);
+    // Re-notify approvers that this needs (re-)action.
+    const applicant = staffList.find(s => s.ic === rec.ic) || user;
+    const approvers = window.getRoutingP1Approvers(applicant).filter(s => s.phone);
+    const info = `\n\n👤 Pemohon: *${applicant.name}*\n📅 Tarikh: ${newStart} → ${newEnd}\n⏱ Tempoh: ${days} hari\n💬 Sebab: ${newReason}\n\n🔗 https://apply-leave-89ebb.web.app`;
+    approvers.forEach(a => window.sendWhatsApp(a.phone, `🔁 *PERMOHONAN CUTI DIKEMASKINI — Perlu Sokongan Semula*${info}`));
+    window.notifyApproversInbox(window.getRoutingP1Approvers(applicant),
+      '🔁 Cuti Dikemaskini — Perlu Sokongan Semula',
+      `${applicant.name} mengubah permohonan cuti (kini ${newStart} → ${newEnd}); memerlukan sokongan semula.`,
+      id.toString(), rec.ic);
+    alert('✅ Permohonan dikemaskini. Status ditetapkan semula ke PENDING untuk kelulusan semula.');
+  } catch (err) {
+    console.error('staffEditOwnLeave error:', err);
+    alert('Ralat mengemaskini permohonan. (Mungkin status telah berubah — sila muat semula.)');
+  }
+};
+
 window.deleteLeave = async function(id) {
     if(confirm("Are you sure you want to delete this leave record?")) {
         try {
@@ -5448,17 +5501,19 @@ function renderPersonalDashboard() {
                   <th>Tarikh</th>
                   <th>Tempoh</th>
                   <th>Status</th>
+                  <th>Tindakan</th>
                 </tr>
               </thead>
               <tbody>
-                ${myRecords.length === 0 
-                  ? '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-muted);">Tiada rekod permohonan ditemui.</td></tr>'
+                ${myRecords.length === 0
+                  ? '<tr><td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-muted);">Tiada rekod permohonan ditemui.</td></tr>'
                   : myRecords.slice(0, 5).map(act => `
                   <tr>
                     <td style="font-weight: 700;">${act.type}</td>
                     <td style="color: var(--text-muted); font-size: 1rem;">${act.startDate} → ${act.endDate}</td>
                     <td style="font-weight: 600;">${act.days} Hari</td>
                     <td><span class="status-badge ${(act.status || '').toLowerCase()}">${act.status}</span></td>
+                    <td>${act.ic === user.ic && !['APPROVED','REJECTED','CANCELLED'].includes(act.status) ? `<button class="neu-btn" onclick="window.staffEditOwnLeave(${act.id})" style="color:#60a5fa;">✏️ Edit Tarikh/Sebab</button>` : ''}</td>
                   </tr>
                 `).join('')}
               </tbody>
