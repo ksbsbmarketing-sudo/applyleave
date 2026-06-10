@@ -1,4 +1,5 @@
 import './style.css'
+import { countLeaveDays } from './leaveDays.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -1813,6 +1814,23 @@ window.printLeave = function(id) {
 window.editLeave = function(id) {
     editingLeaveId = id;
     render();
+};
+
+// Chargeable leave-day count for a staff member over a date range.
+// Admin Staff (Mon–Fri) skip weekends + their state's public holidays;
+// everyone else counts all calendar days. Returns whole days (callers apply half-day).
+window.computeLeaveDays = function(startDate, endDate, staff) {
+  const isAdmin = !!staff && (staff.category === 'Admin Staff' || staff.category === 'Admin');
+  let holidayDates = [];
+  if (isAdmin) {
+    const branchObj = branches.find(b => b.name === (staff.branch || ''));
+    const state = branchObj ? branchObj.state : null;
+    const list = state === 'Terengganu' ? publicHolidays.terengganu
+               : state === 'Pahang'     ? publicHolidays.pahang
+               : [];
+    holidayDates = (list || []).map(h => h.date);
+  }
+  return countLeaveDays(startDate, endDate, isAdmin, holidayDates);
 };
 
 // Staff edits their OWN leave's dates/reason. Resets to PENDING (re-approval),
