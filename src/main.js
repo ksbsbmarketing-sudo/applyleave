@@ -1857,8 +1857,11 @@ window.staffEditOwnLeave = async function(id) {
   if (newReason !== rec.reason)   changes.push(`• Sebab: "${rec.reason}" → "${newReason}"`);
   if (!changes.length) { alert('Tiada perubahan dibuat.'); return; }
 
-  const days = window.computeLeaveDays ? window.computeLeaveDays(newStart, newEnd)
-    : (Math.round((new Date(newEnd) - new Date(newStart)) / 86400000) + 1);
+  const days = window.computeLeaveDays(newStart, newEnd, staffList.find(s => s.ic === rec.ic) || user);
+  if (days <= 0) {
+    alert('Tarikh yang dipilih tiada hari bekerja untuk staf pentadbiran. Sila pilih tarikh yang merangkumi hari bekerja (Isnin–Jumaat).');
+    return;
+  }
 
   const warn = rec.status !== 'PENDING'
     ? '\n\n⚠️ Permohonan ini telah disokong/diluluskan separa. Mengubahnya akan MENETAPKAN SEMULA status ke PENDING dan proses kelulusan akan bermula semula.'
@@ -4495,10 +4498,11 @@ function renderDashboard() {
       const reason = leaveForm.querySelector('textarea').value;
       const handover = leaveForm.querySelector('#handover-input')?.value || '';
       
-      const start = new Date(leaveStartDate);
-      const end = new Date(leaveEndDate);
-      const diffTime = Math.abs(end - start);
-      let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      let diffDays = window.computeLeaveDays(leaveStartDate, leaveEndDate, user);
+      if (diffDays <= 0) {
+        alert('Tarikh yang dipilih tiada hari bekerja untuk staf pentadbiran. Sila pilih tarikh yang merangkumi hari bekerja (Isnin–Jumaat).');
+        return;
+      }
       if (applyHalfDay) diffDays -= 0.5;
 
       let leaveBreakdown = '';
@@ -4837,14 +4841,22 @@ function renderDashboard() {
           e.preventDefault();
           const rec = leaveRecords.find(r => r.id === editingLeaveId);
           if(rec) {
+              const elStart = document.querySelector('#el-start').value;
+              const elEnd = document.querySelector('#el-end').value;
+              const elDays = window.computeLeaveDays(elStart, elEnd, staffList.find(s => s.ic === rec.ic));
+              if (elDays <= 0) {
+                alert('Tarikh yang dipilih tiada hari bekerja untuk staf pentadbiran. Sila pilih tarikh yang merangkumi hari bekerja (Isnin–Jumaat).');
+                return;
+              }
               const updates = {
                 status: document.querySelector('#el-status').value,
                 type: document.querySelector('#el-type').value,
                 reason: document.querySelector('#el-reason').value,
-                startDate: document.querySelector('#el-start').value,
-                endDate: document.querySelector('#el-end').value
+                startDate: elStart,
+                endDate: elEnd,
+                days: elDays
               };
-              
+
               try {
                   await updateDoc(doc(db, "leaves", editingLeaveId.toString()), updates);
                   alert('Leave Application Updated successfully!');
