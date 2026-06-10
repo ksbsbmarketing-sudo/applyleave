@@ -55,9 +55,12 @@ service cloud.firestore {
       allow write: if manageStaff();
     }
 
-    match /config/{id}        { allow read: if signedIn(); allow write: if canApprove(); }
-    match /system_config/{id} { allow read: if signedIn(); allow write: if canApprove(); }
-    match /settings/{id}      { allow read: if signedIn(); allow write: if canApprove(); }
+    // config/rolePermissions is the root of trust for custom claims, so these
+    // admin-config collections are restricted to manageStaff (super_admin/admin/hr)
+    // — a mid-tier approver must NOT be able to escalate their own claims.
+    match /config/{id}        { allow read: if signedIn(); allow write: if manageStaff(); }
+    match /system_config/{id} { allow read: if signedIn(); allow write: if manageStaff(); }
+    match /settings/{id}      { allow read: if signedIn(); allow write: if manageStaff(); }
 
     match /sessions/{ic} {
       allow read: if signedIn();

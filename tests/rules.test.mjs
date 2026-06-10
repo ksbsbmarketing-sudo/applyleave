@@ -104,3 +104,10 @@ test("only manageStaff can write staff records", async () => {
   const hr = ctxDb(hrAuth("HR1"));
   await assertSucceeds(setDoc(doc(hr, "staff", "S9"), { ic: "S9", role: "staff" }));
 });
+
+test("approver (canApprove only) cannot write config/rolePermissions; manageStaff can", async () => {
+  const approver = ctxDb(approverAuth("SUP"));
+  await assertFails(setDoc(doc(approver, "config", "rolePermissions"), { supervisor: { canApprove: true, manageStaff: true } }));
+  const hr = ctxDb(hrAuth("HR1"));
+  await assertSucceeds(setDoc(doc(hr, "config", "rolePermissions"), { supervisor: { canApprove: true, manageStaff: false } }));
+});

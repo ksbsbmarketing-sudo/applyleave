@@ -62,7 +62,12 @@ export const setStaffPassword = onCall(async (request) => {
   if (!ic || !newPassword || String(newPassword).length < 6) {
     throw new HttpsError("invalid-argument", "IC dan kata laluan (min 6 aksara) diperlukan.");
   }
-  const u = await admin.auth().getUserByEmail(emailForIC(ic));
+  let u;
+  try {
+    u = await admin.auth().getUserByEmail(emailForIC(ic));
+  } catch {
+    throw new HttpsError("not-found", "Akaun staf belum wujud. Sila cuba sebentar lagi atau semak No. IC.");
+  }
   await admin.auth().updateUser(u.uid, { password: String(newPassword) });
   return { ok: true };
 });

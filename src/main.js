@@ -191,40 +191,9 @@ window.saveWAToken = async function(token) {
 };
 
 window.forgotPassword = async function() {
-  if (!selectedLoginBranch) {
-    alert('Sila pilih cawangan anda terlebih dahulu.');
-    return;
-  }
-  if (!selectedLoginStaffIC) {
-    alert('Sila pilih nama anda dari senarai dropdown sebelum meneruskan.');
-    return;
-  }
-
-  const staff = staffList.find(s => s.ic === selectedLoginStaffIC && !s.inactive);
-  if (!staff) {
-    alert('Ralat: Rekod staf tidak ditemui. Sila hubungi HR/Admin.');
-    return;
-  }
-
-  if (!staff.phone) {
-    alert('Maaf, nombor WhatsApp anda belum didaftarkan dalam sistem.\n\nSila hubungi HR/Admin untuk mendapatkan kata laluan anda.');
-    return;
-  }
-
-  if (!WHATSAPP_ENABLED()) {
-    alert('Sistem WhatsApp belum dikonfigurasi oleh Admin.\n\nSila hubungi HR/Admin terus untuk mendapatkan kata laluan anda.');
-    return;
-  }
-
-  const msg = `🔐 *PEMULIHAN KATA LALUAN — KSB Leave Apply*\n\nSalam ${staff.name},\n\nDemi keselamatan, kata laluan tidak boleh dipaparkan semula.\n\nSila hubungi HR/Admin untuk menetapkan semula (reset) kata laluan anda. Selepas reset, kata laluan sementara anda ialah No. IC anda, dan anda boleh menukarnya melalui Settings → Security selepas log masuk.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
-
-  try {
-    await window.sendWhatsApp(staff.phone, msg, true);
-    alert(`✅ Kata laluan telah dihantar ke nombor WhatsApp anda.\n\nSila semak mesej WhatsApp anda.`);
-  } catch (err) {
-    console.error('forgotPassword WA send failed:', err);
-    alert('Ralat menghantar mesej WhatsApp. Sila pastikan token Fonnte betul atau hubungi HR/Admin terus.');
-  }
+  // Passwords are hashed in Firebase Auth and cannot be retrieved. This is purely
+  // informational and must work before login (no staffList/phone available yet).
+  alert('🔐 PEMULIHAN KATA LALUAN\n\nDemi keselamatan, kata laluan tidak boleh dipaparkan semula.\n\nSila hubungi HR/Admin untuk menetapkan semula (reset) kata laluan anda. Selepas reset, kata laluan sementara anda ialah No. IC anda — dan anda boleh menukarnya melalui Settings → Security selepas log masuk.');
 };
 
 window.testWANotification = async function() {
