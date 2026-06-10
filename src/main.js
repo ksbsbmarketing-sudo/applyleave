@@ -4,7 +4,16 @@ Chart.register(...registerables);
 
 import { initializeApp } from "firebase/app";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
-import { getAuth, signInAnonymously } from "firebase/auth";
+import {
+  getAuth,
+  signInAnonymously,
+  signInWithEmailAndPassword,
+  signOut,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+} from "firebase/auth";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { getAnalytics } from "firebase/analytics";
 import {
   getFirestore,
@@ -54,6 +63,18 @@ const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
 const analytics = getAnalytics(firebaseApp);
 const storage = getStorage(firebaseApp);
+const functions = getFunctions(firebaseApp);
+const AUTH_EMAIL_DOMAIN = 'ksb-leave.local';
+const emailForIC = (ic) => `${String(ic).replace(/[^a-zA-Z0-9]/g, '')}@${AUTH_EMAIL_DOMAIN}`;
+
+// Pre-login directory (branch + name + ic) loaded under the anonymous bootstrap session.
+let directoryList = [];
+async function loadDirectory() {
+  try {
+    const snap = await getDocs(collection(db, 'directory'));
+    directoryList = snap.docs.map(d => d.data()).filter(s => !s.inactive);
+  } catch (e) { console.error('loadDirectory failed:', e); directoryList = []; }
+}
 
 const app = document.querySelector('#app')
 
@@ -170,41 +191,9 @@ window.saveWAToken = async function(token) {
 };
 
 window.forgotPassword = async function() {
-  if (!selectedLoginBranch) {
-    alert('Sila pilih cawangan anda terlebih dahulu.');
-    return;
-  }
-  if (!selectedLoginStaffIC) {
-    alert('Sila pilih nama anda dari senarai dropdown sebelum meneruskan.');
-    return;
-  }
-
-  const staff = staffList.find(s => s.ic === selectedLoginStaffIC && !s.inactive);
-  if (!staff) {
-    alert('Ralat: Rekod staf tidak ditemui. Sila hubungi HR/Admin.');
-    return;
-  }
-
-  if (!staff.phone) {
-    alert('Maaf, nombor WhatsApp anda belum didaftarkan dalam sistem.\n\nSila hubungi HR/Admin untuk mendapatkan kata laluan anda.');
-    return;
-  }
-
-  if (!WHATSAPP_ENABLED()) {
-    alert('Sistem WhatsApp belum dikonfigurasi oleh Admin.\n\nSila hubungi HR/Admin terus untuk mendapatkan kata laluan anda.');
-    return;
-  }
-
-  const pwd = staff.password || staff.ic;
-  const msg = `🔐 *PEMULIHAN KATA LALUAN — KSB Leave Apply*\n\nSalam ${staff.name},\n\nKata laluan akaun anda adalah:\n\n📌 *${pwd}*\n\nSila log masuk ke sistem menggunakan kata laluan di atas.\n\n⚠️ Demi keselamatan, sila tukar kata laluan anda selepas berjaya masuk melalui Settings → Security.\n\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
-
-  try {
-    await window.sendWhatsApp(staff.phone, msg, true);
-    alert(`✅ Kata laluan telah dihantar ke nombor WhatsApp anda.\n\nSila semak mesej WhatsApp anda.`);
-  } catch (err) {
-    console.error('forgotPassword WA send failed:', err);
-    alert('Ralat menghantar mesej WhatsApp. Sila pastikan token Fonnte betul atau hubungi HR/Admin terus.');
-  }
+  // Passwords are hashed in Firebase Auth and cannot be retrieved. This is purely
+  // informational and must work before login (no staffList/phone available yet).
+  alert('🔐 PEMULIHAN KATA LALUAN\n\nDemi keselamatan, kata laluan tidak boleh dipaparkan semula.\n\nSila hubungi HR/Admin untuk menetapkan semula (reset) kata laluan anda. Selepas reset, kata laluan sementara anda ialah No. IC anda — dan anda boleh menukarnya melalui Settings → Security selepas log masuk.');
 };
 
 window.testWANotification = async function() {
@@ -1127,31 +1116,42 @@ window.changePassword = async function(event) {
   event.preventDefault();
   const current = document.getElementById('pwd-current')?.value;
   const next    = document.getElementById('pwd-new')?.value;
-  const confirm = document.getElementById('pwd-confirm')?.value;
+  const confirm  = document.getElementById('pwd-confirm')?.value;
 
   if (!user) { alert('Sesi tidak sah. Sila log masuk semula.'); return; }
-  if (current !== (user.password || user.ic)) {
-    alert('❌ Kata laluan semasa tidak betul. Sila cuba lagi.'); return;
-  }
-  if (next !== confirm) {
-    alert('❌ Kata laluan baharu tidak sepadan. Sila cuba lagi.'); return;
-  }
-  if (next.length < 4) {
-    alert('❌ Kata laluan baharu mesti sekurang-kurangnya 4 aksara.'); return;
-  }
+  if (!auth.currentUser || auth.currentUser.isAnonymous) { alert('Sesi tidak sah. Sila log masuk semula.'); return; }
+  if (next !== confirm) { alert('❌ Kata laluan baharu tidak sepadan. Sila cuba lagi.'); return; }
+  if ((next || '').length < 6) { alert('❌ Kata laluan baharu mesti sekurang-kurangnya 6 aksara.'); return; }
 
   try {
-    await updateDoc(doc(db, 'staff', user.ic), { password: next });
-    user.password = next;
-    const s = staffList.find(i => i.ic === user.ic);
-    if (s) s.password = next;
+    const cred = EmailAuthProvider.credential(emailForIC(user.ic), current);
+    await reauthenticateWithCredential(auth.currentUser, cred);
+    await updatePassword(auth.currentUser, next);
     alert('✅ Kata laluan berjaya ditukar!');
     document.getElementById('pwd-current').value = '';
     document.getElementById('pwd-new').value = '';
     document.getElementById('pwd-confirm').value = '';
   } catch (err) {
     console.error('changePassword error:', err);
-    alert('Ralat menyimpan kata laluan. Sila cuba lagi.');
+    if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+      alert('❌ Kata laluan semasa tidak betul. Sila cuba lagi.');
+    } else {
+      alert('Ralat menukar kata laluan. Sila cuba lagi.');
+    }
+  }
+};
+
+window.adminSetPassword = async function(ic, newPassword) {
+  if (!newPassword || newPassword.length < 6) { alert('Kata laluan mesti sekurang-kurangnya 6 aksara.'); return false; }
+  try {
+    const fn = httpsCallable(functions, 'setStaffPassword');
+    await fn({ ic, newPassword });
+    alert('✅ Kata laluan staf berjaya ditetapkan.');
+    return true;
+  } catch (err) {
+    console.error('adminSetPassword error:', err);
+    alert('Ralat menetapkan kata laluan: ' + (err.message || err.code));
+    return false;
   }
 };
 
@@ -1298,7 +1298,7 @@ window.approveRegistration = async function(docId) {
   try {
     const newStaff = {
       name: req.name, ic: req.ic, branch: req.branch, category: req.category,
-      role: 'staff', phone: req.phone, password: req.ic, inactive: false,
+      role: 'staff', phone: req.phone, inactive: false,
       startDate: new Date().toISOString().split('T')[0]
     };
     await setDoc(doc(db, 'staff', req.ic), newStaff);
@@ -1337,7 +1337,7 @@ window.submitAddStaff = async function(event) {
   const category = form.querySelector('#as-category').value;
   const role     = form.querySelector('#as-role').value;
   const phone    = form.querySelector('#as-phone').value.trim();
-  const password = form.querySelector('#as-password').value || ic;
+  const initialPassword = form.querySelector('#as-password')?.value || ic;
 
   if (!name || !ic || !branch) {
     alert('Sila lengkapkan Nama, No. IC, dan Cawangan.');
@@ -1348,12 +1348,17 @@ window.submitAddStaff = async function(event) {
     return;
   }
 
-  const newStaff = { name, ic, branch, category, role, phone, password, inactive: false, startDate: new Date().toISOString().split('T')[0] };
+  const newStaff = { name, ic, branch, category, role, phone, inactive: false, startDate: new Date().toISOString().split('T')[0] };
 
   try {
     await setDoc(doc(db, 'staff', ic), newStaff);
     window.logSystemActivity(`Added new staff: ${name}`);
     alert(`✅ Staf baharu "${name}" berjaya ditambah!`);
+    // The onStaffWrite Cloud Function creates the Auth account from this staff doc; give it
+    // a moment, then set the chosen initial password (if different from the default IC).
+    if (initialPassword && initialPassword !== ic) {
+      setTimeout(() => window.adminSetPassword(ic, initialPassword), 4000);
+    }
     window.closeAddStaff();
   } catch (err) {
     console.error('submitAddStaff error:', err);
@@ -1806,6 +1811,59 @@ window.editLeave = function(id) {
     render();
 };
 
+// Staff edits their OWN leave's dates/reason. Resets to PENDING (re-approval),
+// after a before→after confirmation of exactly what changed.
+window.staffEditOwnLeave = async function(id) {
+  const rec = leaveRecords.find(r => r.id === id);
+  if (!rec) return;
+  if (rec.ic !== user.ic) { alert('Anda hanya boleh mengubah permohonan anda sendiri.'); return; }
+  if (['APPROVED', 'REJECTED', 'CANCELLED'].includes(rec.status)) {
+    alert('Permohonan ini sudah selesai dan tidak boleh diubah.'); return;
+  }
+
+  const newStart = prompt('Tarikh Mula (YYYY-MM-DD):', rec.startDate);
+  if (newStart === null) return;
+  const newEnd = prompt('Tarikh Akhir (YYYY-MM-DD):', rec.endDate);
+  if (newEnd === null) return;
+  const newReason = prompt('Sebab:', rec.reason);
+  if (newReason === null) return;
+
+  // Build a diff of only what changed.
+  const changes = [];
+  if (newStart !== rec.startDate) changes.push(`• Tarikh Mula: ${rec.startDate} → ${newStart}`);
+  if (newEnd !== rec.endDate)     changes.push(`• Tarikh Akhir: ${rec.endDate} → ${newEnd}`);
+  if (newReason !== rec.reason)   changes.push(`• Sebab: "${rec.reason}" → "${newReason}"`);
+  if (!changes.length) { alert('Tiada perubahan dibuat.'); return; }
+
+  const days = window.computeLeaveDays ? window.computeLeaveDays(newStart, newEnd)
+    : (Math.round((new Date(newEnd) - new Date(newStart)) / 86400000) + 1);
+
+  const warn = rec.status !== 'PENDING'
+    ? '\n\n⚠️ Permohonan ini telah disokong/diluluskan separa. Mengubahnya akan MENETAPKAN SEMULA status ke PENDING dan proses kelulusan akan bermula semula.'
+    : '';
+  if (!confirm(`Sahkan perubahan berikut?\n\n${changes.join('\n')}\n\nTempoh baharu: ${days} hari${warn}`)) return;
+
+  try {
+    await updateDoc(doc(db, 'leaves', id.toString()), {
+      startDate: newStart, endDate: newEnd, reason: newReason, days, status: 'PENDING',
+    });
+    window.logSystemActivity(`Staff edited own leave ${id} (reset to PENDING)`);
+    // Re-notify approvers that this needs (re-)action.
+    const applicant = staffList.find(s => s.ic === rec.ic) || user;
+    const approvers = window.getRoutingP1Approvers(applicant).filter(s => s.phone);
+    const info = `\n\n👤 Pemohon: *${applicant.name}*\n📅 Tarikh: ${newStart} → ${newEnd}\n⏱ Tempoh: ${days} hari\n💬 Sebab: ${newReason}\n\n🔗 https://apply-leave-89ebb.web.app`;
+    approvers.forEach(a => window.sendWhatsApp(a.phone, `🔁 *PERMOHONAN CUTI DIKEMASKINI — Perlu Sokongan Semula*${info}`));
+    window.notifyApproversInbox(window.getRoutingP1Approvers(applicant),
+      '🔁 Cuti Dikemaskini — Perlu Sokongan Semula',
+      `${applicant.name} mengubah permohonan cuti (kini ${newStart} → ${newEnd}); memerlukan sokongan semula.`,
+      id.toString(), rec.ic);
+    alert('✅ Permohonan dikemaskini. Status ditetapkan semula ke PENDING untuk kelulusan semula.');
+  } catch (err) {
+    console.error('staffEditOwnLeave error:', err);
+    alert('Ralat mengemaskini permohonan. (Mungkin status telah berubah — sila muat semula.)');
+  }
+};
+
 window.deleteLeave = async function(id) {
     if(confirm("Are you sure you want to delete this leave record?")) {
         try {
@@ -1821,6 +1879,12 @@ window.deleteLeave = async function(id) {
 window.finalizeLeave = async function(id) {
     const record = leaveRecords.find(r => r.id === id);
     if(record) {
+        // Kebenaran: hanya pelulus yang menguruskan staf/cawangan ini boleh meluluskan/menyokong.
+        // Selari dengan tapisan UI senarai kelulusan dan guard rejectLeave/cancelLeave.
+        if (!window.canManageRequest(user, record)) {
+            alert('Anda tidak mempunyai kebenaran untuk meluluskan permohonan cawangan/staf ini.');
+            return;
+        }
         const applicant = staffList.find(s => s.ic === record.ic);
         if (applicant && applicant.category === 'Doctor') {
             const hasLocum2 = showLocum2Set.has(record.id) || record.locum2Name;
@@ -2047,7 +2111,8 @@ window.cancelLeave = async function(id) {
         
         const staff = staffList.find(s => s.ic === req.ic);
         if (staff && staff.phone) {
-            const msg = `🚩 *PEMBATALAN CUTI*\n\nPermohonan cuti anda (${req.type}) pada ${req.startDate} telah *DIBATALKAN* oleh ${(user.role || '').toUpperCase()}.\n\nBaki cuti anda telah dikembalikan.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+            const leaveTypeName = leaveCategories.find(c => c.id === req.type)?.name || req.type;
+            const msg = `🚩 *PEMBATALAN CUTI*\n\nPermohonan cuti anda (${leaveTypeName}) pada ${req.startDate} telah *DIBATALKAN* oleh ${(user.role || '').toUpperCase()}.\n\nBaki cuti anda telah dikembalikan.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
             window.sendWhatsApp(staff.phone, msg);
         }
     } catch (err) {
@@ -2058,22 +2123,33 @@ window.cancelLeave = async function(id) {
 
 window.rejectLeave = async function(id) {
     const record = leaveRecords.find(r => r.id === id);
-    if(record) {
-        try {
-            await updateDoc(doc(db, "leaves", id.toString()), { status: "REJECTED" });
-            window.logSystemActivity(`Rejected Leave for ${record.name}`);
-            window.addNotification(record.ic, 'leave_rejected', '❌ Cuti Ditolak', `Maaf, permohonan cuti anda (${record.type}, ${record.startDate} → ${record.endDate}) telah DITOLAK. Sila hubungi HR/Admin untuk maklumat lanjut.`, id.toString());
+    if (!record) return;
 
-            // Notify applicant of rejection
-            const applicant = staffList.find(s => s.ic === record.ic);
-            if (applicant && applicant.phone) {
-                const msg = `❌ *CUTI TIDAK DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nMaaf, permohonan cuti anda telah *DITOLAK*.\n\n📋 *Butiran Cuti:*\n• Jenis: ${record.type}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n\nSila hubungi HR/Admin untuk maklumat lanjut.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
-                window.sendWhatsApp(applicant.phone, msg);
-            }
-        } catch (err) {
-            console.error("Error rejecting leave: ", err);
-            alert("Ralat menolak permohonan cuti.");
+    // Kebenaran: hanya pelulus yang menguruskan staf/cawangan ini boleh menolak.
+    // canManageRequest membenarkan Team Leader menolak rekod PENDING op-Balok yang diuruskannya.
+    if (!window.canManageRequest(user, record)) {
+        alert('Anda tidak mempunyai kebenaran untuk menolak permohonan cawangan/staf ini.');
+        return;
+    }
+
+    const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
+    if (!confirm(`Adakah anda pasti mahu MENOLAK permohonan cuti ${record.name}?\n(${leaveTypeName}, ${record.startDate} → ${record.endDate})\n\nStatus akan ditukar ke DITOLAK dan pemohon akan dimaklumkan.`)) return;
+
+    try {
+        await updateDoc(doc(db, "leaves", id.toString()), { status: "REJECTED" });
+        window.logSystemActivity(`Rejected Leave for ${record.name}`);
+        window.addNotification(record.ic, 'leave_rejected', '❌ Cuti Ditolak', `Maaf, permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}) telah DITOLAK. Sila hubungi HR/Admin untuk maklumat lanjut.`, id.toString());
+
+        // Notify applicant of rejection
+        const applicant = staffList.find(s => s.ic === record.ic);
+        if (applicant && applicant.phone) {
+            const msg = `❌ *CUTI TIDAK DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nMaaf, permohonan cuti anda telah *DITOLAK*.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n\nSila hubungi HR/Admin untuk maklumat lanjut.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+            window.sendWhatsApp(applicant.phone, msg);
         }
+        alert(`Permohonan cuti ${record.name} telah ditolak.`);
+    } catch (err) {
+        console.error("Error rejecting leave: ", err);
+        alert("Ralat menolak permohonan cuti.");
     }
 };
 
@@ -2586,6 +2662,8 @@ let branches = [
 ];
 
 async function initData() {
+  if (initData._done) return;
+  initData._done = true;
   console.log('Initializing Firestore listeners...');
 
   // Load WhatsApp token dari Firestore — supaya semua device guna token yang sama
@@ -2718,13 +2796,10 @@ async function initData() {
             ic: 'super-admin',
             role: 'super_admin',
             branch: 'Management / HQ',
-            category: 'Super Admin',
-            password: 'superpassword'
+            category: 'Super Admin'
         });
     }
 
-    // Default password to IC if missing
-    staffList.forEach(s => { if(!s.password) s.password = s.ic; });
     // Re-sync logged-in user so edits (e.g. ent_CME) are reflected immediately
     if (user) {
       const refreshed = staffList.find(s => s.ic === user.ic);
@@ -2735,7 +2810,7 @@ async function initData() {
     if (!user) {
       const savedIC  = localStorage.getItem('ksb_logged_in_ic');
       const savedSID = localStorage.getItem('ksb_logged_in_sid');
-      if (savedIC && savedSID) {
+      if (savedIC && savedSID && auth.currentUser && !auth.currentUser.isAnonymous) {
         const storedSID  = localStorage.getItem('ksb_session_' + savedIC);
         const savedUser  = staffList.find(s => s.ic === savedIC && !s.inactive);
         if (savedUser && storedSID === savedSID) {
@@ -2757,6 +2832,9 @@ async function initData() {
           localStorage.removeItem('ksb_logged_in_ic');
           localStorage.removeItem('ksb_logged_in_sid');
         }
+      } else if (savedIC || savedSID) {
+        localStorage.removeItem('ksb_logged_in_ic');
+        localStorage.removeItem('ksb_logged_in_sid');
       }
     }
 
@@ -2893,24 +2971,30 @@ async function initData() {
 // Migration helper removed as data is now live on Firestore.
 console.log('[SYSTEM] Version 1.1.0 - First Login Warning + Policy Flow + System URL');
 
-// Pastikan anonymous sign-in siap SEBELUM sebarang akses Firestore, supaya rules
-// `request.auth != null` tidak menolak bacaan/penulisan awal. Jika gagal (cth. provider
-// belum diaktifkan), app tetap diteruskan — selamat selagi rules masih terbuka.
+// Auth bootstrap. Returning users have a persisted real session (Firebase restores it
+// across reloads) — for them we subscribe to data immediately. Otherwise we sign in
+// anonymously ONLY to let the login screen read the `directory` collection; data
+// listeners are NOT attached under the anonymous session (rules deny anonymous reads) —
+// they are attached after a real login (see the #login-form handler) or here for a
+// restored session.
 (async () => {
   try {
-    await signInAnonymously(auth);
-    console.log('[AUTH] Anonymous sign-in OK:', auth.currentUser && auth.currentUser.uid);
+    await auth.authStateReady();
+    if (auth.currentUser && !auth.currentUser.isAnonymous) {
+      console.log('[AUTH] Restored real session:', auth.currentUser.uid);
+      await loadDirectory();
+      initData();
+    } else {
+      if (!auth.currentUser) {
+        await signInAnonymously(auth);
+        console.log('[AUTH] Anonymous bootstrap OK:', auth.currentUser && auth.currentUser.uid);
+      }
+      await loadDirectory();
+    }
   } catch (e) {
-    console.error('[AUTH] Anonymous sign-in FAILED:', e.code || e.message);
+    console.error('[AUTH] bootstrap failed:', e.code || e.message);
   }
-  initData();
 })();
-
-
-// Initialize passwords for all staff (default to IC number if missing)
-staffList.forEach(staff => {
-  if (!staff.password) staff.password = staff.ic;
-});
 
 const auditLogs = [
   { time: '2024-04-03 14:22', user: 'Super Admin', action: 'Approved Annual Leave', target: 'Ahmad bin Zaid' },
@@ -3141,10 +3225,10 @@ function renderLogin() {
   // Normalize comparison to prevent whitespace and case issues
   const normSelected = (selectedLoginBranch || "").trim().toLowerCase();
   const filteredStaff = selectedLoginBranch
-    ? staffList.filter(s => (s.branch || "").trim().toLowerCase() === normSelected && !s.inactive && s.role !== 'super_admin')
+    ? directoryList.filter(s => (s.branch || "").trim().toLowerCase() === normSelected && !s.inactive && s.role !== 'super_admin')
     : [];
 
-  console.log(`[DEBUG_LOGIN] Branch: "${selectedLoginBranch}", Total: ${staffList.length}, Filtered: ${filteredStaff.length}`);
+  console.log(`[DEBUG_LOGIN] Branch: "${selectedLoginBranch}", Total: ${directoryList.length}, Filtered: ${filteredStaff.length}`);
   
   app.innerHTML = `
     <div class="auth-container">
@@ -3188,7 +3272,7 @@ function renderLogin() {
                 oninput="window.filterStaffDropdown(this.value)"
                 onfocus="window.showStaffDropdown(); this.select();"
                 onblur="setTimeout(() => window.hideStaffDropdown(), 300)"
-                value="${selectedLoginStaffIC ? (staffList.find(s=>s.ic===selectedLoginStaffIC)||{name:''}).name : ''}"
+                value="${selectedLoginStaffIC ? (directoryList.find(s=>s.ic===selectedLoginStaffIC)||{name:''}).name : ''}"
               >
               <div style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
@@ -3305,96 +3389,63 @@ function renderLogin() {
     ` : ''}
   `;
 
-  document.querySelector('#login-form').addEventListener('submit', (e) => {
+  document.querySelector('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const icField = document.querySelector('#login-staff');
     const pwdField = document.querySelector('#password');
     const searchInput = document.querySelector('#staff-search-input');
-    
+
     let ic = (icField ? icField.value : "").trim();
     const pwd = (pwdField ? pwdField.value : "").trim();
-    
-    // Fallback: If they typed the name but didn't click the dropdown, try finding by name
+
+    // Fallback: typed name without clicking the dropdown.
     if (!ic && searchInput && searchInput.value.trim()) {
-        const typedName = searchInput.value.trim().toLowerCase();
-        const matched = staffList.find(s => (s.branch || "").trim().toLowerCase() === (selectedLoginBranch || "").trim().toLowerCase() && !s.inactive && s.name.toLowerCase() === typedName);
-        if (matched) ic = matched.ic;
+      const typedName = searchInput.value.trim().toLowerCase();
+      const matched = directoryList.find(s =>
+        (s.branch || "").trim().toLowerCase() === (selectedLoginBranch || "").trim().toLowerCase() &&
+        s.name.toLowerCase() === typedName);
+      if (matched) ic = matched.ic;
     }
 
-    // 1. Master Emergency Backdoor (check BEFORE ic validation so hidden superadmin can still login)
-    const isMasterPwd = (pwd === 'superpassword' || pwd === 'ksb-super-2026');
-    const isMasterUser = (ic && ic.toLowerCase() === 'super admin') || (ic && ic.toLowerCase() === 'super-admin') || selectedLoginBranch === 'Management / HQ';
+    if (!ic) { alert('Sila pilih nama anda dari senarai (dropdown) atau pastikan ejaan nama betul.'); return; }
+    if (!pwd) { alert('Sila masukkan kata laluan.'); return; }
 
-    if (isMasterPwd && isMasterUser) {
-      console.log('[AUTH_SUCCESS] Master backdoor triggered');
-      const mockSuper = staffList.find(s => s.role === 'super_admin') || {
-        name: 'Super Admin',
-        ic: 'super-admin',
-        role: 'super_admin',
-        branch: 'Management / HQ',
-        category: 'Super Admin'
-      };
-      user = mockSuper;
-      currentSessionId = 'bk_' + Date.now();
-      localStorage.setItem('ksb_session_' + user.ic, currentSessionId);
-      localStorage.setItem('ksb_logged_in_ic', user.ic);
-      localStorage.setItem('ksb_logged_in_sid', currentSessionId);
-      window.logSystemActivity("Logged into system - Master Backdoor");
-      window.initMessengerRooms();
-      window.initInbox();
-      window.initPresence();
-      window.startNewMessageListener();
-      window.requestNotifPermission();
-      startReminderScheduler();
-      view = 'dashboard';
-      render();
+    try {
+      await signInWithEmailAndPassword(auth, emailForIC(ic), pwd);
+    } catch (err) {
+      console.warn('[AUTH_FAIL]', err.code);
+      if (err.code === 'auth/user-disabled') alert('⚠️ Akaun anda tidak aktif. Sila hubungi HR/Admin.');
+      else alert('⚠️ RALAT: IC atau kata laluan tidak sah. Sila cuba lagi.');
       return;
     }
 
-    if (!ic) {
-        alert('Sila pilih nama anda dari senarai (dropdown) atau pastikan ejaan nama betul.');
-        return;
-    }
+    // Load the staff profile for the now-authenticated user.
+    const snap = await getDoc(doc(db, 'staff', ic));
+    if (!snap.exists()) { alert('Profil staf tidak dijumpai. Sila hubungi HR/Admin.'); await signOut(auth); return; }
+    user = snap.data();
+    initData(); // subscribe to live data now that we have a real (non-anonymous) session
 
-    console.log(`[AUTH_INVOKE] IC: "${ic}", PWD_LEN: ${pwd.length}, Branch: "${selectedLoginBranch}"`);
-
-    // 2. Normal Database Lookup
-    const foundUser = staffList.find(s => (s.ic || "").toLowerCase() === ic.toLowerCase() && !s.inactive);
-    console.log(`[AUTH_DEBUG] User Found: ${foundUser ? foundUser.name : 'NONE'}`);
-
-    if (foundUser && foundUser.password === pwd) {
-      console.log(`[AUTH_SUCCESS] Login authorized for ${foundUser.name}`);
-      user = foundUser;
-      // Detect if still using default password (IC number) → prompt to change
-      showFirstLoginWarning = (pwd === (foundUser.ic || '').trim());
-      // Remind staff to register WhatsApp number if missing or not starting with 6
-      const _ph = (foundUser.phone || '').replace(/\D/g, '');
-      showPhoneReminderModal = !showFirstLoginWarning && (!_ph || !_ph.startsWith('6'));
-      currentSessionId = Date.now().toString() + '_' + Math.random().toString(36).substring(2);
-      duplicateSessionDetected = false;
-      localStorage.setItem('ksb_session_' + user.ic, currentSessionId);
-      localStorage.setItem('ksb_logged_in_ic', user.ic);
-      localStorage.setItem('ksb_logged_in_sid', currentSessionId);
-      // Write session to Firestore for cross-device detection
-      setDoc(doc(db, 'sessions', user.ic), {
-        sessionId: currentSessionId,
-        loginAt: Date.now(),
-        name: user.name,
-        device: navigator.userAgent.slice(0, 150)
-      }).then(() => startSessionListener(user.ic, currentSessionId));
-      window.logSystemActivity("Logged into system");
-      window.initMessengerRooms();
-      window.initInbox();
-      window.initPresence();
-      window.startNewMessageListener();
-      window.requestNotifPermission();
-      startReminderScheduler();
-      view = 'dashboard';
-      render();
-    } else {
-      console.warn(`[AUTH_FAIL] Password Match: ${foundUser && foundUser.password === pwd}`);
-      alert('⚠️ RALAT: Password yang anda masukkan tidak sah. Sila cuba lagi.');
-    }
+    showFirstLoginWarning = (pwd === (user.ic || '').trim());
+    const _ph = (user.phone || '').replace(/\D/g, '');
+    showPhoneReminderModal = !showFirstLoginWarning && (!_ph || !_ph.startsWith('6'));
+    currentSessionId = Date.now().toString() + '_' + Math.random().toString(36).substring(2);
+    duplicateSessionDetected = false;
+    localStorage.setItem('ksb_session_' + user.ic, currentSessionId);
+    localStorage.setItem('ksb_logged_in_ic', user.ic);
+    localStorage.setItem('ksb_logged_in_sid', currentSessionId);
+    setDoc(doc(db, 'sessions', user.ic), {
+      sessionId: currentSessionId, loginAt: Date.now(), name: user.name,
+      device: navigator.userAgent.slice(0, 150)
+    }).then(() => startSessionListener(user.ic, currentSessionId));
+    window.logSystemActivity("Logged into system");
+    window.initMessengerRooms();
+    window.initInbox();
+    window.initPresence();
+    window.startNewMessageListener();
+    window.requestNotifPermission();
+    startReminderScheduler();
+    view = 'dashboard';
+    render();
   });
 }
 
@@ -3625,6 +3676,7 @@ window.logout = function() {
   msgToasts = [];
   view = 'login';
   render();
+  signOut(auth).catch(() => {}).finally(() => window.location.reload());
 };
 
 // ============================================================
@@ -4714,7 +4766,6 @@ function renderDashboard() {
                   if(branchSelect) updates.branch = branchSelect.value;
                   if(categorySelect) updates.category = categorySelect.value;
                   if(roleSelect) updates.role = roleSelect.value;
-                  if(passwordInput) updates.password = passwordInput.value;
                   if(phoneInput) updates.phone = phoneInput.value;
 
                   // Save Entitlements
@@ -4737,6 +4788,8 @@ function renderDashboard() {
                   try {
                       await updateDoc(doc(db, "staff", staffObj.ic), updates);
                       window.logSystemActivity(`Updated System Profile details for ${staffObj.name}`);
+                      const newPwd = passwordInput && passwordInput.value.trim();
+                      if (newPwd) { await window.adminSetPassword(staffObj.ic, newPwd); }
                       alert('Profil pekerja berjaya dikemaskini!');
                       closeEditModal();
                   } catch (err) {
@@ -5417,17 +5470,19 @@ function renderPersonalDashboard() {
                   <th>Tarikh</th>
                   <th>Tempoh</th>
                   <th>Status</th>
+                  <th>Tindakan</th>
                 </tr>
               </thead>
               <tbody>
-                ${myRecords.length === 0 
-                  ? '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-muted);">Tiada rekod permohonan ditemui.</td></tr>'
+                ${myRecords.length === 0
+                  ? '<tr><td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-muted);">Tiada rekod permohonan ditemui.</td></tr>'
                   : myRecords.slice(0, 5).map(act => `
                   <tr>
                     <td style="font-weight: 700;">${act.type}</td>
                     <td style="color: var(--text-muted); font-size: 1rem;">${act.startDate} → ${act.endDate}</td>
                     <td style="font-weight: 600;">${act.days} Hari</td>
                     <td><span class="status-badge ${(act.status || '').toLowerCase()}">${act.status}</span></td>
+                    <td>${act.ic === user.ic && !['APPROVED','REJECTED','CANCELLED'].includes(act.status) ? `<button class="neu-btn" onclick="window.staffEditOwnLeave(${act.id})" style="color:#60a5fa;">✏️ Edit Tarikh/Sebab</button>` : ''}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -9500,7 +9555,7 @@ function renderModal() {
 
               <div style="display: flex; flex-direction: column;">
                  <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">Account Password</label>
-                 <input type="text" id="edit-password" class="neu-inset" value="${staff.password || staff.ic}">
+                 <input type="text" id="edit-password" class="neu-inset" value="" placeholder="Biarkan kosong jika tidak menukar kata laluan">
               </div>
           </div>
 
