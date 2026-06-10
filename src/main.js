@@ -1143,6 +1143,9 @@ window.changePassword = async function(event) {
 
 window.adminSetPassword = async function(ic, newPassword) {
   if (!newPassword || newPassword.length < 6) { alert('Kata laluan mesti sekurang-kurangnya 6 aksara.'); return false; }
+  // Setting another user's password needs the Admin SDK. If the Cloud Function is
+  // deployed (Blaze), this works from the app. If NOT deployed (no-Blaze setup),
+  // we fall back to guiding IT to use the local reset-password.js script.
   try {
     const fn = httpsCallable(functions, 'setStaffPassword');
     await fn({ ic, newPassword });
@@ -1150,7 +1153,11 @@ window.adminSetPassword = async function(ic, newPassword) {
     return true;
   } catch (err) {
     console.error('adminSetPassword error:', err);
-    alert('Ralat menetapkan kata laluan: ' + (err.message || err.code));
+    if (['functions/not-found', 'functions/internal', 'functions/unavailable', 'functions/failed-precondition'].includes(err.code)) {
+      alert(`ℹ️ Set kata laluan dari aplikasi tidak tersedia (Cloud Function tidak di-deploy).\n\nIT boleh reset kata laluan staf ini melalui skrip di komputer:\n\nnode reset-password.js ${ic} <kata-laluan-baharu>`);
+    } else {
+      alert('Ralat menetapkan kata laluan: ' + (err.message || err.code));
+    }
     return false;
   }
 };
@@ -1304,8 +1311,8 @@ window.approveRegistration = async function(docId) {
     await setDoc(doc(db, 'staff', req.ic), newStaff);
     await updateDoc(doc(db, 'registration_requests', docId), { status: 'approved', approvedAt: Date.now() });
     window.logSystemActivity(`Approved registration: ${req.name} (${req.ic})`);
-    await window.sendWhatsApp(req.phone, `✅ *Selamat datang ke KSB Leave System!*\n\nNama: ${req.name}\nKata Laluan: ${req.ic}\n\nSila log masuk dan tukar kata laluan anda.`);
-    alert(`✅ Permohonan ${req.name} telah diluluskan!\nAkaun telah dibuat. Kata laluan awal: ${req.ic}`);
+    await window.sendWhatsApp(req.phone, `✅ *Selamat datang ke KSB Leave System!*\n\nNama: ${req.name}\nKata Laluan: ${req.ic}\n\nAkaun anda sedang diaktifkan. Sila log masuk sebentar lagi dan tukar kata laluan anda.`);
+    alert(`✅ Permohonan ${req.name} telah diluluskan!\n\n⚠️ IT perlu jalankan "node provision-auth.js" untuk mengaktifkan akaun log masuk. Kata laluan awal ialah No. IC (${req.ic}).`);
   } catch (err) {
     console.error('approveRegistration error:', err);
     alert('Ralat meluluskan permohonan.');
@@ -1353,12 +1360,9 @@ window.submitAddStaff = async function(event) {
   try {
     await setDoc(doc(db, 'staff', ic), newStaff);
     window.logSystemActivity(`Added new staff: ${name}`);
-    alert(`✅ Staf baharu "${name}" berjaya ditambah!`);
-    // The onStaffWrite Cloud Function creates the Auth account from this staff doc; give it
-    // a moment, then set the chosen initial password (if different from the default IC).
-    if (initialPassword && initialPassword !== ic) {
-      setTimeout(() => window.adminSetPassword(ic, initialPassword), 4000);
-    }
+    // No-Blaze setup: the login account is created when IT runs provision-auth.js.
+    // Initial password defaults to the staff's IC; IT can change it via reset-password.js.
+    alert(`✅ Staf baharu "${name}" berjaya ditambah!\n\n⚠️ IT perlu jalankan "node provision-auth.js" untuk mengaktifkan akaun log masuk. Kata laluan awal ialah No. IC (${ic}).`);
     window.closeAddStaff();
   } catch (err) {
     console.error('submitAddStaff error:', err);
