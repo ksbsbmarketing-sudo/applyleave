@@ -223,3 +223,26 @@ prevents staff from self-approving or editing fields other than date/reason.
 - **Cloud Function:** emulator test that a staff write sets the expected claims
   and directory entry; inactive disables the account.
 - **Client:** manual cutover verification per the sequence above.
+
+## Addendum (2026-06-10) — No-Blaze / manual-sync revision
+
+The project will **not** enable the Blaze plan, so the claim-sync **Cloud Function
+is not deployed**. Everything else in this design is unchanged (Firebase Auth,
+custom claims, role-aware rules all run on the free Spark plan). The Function's
+job is done manually instead:
+
+- **Claim/account/directory sync:** run `provision-auth.js` (idempotent) from an
+  IT machine after adding staff, approving a registration, changing a role, or
+  marking someone inactive. It creates Auth accounts (default password = IC),
+  refreshes claims from `config/rolePermissions`, updates `directory`, and
+  disables inactive accounts. After a role change, the user must re-login to get
+  the new claim.
+- **Admin password reset:** `reset-password.js <ic> <newPassword>` (IT machine,
+  Admin SDK). The in-app admin "set password" control gracefully detects the
+  missing callable and points to this script.
+- **`functions/` is kept** in the repo (unused) so automatic sync can be enabled
+  later by upgrading to Blaze and deploying it — no code changes required.
+
+Operational caveat: new staff / newly-approved registrations cannot log in until
+IT runs `provision-auth.js`; the app reminds the admin of this on success. See
+`docs/CUTOVER-firebase-auth.md` for the revised, Blaze-free cutover.
