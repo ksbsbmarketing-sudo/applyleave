@@ -1720,6 +1720,20 @@ window.printLeave = function(id) {
     const record = leaveRecords.find(r => r.id === id);
     if (!record) return;
 
+    // Kira nilai sebenar dari rekod staf + getLeaveStats (selari dengan Management Hub)
+    const staffObj = staffList.find(s => s.ic === record.ic) || {};
+    const startWork = staffObj.startDate || record.startDate || '—';
+    const stats = window.getLeaveStats(staffObj, record.type);
+    const applied = parseFloat(record.days || 0);
+    const isApproved = ['APPROVED', 'HOD APPROVED', 'TL APPROVED'].includes(record.status);
+    // BAKI CUTI TERDAHULU = baki sebelum cuti ini ditolak; BAKI CUTI = baki selepas ditolak.
+    // getLeaveStats sudah kira rekod ini jika ia diluluskan, jadi laraskan ikut keadaan.
+    const bakiTerdahulu = isApproved ? (stats.bal + applied) : stats.bal;
+    const bakiSelepas   = isApproved ? stats.bal : Math.max(0, stats.bal - applied);
+    // KELAYAKAN CUTI TAHUNAN: untuk AL guna kelayakan tahunan penuh; jenis lain guna entitlement jenis itu.
+    const kelayakan = record.type === 'AL' ? window.getEntitlementAL(staffObj) : stats.ent;
+    const fmtHari = n => (Number.isFinite(n) ? (Math.round(n * 10) / 10).toString() : '0') + ' Hari';
+
     let printHTML = `
     <div id="print-container" style="font-family: Arial, sans-serif; padding: 40px; color: #841824;">
         <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.15;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
@@ -1756,15 +1770,15 @@ window.printLeave = function(id) {
             </tr>
             <tr>
                 <td style="color: #4a5568;">TARIKH MULA BEKERJA</td>
-                <td style="border: 2px solid #e53e3e; padding: 8px;">2021-06-01</td>
+                <td style="border: 2px solid #e53e3e; padding: 8px;">${startWork}</td>
             </tr>
             <tr>
                 <td style="color: #4a5568;">KELAYAKAN CUTI TAHUNAN</td>
-                <td style="border: 2px solid #e53e3e; padding: 8px;">20 Hari</td>
+                <td style="border: 2px solid #e53e3e; padding: 8px;">${fmtHari(kelayakan)}</td>
             </tr>
             <tr>
                 <td style="color: #4a5568;">BAKI CUTI TERDAHULU</td>
-                <td style="border: 2px solid #e53e3e; padding: 8px;">21 Hari</td>
+                <td style="border: 2px solid #e53e3e; padding: 8px;">${fmtHari(bakiTerdahulu)}</td>
             </tr>
             <tr>
                 <td style="color: #4a5568;">JUMLAH CUTI DIPOHON</td>
@@ -1778,7 +1792,7 @@ window.printLeave = function(id) {
             </tr>
             <tr>
                 <td style="color: #4a5568;">BAKI CUTI</td>
-                <td style="border: 2px solid #e53e3e; padding: 8px;">20 Hari</td>
+                <td style="border: 2px solid #e53e3e; padding: 8px;">${fmtHari(bakiSelepas)}</td>
             </tr>
             <tr>
                 <td style="color: #4a5568;">TUGASAN DIGANTI OLEH (LOCUM)</td>
