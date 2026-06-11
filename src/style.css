@@ -1211,6 +1211,58 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   }
 }
 
+/* ── Help Widget (AI Bot) ───────────────────────────── */
+.help-widget-btn {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 99998;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
+  font-size: 1.5rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease, left 0.3s ease, right 0.3s ease;
+}
+.help-widget-btn:active {
+  transform: scale(0.94);
+}
+.help-widget-panel {
+  position: fixed;
+  right: 1rem;
+  bottom: 5rem;
+  z-index: 100000;
+  width: min(360px, calc(100vw - 2rem));
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--bg, #fff);
+  border: 1px solid rgba(163, 177, 198, 0.3);
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+  padding: 1rem;
+  transition: left 0.3s ease, right 0.3s ease;
+}
+
+@media (max-width: 1024px) {
+  /* Move AI Bot (Help Widget) to bottom-left on mobile to prevent overlapping with floating FAB menu */
+  .help-widget-btn {
+    right: auto;
+    left: 1rem;
+  }
+  .help-widget-panel {
+    right: auto;
+    left: 1rem;
+  }
+}
+
 /* ── Print ──────────────────────────────────────────── */
 @media print {
   body * { visibility: hidden; }

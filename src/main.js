@@ -672,7 +672,7 @@ function renderHelpWidget() {
   if (!host) { host = document.createElement('div'); host.id = 'help-widget'; document.body.appendChild(host); }
   if (!user) { host.innerHTML = ''; return; }
   const robotIcon = `<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="3.4" r="1.15" fill="#fff" stroke="none"/><path d="M12 4.6V7"/><rect x="4.5" y="7" width="15" height="11" rx="3.6"/><path d="M3 11v3M21 11v3"/><circle cx="9.3" cy="12" r="1.45" fill="#fff" stroke="none"/><circle cx="14.7" cy="12" r="1.45" fill="#fff" stroke="none"/><path d="M9.6 15.3h4.8"/></svg>`;
-  const btn = `<button onclick="window.toggleHelp()" aria-label="Bantuan" style="position:fixed;right:1rem;bottom:1rem;z-index:99998;width:54px;height:54px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;box-shadow:0 8px 24px rgba(59,130,246,0.4);font-size:1.5rem;font-weight:800;display:flex;align-items:center;justify-content:center;">${helpOpen ? '×' : robotIcon}</button>`;
+  const btn = `<button onclick="window.toggleHelp()" aria-label="Bantuan" class="help-widget-btn">${helpOpen ? '×' : robotIcon}</button>`;
   let panel = '';
   if (helpOpen) {
     const sel = helpSelectedId ? HELP_FAQ.find(e => e.id === helpSelectedId) : null;
@@ -690,7 +690,7 @@ function renderHelpWidget() {
       const hint = helpQuery ? '' : `<div style="font-size:0.66rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin:0.3rem 0 0.5rem;">Topik popular</div>`;
       body = `<input value="${helpQuery.replace(/"/g,'&quot;')}" oninput="window.helpOnInput(this.value)" placeholder="Taip soalan anda… cth. macam mana hantar MC" style="width:100%;padding:0.6rem 0.8rem;border-radius:10px;border:1.5px solid rgba(59,130,246,0.3);font-size:0.82rem;margin-bottom:0.6rem;color-scheme:light;">${hint}${list}`;
     }
-    panel = `<div style="position:fixed;right:1rem;bottom:5rem;z-index:100000;width:min(360px,calc(100vw - 2rem));max-height:70vh;overflow-y:auto;background:var(--bg,#fff);border:1px solid rgba(163,177,198,0.3);border-radius:16px;box-shadow:0 16px 48px rgba(0,0,0,0.25);padding:1rem;">
+    panel = `<div class="help-widget-panel">
       <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;"><span style="font-size:1.1rem;">👋</span><div style="font-size:0.9rem;font-weight:800;color:var(--text);">Bantuan KSB</div></div>
       ${body}</div>`;
   }
@@ -3249,8 +3249,11 @@ function render() {
 function renderLogin() {
   // Normalize comparison to prevent whitespace and case issues
   const normSelected = (selectedLoginBranch || "").trim().toLowerCase();
+  // NOTE: do NOT filter out super_admin here — directory docs may carry a role
+  // field (sync_directory.js writes one), and hiding it would lock the break-glass
+  // super admin out of the login dropdown. The account must stay selectable.
   const filteredStaff = selectedLoginBranch
-    ? directoryList.filter(s => (s.branch || "").trim().toLowerCase() === normSelected && !s.inactive && s.role !== 'super_admin')
+    ? directoryList.filter(s => (s.branch || "").trim().toLowerCase() === normSelected && !s.inactive)
     : [];
 
   console.log(`[DEBUG_LOGIN] Branch: "${selectedLoginBranch}", Total: ${directoryList.length}, Filtered: ${filteredStaff.length}`);
