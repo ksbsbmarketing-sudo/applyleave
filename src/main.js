@@ -3852,6 +3852,9 @@ window.initInbox = function() {
     }
     isFirst = false;
     render();
+  }, err => {
+    // Jangan biarkan ralat senyap — index hilang / permission denied akan tunjuk di sini.
+    console.error('Inbox listener error:', err);
   });
 };
 
@@ -4568,14 +4571,36 @@ function renderDashboard() {
 
       const isAdmin = user.category === 'Admin Staff' || user.category === 'Admin' || user.role === 'admin' || user.role === 'super_admin';
 
-      // Cuti tak boleh dirancang (MC sakit, Kecemasan, Ehsan/kematian) dikecualikan dari polisi notis awal (3/7 hari) — tetapi tetap perlu pelulus + bukti.
-      const _noticeExempt = ['MC', 'EL_EMG', 'EL'].includes(selectedLeaveType);
+      // Cuti tak boleh dirancang (MC sakit, Kecemasan, Ehsan/kematian) + CME dikecualikan dari polisi notis awal (3/7 hari) — tetapi tetap perlu pelulus + bukti.
+      const _noticeExempt = ['MC', 'EL_EMG', 'EL', 'CME'].includes(selectedLeaveType);
       if (!_noticeExempt && !validateNotice(startDate, user.category)) {
         const minDays = isAdmin ? 3 : 7;
         alert(`Policy Violation: ${user.category} staff require at least ${minDays} days notice.`);
         return;
       }
       
+      // ── Muat naik fail bukti (MC / Kecemasan / Ehsan) ke Firebase Storage ──
+      // Fail wajib sudah disahkan dipilih di atas; di sini ia dimuat naik betul-betul
+      // dan URL disimpan dalam rekod untuk rujukan HR (dilihat semula di Master Logs).
+      let proofUrl = null, proofName = null;
+      const _proofInput = selectedLeaveType === 'MC'     ? document.getElementById('mc-upload')
+                        : selectedLeaveType === 'EL_EMG' ? document.getElementById('emg-upload')
+                        : selectedLeaveType === 'EL'     ? document.getElementById('ehsan-upload')
+                        : null;
+      if (_proofInput && _proofInput.files.length > 0) {
+        const _proofFile = _proofInput.files[0];
+        try {
+          const _pRef = storageRef(storage, `leave-proofs/${user.ic}/${Date.now()}_${_proofFile.name}`);
+          await uploadBytes(_pRef, _proofFile);
+          proofUrl = await getDownloadURL(_pRef);
+          proofName = _proofFile.name;
+        } catch (err) {
+          console.error('Proof upload failed:', err);
+          alert('🔴 Gagal memuat naik fail bukti. Sila cuba lagi atau semak sambungan internet anda.');
+          return;
+        }
+      }
+
       const copyText = `*LEAVE APPLICATION*${leaveBreakdown}\nStaff Name: ${user.name}\nIC Number: ${user.ic}\nLeave Type: ${leaveTypeName}\nFrom: ${startDate}\nTo: ${endDate}\nHandover To: ${handover}\nReason: ${reason}`;
 
       // Save to Firestore
@@ -4595,7 +4620,10 @@ function renderDashboard() {
         tlIC: selectedTL || null,
         // Pahang MC langkau HOD/Supervisor → senarai kelulusan HR (HOD APPROVED).
         // Terengganu MC → HOD/PIC cawangan sendiri (PENDING). Cuti lain → PENDING.
-        status: _mcDirectToHR ? 'HOD APPROVED' : 'PENDING'
+        status: _mcDirectToHR ? 'HOD APPROVED' : 'PENDING',
+        // Bukti (MC/Kecemasan/Ehsan) — null untuk jenis cuti lain & rekod lama.
+        proofUrl: proofUrl || null,
+        proofName: proofName || null
       };
 
       try {
@@ -5639,7 +5667,7 @@ function renderView() {
       const isAL = selectedLeaveType === 'AL';
       const isMC = selectedLeaveType === 'MC';
       const isEhsan = selectedLeaveType === 'EL';
-      const isNoticeExempt = ['MC', 'EL_EMG', 'EL'].includes(selectedLeaveType);
+      const isNoticeExempt = ['MC', 'EL_EMG', 'EL', 'CME'].includes(selectedLeaveType);
       const isEMG = selectedLeaveType === 'EL_EMG';
       const isHosp = selectedLeaveType === 'HL';
       
@@ -7159,6 +7187,7 @@ function renderView() {
                               </td>
                               <td style="padding: 1.5rem 1rem; text-align: right;">
                                   <div style="display: flex; gap: 1.25rem; justify-content: flex-end;">
+                                      ${r.proofUrl ? `<a href="${r.proofUrl}" target="_blank" rel="noopener" title="Lihat Bukti${r.proofName ? ' (' + r.proofName + ')' : ''}" style="display:inline-flex;align-items:center;color:#10b981;transition:transform 0.2s;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></a>` : ''}
                                       ${window.canManageRequest(user, r) && r.status !== 'CANCELLED' ? `<button onclick="window.cancelLeave(${r.id})" title="Batal Cuti" style="background: none; border: none; cursor: pointer; color: #f87171; transition: transform 0.2s;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg></button>` : ''}
                                       <button onclick="printLeave(${r.id})" style="background: none; border: none; cursor: pointer; color: var(--secondary); transition: transform 0.2s;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg></button>
                                       ${['admin', 'hr', 'super_admin'].includes(user.role) ? `
@@ -10174,8 +10203,12 @@ function renderFirstLoginModal() {
 // ── Service Worker Registration ──────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   let _swRefreshing = false;
-  // Reload HANYA selepas SW baru ambil alih — dicetus oleh butang "Muat Semula", bukan automatik
+  let _userWantsUpdate = false; // hanya true selepas staf tekan "Muat Semula"
+  // Reload HANYA jika staf yang mencetuskannya melalui butang.
+  // Abaikan controllerchange automatik (cth: clients.claim semasa SW dipasang
+  // kali pertama / selepas cache dibuang) — itu yang dulu buat app refresh sendiri.
   navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!_userWantsUpdate) return;
     if (_swRefreshing) return;
     _swRefreshing = true;
     window.location.reload();
@@ -10191,7 +10224,7 @@ if ('serviceWorker' in navigator) {
       + '<button id="app-update-btn" style="background:#3b82f6;color:#fff;border:none;padding:0.45rem 0.95rem;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.82rem;white-space:nowrap;">Muat Semula</button>'
       + '<button id="app-update-dismiss" title="Tutup" style="background:transparent;color:#94a3b8;border:none;cursor:pointer;font-size:1.15rem;line-height:1;padding:0 0.2rem;">&times;</button>';
     document.body.appendChild(bar);
-    document.getElementById('app-update-btn').onclick = () => { worker.postMessage('SKIP_WAITING'); };
+    document.getElementById('app-update-btn').onclick = () => { _userWantsUpdate = true; worker.postMessage('SKIP_WAITING'); };
     document.getElementById('app-update-dismiss').onclick = () => bar.remove();
   }
 
