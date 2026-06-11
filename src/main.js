@@ -1840,8 +1840,29 @@ window.printLeave = function(id) {
 };
 
 window.editLeave = function(id) {
+    const rec = leaveRecords.find(r => r.id === id);
+    if (!rec) return;
+    const isAdminEditor = ['admin', 'hr', 'super_admin'].includes(user.role);
+    const isOwner = rec.ic === user.ic;
+    const isApprover = window.canManageRequest(user, rec);
+    const finalized = ['APPROVED', 'REJECTED', 'CANCELLED'].includes(rec.status);
+    // Staf/pelulus hanya boleh ubah semasa belum diluluskan muktamad; HR/Admin boleh bila-bila (pembetulan rekod).
+    if (!isAdminEditor && finalized) { alert('Permohonan ini sudah selesai dan tidak boleh diubah.'); return; }
+    if (!isAdminEditor && !isOwner && !isApprover) { alert('Anda tidak mempunyai kebenaran untuk mengubah permohonan ini.'); return; }
     editingLeaveId = id;
     render();
+};
+
+// Kira semula bilangan hari (cadangan) bila tarikh diubah dalam modal edit.
+// Nilai boleh ditindih manual selepas ini.
+window.recalcEditLeaveDays = function() {
+    const rec = leaveRecords.find(r => r.id === editingLeaveId);
+    if (!rec) return;
+    const s = document.querySelector('#el-start')?.value;
+    const e = document.querySelector('#el-end')?.value;
+    const daysEl = document.querySelector('#el-days');
+    if (!s || !e || !daysEl) return;
+    daysEl.value = window.computeLeaveDays(s, e, staffList.find(x => x.ic === rec.ic));
 };
 
 // Chargeable leave-day count for a staff member over a date range.
@@ -4815,25 +4836,50 @@ function renderDashboard() {
           e.preventDefault();
           const rec = leaveRecords.find(r => r.id === editingLeaveId);
           if(rec) {
+              const isAdminEditor = ['admin', 'hr', 'super_admin'].includes(user.role);
+              const isOwner = rec.ic === user.ic;
+              const isApprover = window.canManageRequest(user, rec);
+              if (!isAdminEditor && ['APPROVED', 'REJECTED', 'CANCELLED'].includes(rec.status)) {
+                  alert('Permohonan ini sudah selesai dan tidak boleh diubah.'); return;
+              }
+              if (!isAdminEditor && !isOwner && !isApprover) {
+                  alert('Anda tidak mempunyai kebenaran untuk mengubah permohonan ini.'); return;
+              }
               const elStart = document.querySelector('#el-start').value;
               const elEnd = document.querySelector('#el-end').value;
-              const elDays = window.computeLeaveDays(elStart, elEnd, staffList.find(s => s.ic === rec.ic));
-              if (elDays <= 0) {
-                alert('Tarikh yang dipilih tiada hari bekerja untuk staf pentadbiran. Sila pilih tarikh yang merangkumi hari bekerja (Isnin–Jumaat).');
-                return;
+              const elDays = parseFloat(document.querySelector('#el-days').value);
+              if (!(elDays > 0)) {
+                  alert('Bilangan hari mesti lebih daripada 0. Sila betulkan.'); return;
               }
               const updates = {
-                status: document.querySelector('#el-status').value,
-                type: document.querySelector('#el-type').value,
                 reason: document.querySelector('#el-reason').value,
                 startDate: elStart,
                 endDate: elEnd,
                 days: elDays
               };
+              if (isAdminEditor) {
+                  updates.status = document.querySelector('#el-status').value;
+                  updates.type = document.querySelector('#el-type').value;
+              } else {
+                  // Staf/pelulus: sebarang pindaan menetapkan semula ke PENDING untuk kelulusan semula.
+                  updates.status = 'PENDING';
+              }
 
               try {
                   await updateDoc(doc(db, "leaves", editingLeaveId.toString()), updates);
-                  alert('Leave Application Updated successfully!');
+                  window.logSystemActivity(`Edited leave ${editingLeaveId} → ${elStart}..${elEnd}, ${elDays} hari, status ${updates.status}`);
+                  // Jika reset ke PENDING (staf/pelulus), maklum semula pelulus peringkat 1.
+                  if (!isAdminEditor) {
+                      const applicant = staffList.find(s => s.ic === rec.ic) || user;
+                      const info = `\n\n👤 Pemohon: *${applicant.name}*\n📅 Tarikh: ${elStart} → ${elEnd}\n⏱ Tempoh: ${elDays} hari\n\n🔗 https://apply-leave-89ebb.web.app`;
+                      window.getRoutingP1Approvers(applicant).filter(s => s.phone).forEach(a =>
+                          window.sendWhatsApp(a.phone, `🔁 *PERMOHONAN CUTI DIKEMASKINI — Perlu Sokongan Semula*${info}`));
+                      window.notifyApproversInbox(window.getRoutingP1Approvers(applicant),
+                          '🔁 Cuti Dikemaskini — Perlu Sokongan Semula',
+                          `${applicant.name} mengubah permohonan cuti (kini ${elStart} → ${elEnd}, ${elDays} hari); memerlukan sokongan semula.`,
+                          editingLeaveId.toString(), rec.ic);
+                  }
+                  alert('✅ Permohonan cuti dikemaskini.');
                   closeLeaveModal();
               } catch (err) {
                   console.error("Error updating leave: ", err);
@@ -5490,7 +5536,7 @@ function renderPersonalDashboard() {
                     <td style="color: var(--text-muted); font-size: 1rem;">${act.startDate} → ${act.endDate}</td>
                     <td style="font-weight: 600;">${act.days} Hari</td>
                     <td><span class="status-badge ${(act.status || '').toLowerCase()}">${act.status}</span></td>
-                    <td>${act.ic === user.ic && !['APPROVED','REJECTED','CANCELLED'].includes(act.status) ? `<button class="neu-btn" onclick="window.staffEditOwnLeave(${act.id})" style="color:#60a5fa;">✏️ Edit Tarikh/Sebab</button>` : ''}</td>
+                    <td>${act.ic === user.ic && !['APPROVED','REJECTED','CANCELLED'].includes(act.status) ? `<button class="neu-btn" onclick="window.editLeave(${act.id})" style="color:#60a5fa;">✏️ Edit Cuti</button>` : ''}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -6690,6 +6736,10 @@ function renderView() {
                     <button class="neu-btn" onclick="window.resendLeaveWA(${req.id})" style="flex:1;color:#22c55e;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.06);" title="Hantar semula notifikasi WhatsApp kepada pelulus semasa">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 1h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"></path><polyline points="14 2 14 8 20 8"/></svg>
                         Resend WA
+                    </button>
+                    <button class="neu-btn" onclick="window.editLeave(${req.id})" style="flex:1;color:#60a5fa;border:1px solid rgba(96,165,250,0.3);background:rgba(96,165,250,0.06);" title="Edit tarikh / bilangan hari / sebab sebelum sokong">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                        Edit
                     </button>
                   </div>
 
@@ -9693,6 +9743,7 @@ function renderLeaveModal() {
     if (!editingLeaveId) return '';
     const record = leaveRecords.find(r => r.id === editingLeaveId);
     if (!record) return '';
+    const isAdminEditor = ['admin', 'hr', 'super_admin'].includes(user.role);
 
     return `
     <div class="modal-overlay" id="leave-modal-backdrop">
@@ -9714,22 +9765,28 @@ function renderLeaveModal() {
              <input type="text" class="neu-inset" value="${record.name}" disabled style="opacity: 0.6; cursor: not-allowed; font-weight: 600; padding: 1rem;">
           </div>
           
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 0.5rem;">
               <div>
                  <label style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; display: block;">Start Date</label>
-                 <input type="date" id="el-start" class="neu-inset" value="${record.startDate}" style="color-scheme: light;">
+                 <input type="date" id="el-start" class="neu-inset" value="${record.startDate}" onchange="window.recalcEditLeaveDays()" style="color-scheme: light;">
               </div>
               <div>
                  <label style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; display: block;">End Date</label>
-                 <input type="date" id="el-end" class="neu-inset" value="${record.endDate}" style="color-scheme: light;">
+                 <input type="date" id="el-end" class="neu-inset" value="${record.endDate}" onchange="window.recalcEditLeaveDays()" style="color-scheme: light;">
+              </div>
+              <div>
+                 <label style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; display: block;">Bilangan Hari</label>
+                 <input type="number" id="el-days" class="neu-inset" value="${record.days}" min="0.5" step="0.5" style="color-scheme: light;">
               </div>
           </div>
+          <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 1.5rem;">Bilangan hari dikira automatik dari tarikh — boleh ditindih manual (cth. separuh hari 0.5).</div>
           
           <div style="margin-bottom: 1.5rem;">
              <label style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; display: block;">Reason for leave</label>
              <textarea id="el-reason" class="neu-inset" rows="3">${record.reason}</textarea>
           </div>
           
+          ${isAdminEditor ? `
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2.5rem;">
               <div>
                  <label style="font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-bottom: 0.5rem; display: block; letter-spacing: 0.5px;">Category</label>
@@ -9749,7 +9806,10 @@ function renderLeaveModal() {
                      <option value="REJECTED" ${record.status === 'REJECTED' ? 'selected' : ''}>Rejected (Ditolak)</option>
                  </select>
               </div>
-          </div>
+          </div>` : `
+          <div style="background:rgba(234,179,8,0.08);border:1px solid rgba(234,179,8,0.25);border-radius:10px;padding:0.75rem 1rem;margin-bottom:2rem;font-size:0.72rem;color:#b45309;font-weight:600;">
+            ⚠️ Menyimpan perubahan akan menetapkan semula status ke <strong>PENDING</strong> dan proses kelulusan akan bermula semula.
+          </div>`}
           
           <button type="submit" class="btn-primary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 1rem; border-radius: 12px;">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
