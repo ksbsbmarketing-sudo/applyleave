@@ -28,7 +28,15 @@ async function main() {
   for (const d of staff.docs) {
     const s = d.data();
     const ic = d.id;
-    const u = await ensureUser(emailForIC(ic), s.password || String(ic), s.name);
+    let pwd = (s.password || String(ic)).trim();
+    if (pwd.length < 6) {
+      pwd = pwd.padEnd(6, "0");
+      if (s.password) {
+        await db.doc(`staff/${ic}`).update({ password: pwd });
+        console.log(`\nUpdated short password for ${s.name} (${ic}) to ${pwd}`);
+      }
+    }
+    const u = await ensureUser(emailForIC(ic), pwd, s.name);
     const rp = perms[s.role] || { canApprove: false, manageStaff: false };
     await auth.setCustomUserClaims(u.uid, { ic, canApprove: !!rp.canApprove, manageStaff: !!rp.manageStaff });
     await auth.updateUser(u.uid, { disabled: !!s.inactive });
