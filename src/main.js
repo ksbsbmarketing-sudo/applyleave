@@ -994,18 +994,10 @@ window.printLocumForm = function(id) {
             </style>
         </head>
         <body>
-            <img src="${logos.ksb}" class="watermark" alt="">
             <div class="no-print" style="margin-bottom: 20px; text-align: right;">
                 <button onclick="window.print()" style="padding: 10px 20px; background: #3b82f6; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">PRINT FORM</button>
             </div>
-            <div class="header">
-                <img src="${logos.ksb}" class="logo" alt="KSB Logo">
-                <div class="header-center">
-                    <h1 class="title">BORANG PELANTIKAN DOKTOR LOCUM</h1>
-                    <p class="subtitle">KLINIK SYED BADARUDDIN GROUP</p>
-                </div>
-                <img src="${logos.ksb}" class="logo" alt="KSB Logo">
-            </div>
+            ${window.printHeaderHTML({ branch: r.branch, title: 'BORANG PELANTIKAN DOKTOR LOCUM' })}
             <div class="content">
                 <div class="row"><div class="label">Doktor Bercuti:</div><div class="value">${(r.name || '').toUpperCase()}</div></div>
                 <div class="row"><div class="label">Cawangan:</div><div class="value">${r.branch}</div></div>
@@ -1074,8 +1066,7 @@ window.printAllLocum = function() {
     td{padding:5px 8px;border-bottom:1px solid #e2e8f0;vertical-align:top;}
     tr:nth-child(even)td{background:#f8fafc;}
     @media print{button{display:none;}}</style></head><body>
-    <h1>REKOD LOCUM — Klinik Syed Badaruddin</h1>
-    <div style="font-size:10px;color:#666;">Dicetak: ${new Date().toLocaleString()}</div>
+    ${window.printHeaderHTML({ isReport: true, title: 'REKOD LOCUM DOKTOR', meta: [{ label: 'Dicetak', value: new Date().toLocaleString('ms-MY') }] })}
     <table><thead><tr>
       <th>Doktor Bercuti</th><th>Cawangan</th><th>Jenis Cuti</th><th>Tempoh Cuti</th>
       <th>Locum</th><th>Nama Locum</th><th>Tel</th><th>Tarikh Bertugas</th><th>Masa</th><th>Jumlah Jam</th><th>Status</th>
@@ -1716,6 +1707,38 @@ window.logSystemActivity = async function(activityDesc, overrideUser) {
 let leaveRecords = [];
 let staffList = [];
 
+// Header korporat SERAGAM untuk SEMUA PDF/print. Gaya inline penuh supaya berfungsi
+// dalam dokumen utama mahupun tetingkap window.open. Satu sumber tunggal.
+//   opts.branch   — cawangan rekod/individu (borang). 'SEMUA'/kosong dianggap laporan.
+//   opts.isReport — true untuk laporan agregat → guna main branch jika tiada cawangan.
+//   opts.title    — tajuk dokumen (cth. BORANG PERMOHONAN CUTI).
+//   opts.meta     — [{label,value}] baris kecil di bawah tajuk (cth. Tahun, Jenis, Jana).
+window.printHeaderHTML = function(opts) {
+    opts = opts || {};
+    const branchLine = (opts.branch && opts.branch !== 'SEMUA')
+        ? opts.branch
+        : (opts.isReport ? 'Klinik Syed Badaruddin Sdn. Bhd.' : '—');
+    const title = opts.title || '';
+    const meta = Array.isArray(opts.meta) ? opts.meta.filter(m => m && m.value != null && m.value !== '') : [];
+    const metaLine = meta.length
+        ? `<div style="text-align:center;font-size:10px;color:#718096;margin:0 0 18px;position:relative;z-index:1;">${meta.map(m => `<strong style="color:#4a5568;">${m.label}:</strong> ${m.value}`).join(' &nbsp;·&nbsp; ')}</div>`
+        : '';
+    return `
+        <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.12;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
+        <div style="display:flex;align-items:center;gap:18px;border-bottom:3px solid #9b2c2c;padding-bottom:14px;margin-bottom:18px;position:relative;z-index:1;">
+            <img src="${logos.ksb}" style="width:66px;height:66px;border-radius:12px;object-fit:contain;flex-shrink:0;" alt="KSB Logo">
+            <div style="flex:1;text-align:center;">
+                <h1 style="color:#9b2c2c;font-size:21px;font-weight:bold;margin:0;letter-spacing:0.5px;">KLINIK SYED BADARUDDIN SDN. BHD.</h1>
+                <p style="color:#7a3b3b;font-size:10px;letter-spacing:1.5px;margin:3px 0 0;text-transform:uppercase;">Servicing Community Since 1991</p>
+                <p style="color:#4a5568;font-size:11px;font-weight:bold;margin:6px 0 0;">Cawangan: ${branchLine}</p>
+            </div>
+            <img src="${logos.ksb}" style="width:66px;height:66px;border-radius:12px;object-fit:contain;flex-shrink:0;" alt="KSB Logo">
+        </div>
+        ${title ? `<div style="text-align:center;margin-bottom:${metaLine ? '10px' : '20px'};position:relative;z-index:1;"><span style="border:2px solid #9b2c2c;display:inline-block;padding:5px 26px;font-weight:bold;letter-spacing:2px;font-size:13px;color:#9b2c2c;">${title}</span></div>` : ''}
+        ${metaLine}
+    `;
+};
+
 window.printLeave = function(id) {
     const record = leaveRecords.find(r => r.id === id);
     if (!record) return;
@@ -1736,16 +1759,7 @@ window.printLeave = function(id) {
 
     let printHTML = `
     <div id="print-container" style="font-family: Arial, sans-serif; padding: 40px; color: #841824;">
-        <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.15;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
-        <div style="display:flex;align-items:center;gap:18px;border-bottom:2px solid #9b2c2c;padding-bottom:16px;margin-bottom:24px;">
-            <img src="${logos.ksb}" style="width:64px;height:64px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
-            <div style="flex:1;text-align:center;">
-                <h1 style="color: #9b2c2c; font-size: 22px; font-weight: bold; margin: 0;">KLINIK SYED BADARUDDIN</h1>
-                <p style="color: #4a5568; font-size: 10px; letter-spacing: 1px; margin: 4px 0 0; text-transform: uppercase;">- SERVICING COMMUNITY SINCE 1991 -</p>
-                <div style="border: 1px solid #9b2c2c; display:inline-block; margin-top:8px; padding: 4px 24px; font-weight: bold; letter-spacing: 2px; font-size:12px; color:#9b2c2c;">BORANG PERMOHONAN CUTI</div>
-            </div>
-            <img src="${logos.ksb}" style="width:64px;height:64px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
-        </div>
+        ${window.printHeaderHTML({ branch: record.branch, title: 'BORANG PERMOHONAN CUTI' })}
         
         <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 11px; font-weight: bold;">
             <span>[ ${record.type === 'AL' ? 'X' : ' '} ] CUTI TAHUNAN</span>
@@ -2256,20 +2270,7 @@ window.generateBalanceReport = function(rows, branchName, leaveType, year) {
   const MONTHS = ['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ogo','Sep','Okt','Nov','Dis'];
   const printHTML = `
   <div id="print-container" style="font-family:Arial,sans-serif;padding:20px;color:#111;background:#fff;">
-    <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.15;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
-    <div style="display:flex;align-items:center;gap:14px;border-bottom:2px solid #e2e8f0;padding-bottom:14px;margin-bottom:20px;">
-      <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
-      <div>
-        <div style="font-size:18px;font-weight:800;">Klinik Syed Badaruddin</div>
-        <div style="font-size:10px;font-weight:700;letter-spacing:1px;color:#7c3aed;text-transform:uppercase;">Laporan Baki Cuti Bulanan — ${leaveType}</div>
-      </div>
-      <div style="margin-left:auto;text-align:right;font-size:10px;color:#718096;">
-        <div><strong>Cawangan:</strong> ${branchName === 'SEMUA' ? 'Semua' : branchName}</div>
-        <div><strong>Tahun:</strong> ${year}</div>
-        <div><strong>Jenis:</strong> ${leaveType}</div>
-        <div style="margin-top:3px;"><strong>Jana:</strong> ${new Date().toLocaleString('ms-MY')}</div>
-      </div>
-    </div>
+    ${window.printHeaderHTML({ isReport: true, branch: branchName, title: 'LAPORAN BAKI CUTI BULANAN', meta: [{ label: 'Jenis', value: leaveType }, { label: 'Tahun', value: year }, { label: 'Jana', value: new Date().toLocaleString('ms-MY') }] })}
     <table style="width:100%;border-collapse:collapse;font-size:9px;">
       <thead>
         <tr style="background:#7c3aed;color:#fff;">
@@ -2328,21 +2329,7 @@ window.generateApprovedReport = function() {
   const totalDays = recs.reduce((s, r) => s + parseFloat(r.days || 0), 0);
   const printHTML = `
   <div id="print-container" style="font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff;">
-    <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.15;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
-    <div style="display:flex;align-items:center;gap:16px;border-bottom:2px solid #e2e8f0;padding-bottom:16px;margin-bottom:24px;">
-      <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
-      <div>
-        <div style="font-size:20px;font-weight:800;color:#1a202c;">Klinik Syed Badaruddin</div>
-        <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:#059669;text-transform:uppercase;">Laporan Cuti Diluluskan</div>
-      </div>
-      <div style="margin-left:auto;text-align:right;font-size:11px;color:#718096;">
-        <div style="font-weight:700;">TARIKH JANA</div>
-        <div style="color:#1a202c;font-weight:800;">${new Date().toLocaleDateString('ms-MY',{day:'2-digit',month:'long',year:'numeric'})}</div>
-        <div style="margin-top:4px;font-weight:700;">CAWANGAN: <span style="color:#1a202c;">${approvedReportBranch === 'SEMUA' ? 'Semua' : approvedReportBranch}</span></div>
-        <div style="font-weight:700;">JENIS: <span style="color:#1a202c;">${approvedReportType === 'SEMUA' ? 'Semua' : approvedReportType}</span></div>
-        <div style="font-weight:700;">TAHUN: <span style="color:#1a202c;">${approvedReportYear}</span></div>
-      </div>
-    </div>
+    ${window.printHeaderHTML({ isReport: true, branch: approvedReportBranch, title: 'LAPORAN CUTI DILULUSKAN', meta: [{ label: 'Jenis', value: approvedReportType === 'SEMUA' ? 'Semua' : approvedReportType }, { label: 'Tahun', value: approvedReportYear }, { label: 'Jana', value: new Date().toLocaleDateString('ms-MY',{day:'2-digit',month:'long',year:'numeric'}) }] })}
     <div style="display:flex;gap:16px;margin-bottom:24px;">
       <div style="flex:1;padding:12px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#059669;">Jumlah Rekod</div>
@@ -2506,18 +2493,8 @@ window.generateAttendanceReport = function() {
       @media print{.print-btn{display:none;} body{padding:16px;}}
     </style>
   </head><body>
-    <img src="${logos.ksb}" class="watermark" alt="">
     <div class="print-btn"><button onclick="window.print()">🖨️ PRINT / SIMPAN PDF</button></div>
-    <div style="display:flex;align-items:center;gap:14px;border-bottom:2px solid #1e293b;padding-bottom:14px;margin-bottom:20px;">
-      <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;" alt="">
-      <div style="flex:1;text-align:center;">
-        <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;">SENARAI BILANGAN CUTI, MC DAN EL KAKITANGAN KSBSB</div>
-        <div style="font-size:11px;font-weight:700;margin-top:4px;color:#334155;">CAWANGAN: ${branchLabel.toUpperCase()}</div>
-        <div style="font-size:11px;font-weight:700;color:#334155;">BULAN: ${monthLabel.toUpperCase()}</div>
-        <div style="font-size:10px;color:#64748b;margin-top:2px;">${staffPool.length} kakitangan</div>
-      </div>
-      <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;" alt="">
-    </div>
+    ${window.printHeaderHTML({ isReport: true, branch: activeBranch, title: 'SENARAI BILANGAN CUTI, MC DAN EL KAKITANGAN', meta: [{ label: 'Bulan', value: monthLabel }, { label: 'Bilangan', value: staffPool.length + ' kakitangan' }] })}
     ${renderSection('KAKITANGAN', kakitangan, false)}
     ${renderSection('DOKTOR', doktor, true)}
     <div style="margin-top:20px;font-size:9px;color:#718096;border-top:1px solid #e2e8f0;padding-top:10px;">
@@ -2564,20 +2541,7 @@ window.generateJenisCutiReport = function() {
   const typeColors = { AL:'#3b82f6', MC:'#10b981', EL:'#f59e0b', EL_EMG:'#ef4444', UP:'#94a3b8', HL:'#06b6d4', ML:'#ec4899', ML_PL:'#6366f1', CME:'#8b5cf6' };
   const printHTML = `
   <div id="print-container" style="font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff;">
-    <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.15;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
-    <div style="display:flex;align-items:center;gap:16px;border-bottom:2px solid #e2e8f0;padding-bottom:16px;margin-bottom:24px;">
-      <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
-      <div>
-        <div style="font-size:20px;font-weight:800;color:#1a202c;">Klinik Syed Badaruddin</div>
-        <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:#d97706;text-transform:uppercase;">Laporan Ringkasan Mengikut Jenis Cuti</div>
-      </div>
-      <div style="margin-left:auto;text-align:right;font-size:11px;color:#718096;">
-        <div style="font-weight:700;">TARIKH JANA</div>
-        <div style="color:#1a202c;font-weight:800;">${new Date().toLocaleDateString('ms-MY',{day:'2-digit',month:'long',year:'numeric'})}</div>
-        <div style="margin-top:4px;font-weight:700;">TAHUN: <span style="color:#1a202c;">${jenisCutiYear === 'SEMUA' ? 'Semua' : jenisCutiYear}</span></div>
-        <div style="font-weight:700;">CAWANGAN: <span style="color:#1a202c;">${jenisCutiBranch === 'SEMUA' ? 'Semua' : jenisCutiBranch}</span></div>
-      </div>
-    </div>
+    ${window.printHeaderHTML({ isReport: true, branch: jenisCutiBranch, title: 'LAPORAN RINGKASAN MENGIKUT JENIS CUTI', meta: [{ label: 'Tahun', value: jenisCutiYear === 'SEMUA' ? 'Semua' : jenisCutiYear }, { label: 'Jana', value: new Date().toLocaleDateString('ms-MY',{day:'2-digit',month:'long',year:'numeric'}) }] })}
     <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
       ${activeTypes.map(t => {
         const c = typeColors[t]||'#64748b';
@@ -2640,14 +2604,7 @@ window.generateJenisCutiReport = function() {
 window.generateLeaveReport = function() {
    let printHTML = `
    <div id="print-container" style="font-family: Arial, sans-serif; padding: 20px; color: black; background: white;">
-      <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.15;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
-      <div style="display: flex; align-items: center; gap: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 30px;">
-          <img src="${logos.ksb}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.12);flex-shrink:0;" alt="KSB Logo">
-          <div>
-              <h1 style="margin: 0; font-size: 24px; color: #1a202c;">Klinik Syed Badaruddin</h1>
-              <p style="margin: 5px 0 0 0; font-size: 14px; font-weight: bold; letter-spacing: 1px; color: #4a5568; text-transform: uppercase;">Official HR Leave Ledger</p>
-          </div>
-      </div>
+      ${window.printHeaderHTML({ isReport: true, title: 'LEDGER CUTI RASMI HR' })}
       <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: bold; margin-bottom: 40px; color: #4a5568;">
           <div>REPORT CATEGORY<br><span style="color: black; font-size: 14px;">All Classified Leave Records</span></div>
           <div style="text-align: right;">GENERATION DATE<br><span style="color: black; font-size: 14px;">${new Date().toLocaleDateString('en-GB', {day: '2-digit', month: 'long', year: 'numeric'})}</span></div>
@@ -10007,17 +9964,8 @@ window.printPublicHolidays = function(state) {
       @media print{.print-btn{display:none;} body{padding:20px;}}
     </style>
   </head><body>
-    <img src="${logos.ksb}" class="watermark" alt="">
     <div class="print-btn"><button onclick="window.print()">🖨️ CETAK / JANA PDF</button></div>
-    <div class="header">
-      <img src="${logos.ksb}" class="logo" alt="KSB Logo">
-      <div class="header-text">
-        <h1>Klinik Syed Badaruddin (KSB)</h1>
-        <h2>Senarai Cuti Umum ${label} ${year}</h2>
-        <p>Hari Pelepasan Am — Rujukan Staf</p>
-        <span class="badge">${list.length} Hari Cuti Umum</span>
-      </div>
-    </div>
+    ${window.printHeaderHTML({ isReport: true, title: 'SENARAI CUTI UMUM ' + String(label).toUpperCase() + ' ' + year, meta: [{ label: 'Negeri', value: label }, { label: 'Bilangan', value: list.length + ' hari cuti umum' }] })}
     <table>
       <thead><tr><th>Bil.</th><th>Tarikh</th><th>Hari</th><th>Nama Cuti Umum</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="4" style="padding:14px;text-align:center;color:#888;">Tiada cuti umum ditetapkan.</td></tr>'}</tbody>
