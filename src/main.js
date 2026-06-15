@@ -1,6 +1,7 @@
 import './style.css'
 import { countLeaveDays } from './leaveDays.js';
 import { recordBalances } from './leaveBalance.js';
+import { loadSectionState, toggleSection, saveSectionState, isOpen as isMsgSectionOpen } from './msgSections.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -524,6 +525,8 @@ let onlineUsers = {}; // { [ic]: { name, branch, role, lastSeen } }
 let presenceUnsub = null;
 let presenceHeartbeatInterval = null;
 let msgToasts = []; // [{ id, roomId, roomName, senderName, preview, isDM, createdAt, timer }]
+// Messenger accordion (collapsible sections) — persisted per device.
+let msgSections = loadSectionState(typeof localStorage !== 'undefined' ? localStorage : null);
 let messengerRoomsInitialLoad = true;
 let msgNewMsgUnsub = null;
 const leaveCategories = [
@@ -4219,6 +4222,36 @@ function renderRoomItem(room) {
   </div>`;
 }
 
+// Clickable accordion header for a messenger rooms section. `count` optional.
+// `accent` colours the count badge (defaults to muted). Chevron points down
+// when open, right when collapsed.
+function msgSectionHeader(key, label, count, accent) {
+  const open = isMsgSectionOpen(msgSections, key);
+  const badge = (count !== undefined && count !== null)
+    ? `<span class="msg-section-count" ${accent ? `style="background:${accent.bg};color:${accent.fg};"` : ''}>${count}</span>`
+    : '';
+  return `<button type="button" class="msg-section-toggle" aria-expanded="${open}" onclick="window.toggleMsgSection('${key}')">
+    <svg class="msg-section-chev${open ? ' open' : ''}" id="msg-section-chev-${key}" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"></polyline></svg>
+    <span class="msg-section-toggle-label">${label}</span>${badge}
+  </button>`;
+}
+
+// Toggle a section open/closed without a full re-render (keeps search box focus
+// & scroll position), then persist the new state.
+window.toggleMsgSection = function(key) {
+  msgSections = toggleSection(msgSections, key);
+  saveSectionState(localStorage, msgSections);
+  const open = isMsgSectionOpen(msgSections, key);
+  const body = document.getElementById('msg-section-body-' + key);
+  const chev = document.getElementById('msg-section-chev-' + key);
+  if (body) body.style.display = open ? '' : 'none';
+  if (chev) {
+    chev.classList.toggle('open', open);
+    const btn = chev.closest('.msg-section-toggle');
+    if (btn) btn.setAttribute('aria-expanded', String(open));
+  }
+};
+
 function renderMessengerView() {
   // Safety: if no room is open, always show rooms list
   if (!messengerRoomId) messengerView = 'rooms';
@@ -4256,10 +4289,15 @@ function renderMessengerView() {
         ${(function() {
           const onlineOthers = Object.values(onlineUsers).filter(u => u.ic !== user.ic);
           if (onlineOthers.length === 0) return '';
+          const onlineOpen = isMsgSectionOpen(msgSections, 'online');
           return `<div class="msg-online-chips-bar">
-            <span class="msg-online-pulse" style="flex-shrink:0;"></span>
-            <span style="font-size:0.75rem;font-weight:700;color:#16a34a;flex-shrink:0;">Online:</span>
-            <div class="msg-online-chips-scroll">
+            <button type="button" class="msg-section-toggle msg-section-toggle-online" aria-expanded="${onlineOpen}" onclick="window.toggleMsgSection('online')">
+              <svg class="msg-section-chev${onlineOpen ? ' open' : ''}" id="msg-section-chev-online" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="3"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              <span class="msg-online-pulse"></span>
+              <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#16a34a;">Sedang Aktif</span>
+              <span style="font-size:0.65rem;color:#16a34a;background:rgba(34,197,94,0.1);padding:0.05rem 0.4rem;border-radius:10px;font-weight:700;">${onlineOthers.length}</span>
+            </button>
+            <div class="msg-online-chips-scroll" id="msg-section-body-online" style="${onlineOpen ? '' : 'display:none;'}">
               ${onlineOthers.map(u => {
                 const firstName = (u.name || '?').split(' ')[0];
                 return `<button class="msg-online-chip" onclick="window.openDM('${u.ic}','${(u.name||'').replace(/'/g,"\\'")}');event.stopPropagation();" title="${(u.name||'').replace(/"/g,'&quot;')} — ${(u.branch||'').replace(/"/g,'&quot;')}"><span style="width:7px;height:7px;border-radius:50%;background:#22c55e;flex-shrink:0;display:inline-block;"></span>${firstName}</button>`;
@@ -4275,21 +4313,20 @@ function renderMessengerView() {
         ${renderRoomItem({ id: 'all_ksb', name: 'Semua Staf KSB', type: 'group', icon: '🏥', iconBg: 'background:linear-gradient(135deg,var(--primary),var(--secondary));', subtitle: 'Semua kakitangan KSB' })}
 
         <!-- By Branch -->
-        <div class="msg-rooms-section-label" style="margin-top:1rem;">
-          Mengikut Cawangan
-          <span style="font-size:0.65rem;font-weight:600;background:rgba(67,97,238,0.12);color:var(--primary);padding:0.1rem 0.4rem;border-radius:20px;margin-left:0.35rem;">${branchRooms.length}</span>
+        ${msgSectionHeader('branch', 'Mengikut Cawangan', branchRooms.length, { bg: 'rgba(67,97,238,0.12)', fg: 'var(--primary)' })}
+        <div id="msg-section-body-branch" style="${isMsgSectionOpen(msgSections, 'branch') ? '' : 'display:none;'}">
+          ${branchRooms.map(renderRoomItem).join('')}
         </div>
-        ${branchRooms.map(renderRoomItem).join('')}
 
         <!-- By Role -->
-        <div class="msg-rooms-section-label" style="margin-top:1rem;">
-          Mengikut Peranan
-          <span style="font-size:0.65rem;font-weight:600;background:rgba(124,58,237,0.12);color:var(--secondary);padding:0.1rem 0.4rem;border-radius:20px;margin-left:0.35rem;">${roleRooms.length}</span>
+        ${msgSectionHeader('role', 'Mengikut Peranan', roleRooms.length, { bg: 'rgba(124,58,237,0.12)', fg: 'var(--secondary)' })}
+        <div id="msg-section-body-role" style="${isMsgSectionOpen(msgSections, 'role') ? '' : 'display:none;'}">
+          ${roleRooms.map(renderRoomItem).join('')}
         </div>
-        ${roleRooms.map(renderRoomItem).join('')}
 
         <!-- Direct Messages -->
-        <div class="msg-rooms-section-label" style="margin-top:1rem;">Mesej Terus</div>
+        ${msgSectionHeader('dm', 'Mesej Terus')}
+        <div id="msg-section-body-dm" style="${isMsgSectionOpen(msgSections, 'dm') ? '' : 'display:none;'}">
         <div style="position:relative;margin:0 0.75rem 0.5rem;">
           <input type="text" placeholder="Cari staf..." id="msg-staff-search"
             oninput="window.filterMsgStaff(this.value)"
@@ -4317,6 +4354,7 @@ function renderMessengerView() {
             </div>`;
           }).join('')}
         </div>
+        </div><!-- /msg-section-body-dm -->
       </div>
     </div>
 

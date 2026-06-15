@@ -864,6 +864,44 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   margin: 0.75rem 0 0.4rem;
 }
 
+/* Collapsible section header (accordion) */
+.msg-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: calc(100% - 1.5rem);
+  margin: 0.75rem 0.75rem 0.4rem;
+  padding: 0.25rem 0.25rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-muted);
+  border-radius: 8px;
+  transition: background 0.15s, color 0.15s;
+}
+.msg-section-toggle:hover { background: rgba(67,97,238,0.07); color: var(--text); }
+.msg-section-toggle-label { flex: 1; text-align: left; }
+.msg-section-toggle-online { margin-bottom: 0; text-transform: none; }
+.msg-section-chev {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+  transform: rotate(-90deg); /* collapsed → points right */
+}
+.msg-section-chev.open { transform: rotate(0deg); } /* expanded → points down */
+.msg-section-count {
+  font-size: 0.65rem;
+  font-weight: 600;
+  background: rgba(163,177,198,0.18);
+  color: var(--text-muted);
+  padding: 0.1rem 0.4rem;
+  border-radius: 20px;
+}
+
 .msg-room-item {
   display: flex;
   align-items: center;
@@ -924,14 +962,16 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   box-shadow: 0 0 0 1px rgba(34,197,94,0.3);
 }
 .msg-online-chips-bar {
-  display: flex; align-items: center; gap: 0.5rem;
+  display: flex;
+  flex-direction: column;
   padding: 0.35rem 0;
-  margin-top: 0.1rem;
+  margin-top: 0.25rem;
 }
 .msg-online-chips-scroll {
-  display: flex; gap: 0.4rem;
-  overflow-x: auto; padding-bottom: 2px;
-  scrollbar-width: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-bottom: 2px;
 }
 .msg-online-chips-scroll::-webkit-scrollbar { display: none; }
 .msg-online-chip {
