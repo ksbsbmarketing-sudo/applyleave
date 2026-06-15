@@ -40,6 +40,45 @@ import {
 } from "firebase/firestore";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
+// ── Reload-loop circuit breaker ─────────────────────────────────────────────
+// If the page reloads itself many times in a few seconds (e.g. a stale service
+// worker fighting a fresh deploy), break out: unregister service workers, clear
+// caches, and show a one-tap recovery screen. It NEVER auto-reloads (that could
+// re-loop) — recovery is a single user tap.
+(function reloadLoopGuard() {
+  try {
+    const KEY = 'ksb_reload_ts', WINDOW_MS = 10000, MAX = 4;
+    const now = Date.now();
+    let stamps = [];
+    try { stamps = JSON.parse(sessionStorage.getItem(KEY) || '[]'); } catch (_) {}
+    stamps = stamps.filter(t => now - t < WINDOW_MS);
+    stamps.push(now);
+    sessionStorage.setItem(KEY, JSON.stringify(stamps));
+    if (stamps.length < MAX) return;
+
+    sessionStorage.removeItem(KEY); // reset so recovery isn't itself looped
+    window.__reloadGuardTripped = true; // tells SW registration below to stand down
+    console.warn('[reload-guard] reload loop detected — clearing service worker & caches');
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+    }
+    if (window.caches && caches.keys) {
+      caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {});
+    }
+    window.addEventListener('load', () => {
+      if (document.getElementById('reload-guard-screen')) return;
+      const s = document.createElement('div');
+      s.id = 'reload-guard-screen';
+      s.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0f172a;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.1rem;padding:2rem;text-align:center;font-family:Arial,sans-serif;';
+      s.innerHTML = '<div style="font-size:1.15rem;font-weight:800;">✅ Cache lama dibersihkan</div>'
+        + '<div style="font-size:0.9rem;color:#94a3b8;max-width:340px;line-height:1.5;">App tadi asyik muat semula kerana versi lama tersimpan dalam peranti. Ia sudah dibuang — tekan butang ini SEKALI untuk muat versi terkini.</div>'
+        + '<button id="reload-guard-btn" style="background:#3b82f6;color:#fff;border:none;padding:0.85rem 1.7rem;border-radius:10px;font-weight:700;font-size:0.95rem;cursor:pointer;">Muat Versi Terkini</button>';
+      document.body.appendChild(s);
+      document.getElementById('reload-guard-btn').onclick = () => { try { sessionStorage.removeItem(KEY); } catch (_) {} location.reload(); };
+    });
+  } catch (_) { /* the guard must never break the app */ }
+})();
+
 const firebaseConfig = {
   apiKey: "AIzaSyDgGOyIRt3GdFM2JT8zHO3F_54HyxAS80U",
   authDomain: "apply-leave-89ebb.firebaseapp.com",
@@ -10340,7 +10379,7 @@ function renderFirstLoginModal() {
 }
 
 // ── Service Worker Registration ──────────────────────────────────────────────
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !window.__reloadGuardTripped) {
   let _swRefreshing = false;
   let _userWantsUpdate = false; // hanya true selepas staf tekan "Muat Semula"
   // Reload HANYA jika staf yang mencetuskannya melalui butang.
