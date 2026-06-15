@@ -1,5 +1,6 @@
 import './style.css'
 import { countLeaveDays } from './leaveDays.js';
+import { recordBalances } from './leaveBalance.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -1747,12 +1748,16 @@ window.printLeave = function(id) {
     const staffObj = staffList.find(s => s.ic === record.ic) || {};
     const startWork = staffObj.startDate || record.startDate || '—';
     const stats = window.getLeaveStats(staffObj, record.type);
-    const applied = parseFloat(record.days || 0);
-    const isApproved = ['APPROVED', 'HOD APPROVED', 'TL APPROVED'].includes(record.status);
-    // BAKI CUTI TERDAHULU = baki sebelum cuti ini ditolak; BAKI CUTI = baki selepas ditolak.
-    // getLeaveStats sudah kira rekod ini jika ia diluluskan, jadi laraskan ikut keadaan.
-    const bakiTerdahulu = isApproved ? (stats.bal + applied) : stats.bal;
-    const bakiSelepas   = isApproved ? stats.bal : Math.max(0, stats.bal - applied);
+    // BAKI CUTI TERDAHULU = baki SEBELUM cuti ini ditolak; BAKI CUTI = baki SELEPAS ditolak.
+    // Kira baki berjalan pada saat cuti ini (jumlah cuti jenis-sama yang DILULUSKAN lebih
+    // awal ikut tarikh mula), bukan baki semasa global — supaya betul untuk SETIAP cuti,
+    // bukan hanya yang terakhir. Asas (stats.ent) sama dengan dashboard → kekal segerak.
+    const { before: bakiTerdahulu, after: bakiSelepas } = recordBalances({
+      record,
+      ent: stats.ent,
+      alAdj: record.type === 'AL' ? parseFloat(staffObj.al_adj || 0) : 0,
+      records: leaveRecords,
+    });
     // KELAYAKAN CUTI TAHUNAN: untuk AL guna kelayakan tahunan penuh; jenis lain guna entitlement jenis itu.
     const kelayakan = record.type === 'AL' ? window.getEntitlementAL(staffObj) : stats.ent;
     const fmtHari = n => (Number.isFinite(n) ? (Math.round(n * 10) / 10).toString() : '0') + ' Hari';
@@ -2330,7 +2335,7 @@ window.generateBalanceReport = function(rows, branchName, leaveType, year) {
       </tfoot>
     </table>
     <div style="margin-top:12px;font-size:9px;color:#718096;border-top:1px solid #e2e8f0;padding-top:8px;">
-      * Baki cuti dikira berdasarkan status APPROVED + HOD APPROVED + TL APPROVED (selari dengan paparan dashboard staf). Breakdown bulanan berdasarkan tarikh permohonan. Entitlement AL dikira mengikut pro-rata jika berkaitan.
+      * Baki cuti dikira berdasarkan status APPROVED (selari dengan paparan dashboard staf). Breakdown bulanan berdasarkan tarikh permohonan. Entitlement AL dikira mengikut pro-rata jika berkaitan.
     </div>
     <button onclick="window.print()" style="margin-top:12px;padding:7px 18px;background:#7c3aed;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;">PRINT / SIMPAN PDF</button>
   </div>`;
@@ -2434,7 +2439,7 @@ window.generateAttendanceReport = function() {
   const renderRows = (arr, isDoctor) => arr.map((s,i) => {
     const ml = getMonthLeave(s.ic), yl = getYTDLeave(s.ic);
     const alEnt = parseFloat(window.getEarnedAL(s).toFixed(1));
-    const alUsed = parseFloat((yl['AL']||0).toFixed(1));
+    const alUsed = parseFloat((yl['AL']||0).toFixed(1)) + parseFloat(s.al_adj || 0);
     const alRem = Math.max(0, alEnt - alUsed);
     const mcEntStored = s['ent_MC']; const mcEnt = (mcEntStored!==undefined&&mcEntStored!==null)?parseFloat(mcEntStored):14;
     const mcUsed = parseFloat((yl['MC']||0).toFixed(1));
@@ -2519,7 +2524,7 @@ window.generateAttendanceReport = function() {
     ${renderSection('KAKITANGAN', kakitangan, false)}
     ${renderSection('DOKTOR', doktor, true)}
     <div style="margin-top:20px;font-size:9px;color:#718096;border-top:1px solid #e2e8f0;padding-top:10px;">
-      Laporan dijana oleh KSB Leave Apply System pada ${new Date().toLocaleString('ms-MY')}. Baki Cuti = sisa/hak (pro-rata). Rekod berstatus APPROVED + HOD APPROVED + TL APPROVED.
+      Laporan dijana oleh KSB Leave Apply System pada ${new Date().toLocaleString('ms-MY')}. Baki Cuti = sisa/hak (pro-rata). Rekod berstatus APPROVED.
     </div>
   </body></html>`);
   pw.document.close();
@@ -3624,7 +3629,7 @@ window.getEarnedAL = function(staffObj) {
 window.getLeaveStats = function(staff, type) {
   if (!staff) return { used: 0, ent: 0, bal: 0 };
 
-  const records = leaveRecords.filter(r => r.ic === staff.ic && (r.status === 'APPROVED' || r.status === 'HOD APPROVED' || r.status === 'TL APPROVED') && r.type === type);
+  const records = leaveRecords.filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === type);
   let usedFromRecords = records.reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
   // al_adj: pelarasan manual HR — hari AL yang digunakan sebelum sistem atau pindahan dari HR
   const used = type === 'AL' ? usedFromRecords + parseFloat(staff.al_adj || 0) : usedFromRecords;
@@ -7834,9 +7839,9 @@ function renderView() {
               return true;
             });
 
-            // Records for balance — sama dengan getLeaveStats: APPROVED + HOD APPROVED + TL APPROVED
+            // Records for balance — sama dengan getLeaveStats: APPROVED
             const approvedForBalance = leaveRecords.filter(r => {
-              if (!['APPROVED','HOD APPROVED','TL APPROVED'].includes(r.status)) return false;
+              if (r.status !== 'APPROVED') return false;
               if (r.type !== balanceReportType) return false;
               if (balanceReportYear !== 'SEMUA' && (!r.id || new Date(r.id).getFullYear().toString() !== balanceReportYear)) return false;
               if (reportBranch && r.branch !== reportBranch) return false;
@@ -8064,7 +8069,7 @@ function renderView() {
             const renderAttRow = (s, idx, isDoctor) => {
               const ml = getML(s.ic), yl = getYL(s.ic);
               const alEnt = parseFloat(window.getEarnedAL(s).toFixed(1));
-              const alUsed = parseFloat((yl['AL']||0).toFixed(1));
+              const alUsed = parseFloat((yl['AL']||0).toFixed(1)) + parseFloat(s.al_adj || 0);
               const alRem = Math.max(0, alEnt - alUsed);
               const mcEntS = s['ent_MC']; const mcEnt = (mcEntS!==undefined&&mcEntS!==null)?parseFloat(mcEntS):14;
               const mcUsed = parseFloat((yl['MC']||0).toFixed(1));
@@ -9573,7 +9578,7 @@ function renderModal() {
 
   // Kiraan AL semasa untuk paparan dalam modal
   const _modalSysUsedAL = leaveRecords
-    .filter(r => r.ic === staff.ic && (r.status === 'APPROVED' || r.status === 'HOD APPROVED' || r.status === 'TL APPROVED') && r.type === 'AL')
+    .filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === 'AL')
     .reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
   const _modalAlAdj = parseFloat(staff.al_adj || 0);
   const _modalTotalAL = parseFloat(staff.ent_CF !== undefined ? staff.ent_CF : 0) + parseFloat(staff.ent_AL !== undefined ? staff.ent_AL : window.getEntitlementAL(staff));
