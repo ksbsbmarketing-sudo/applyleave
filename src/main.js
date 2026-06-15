@@ -4250,6 +4250,20 @@ function renderRoomItem(room) {
   </div>`;
 }
 
+// Short, human role label for the buddy list secondary line (avoids repeating
+// the full branch name on every row).
+function shortRoleLabel(role) {
+  const map = {
+    staff: 'Staf', doctor: 'Doktor', doctor_pic: 'Doktor',
+    hod_cawangan: 'HOD', hod_balok: 'HOD', supervisor: 'Supervisor',
+    team_leader: 'Ketua Pasukan', juru_xray: 'Juru X-Ray',
+    sonographer: 'Sonografer', juru_audio: 'Juru Audio',
+    admin: 'Admin', hr: 'HR', super_admin: 'Super Admin',
+  };
+  if (map[role]) return map[role];
+  return (role || 'Staf').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // Clickable accordion header for a messenger rooms section. `count` optional.
 // `accent` colours the count badge (defaults to muted). Chevron points down
 // when open, right when collapsed.
@@ -4327,17 +4341,17 @@ function renderMessengerView() {
             <div class="msg-mystatus-name">${user.name}</div>
             <input class="msg-mystatus-mood" type="text" maxlength="60"
               value="${(myStatusMsg || '').replace(/"/g,'&quot;')}"
-              placeholder="Tetapkan mesej status…"
+              placeholder="✎ Set mesej status…"
               onchange="window.setMyMood(this.value)"
               onkeydown="if(event.key==='Enter')this.blur();">
           </div>
-          <select class="msg-mystatus-select" title="Tukar status" onchange="window.setMyStatus(this.value)">
+          <select class="msg-mystatus-select" title="Tukar status" style="color:${myMeta.color};" onchange="window.setMyStatus(this.value)">
             ${PRESENCE_STATUSES.map(s => `<option value="${s.id}" ${s.id === myStatus ? 'selected' : ''}>${s.dot} ${s.label}</option>`).join('')}
           </select>
         </div>
 
         ${(function() {
-          const onlineOthers = Object.values(onlineUsers).filter(u => u.ic !== user.ic);
+          const onlineOthers = Object.values(onlineUsers).filter(u => u.ic !== user.ic && u.role !== 'super_admin');
           if (onlineOthers.length === 0) return '';
           const onlineOpen = isMsgSectionOpen(msgSections, 'online');
           return `<div class="msg-online-chips-bar">
@@ -4360,7 +4374,7 @@ function renderMessengerView() {
 
       <div class="msg-rooms-scroll">
         <!-- Global -->
-        <div class="msg-rooms-section-label">Umum</div>
+        <div class="msg-section-static"><span class="msg-section-chev-spacer"></span><span class="msg-section-toggle-label">Umum</span></div>
         ${renderRoomItem({ id: 'all_ksb', name: 'Semua Staf KSB', type: 'group', icon: '🏥', iconBg: 'background:linear-gradient(135deg,var(--primary),var(--secondary));', subtitle: 'Semua kakitangan KSB' })}
 
         <!-- By Branch -->
@@ -4393,10 +4407,11 @@ function renderMessengerView() {
             const pres = onlineUsers[s.ic];
             const isOnline = !!pres;
             const sm = isOnline ? resolveStatus(pres) : null;
-            // Buddy-list status line (YM): online → status label / mood; offline → last msg or branch
+            // Buddy-list status line (YM): online → status label / mood; offline → last msg or short role.
+            // Branch is intentionally NOT shown here (it repeats for everyone in the same clinic).
             const statusLine = isOnline
               ? `<span style="color:${sm.color};font-weight:600;">${sm.dot} ${pres.statusMsg ? pres.statusMsg : sm.label}</span>`
-              : (last.lastMessage || s.branch || (s.role||'').toUpperCase() || '');
+              : (last.lastMessage || shortRoleLabel(s.role));
             return `
             <div class="msg-room-item ${isActive ? 'active' : ''} ${isOnline ? '' : 'msg-room-offline'}" data-staff-name="${(s.name||'').toLowerCase()}" onclick="window.openDM('${s.ic}','${s.name.replace(/'/g,"\\'")}')">
               <div style="position:relative;flex-shrink:0;">
