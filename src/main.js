@@ -4,6 +4,7 @@ import { recordBalances } from './leaveBalance.js';
 import { loadSectionState, toggleSection, saveSectionState, isOpen as isMsgSectionOpen } from './msgSections.js';
 import { applyEmoticons } from './emoticons.js';
 import { PRESENCE_STATUSES, DEFAULT_STATUS, getStatusMeta, resolveStatus, isVisibleToOthers, normalizeMood } from './presenceStatus.js';
+import { roomParticipants, GROUP_PARTICIPANT } from './messengerParticipants.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -3918,9 +3919,11 @@ function showBrowserNotif(senderName, roomName, text, roomId, roomType) {
 // ── New Message Listener (direct from messenger_messages collection) ──
 window.startNewMessageListener = function() {
   if (msgNewMsgUnsub) { msgNewMsgUnsub(); msgNewMsgUnsub = null; }
+  if (!user) return;
   const listenFrom = Date.now();
-  const q = query(collection(db, 'messenger_messages'), where('timestamp', '>', listenFrom));
-  msgNewMsgUnsub = onSnapshot(q, (snap) => {
+  // Only notify for messages I'm allowed to see: public group messages, plus my
+  // own DMs. A DM between two other people never reaches my client.
+  const handle = (snap) => {
     snap.docChanges().forEach(change => {
       if (change.type !== 'added') return;
       const data = change.doc.data();
@@ -3933,7 +3936,12 @@ window.startNewMessageListener = function() {
       showMsgToast(data.roomId, roomName, roomType, data.senderName, msgText);
       showBrowserNotif(data.senderName, roomName, msgText, data.roomId, roomType);
     });
-  });
+  };
+  const groupQ = query(collection(db, 'messenger_messages'), where('participants', 'array-contains', GROUP_PARTICIPANT), where('timestamp', '>', listenFrom));
+  const dmQ    = query(collection(db, 'messenger_messages'), where('participants', 'array-contains', user.ic),        where('timestamp', '>', listenFrom));
+  const u1 = onSnapshot(groupQ, handle, e => console.warn('NewMsg(group) listener:', e));
+  const u2 = onSnapshot(dmQ,    handle, e => console.warn('NewMsg(dm) listener:', e));
+  msgNewMsgUnsub = () => { u1(); u2(); };
 };
 
 window.stopNewMessageListener = function() {
@@ -4010,25 +4018,34 @@ window.dismissMsgToast = function(id) {
 window.initMessengerRooms = function() {
   messengerRoomsInitialLoad = true;
   if (messengerRoomsUnsub) { messengerRoomsUnsub(); messengerRoomsUnsub = null; }
-  messengerRoomsUnsub = onSnapshot(collection(db, 'messenger_rooms'), (snap) => {
-    // Rebuild room metadata
-    messengerRoomLastMsg = {};
-    snap.docs.forEach(d => { messengerRoomLastMsg[d.id] = d.data(); });
+  if (!user) return;
 
-    // Update unread indicators
-    snap.docs.forEach(d => {
-      const data = d.data();
-      const lastSeen = parseInt(localStorage.getItem(`msg_seen_${user ? user.ic : ''}_${d.id}`) || '0');
+  // Two scoped listeners — never read other people's DM rooms:
+  //   • public group rooms (participants contains 'ALL')
+  //   • my own DM rooms    (participants contains my IC)
+  const cache = { group: {}, dm: {} };
+  const rebuild = () => {
+    messengerRoomLastMsg = {};
+    [cache.group, cache.dm].forEach(grp => {
+      Object.values(grp).forEach(data => { messengerRoomLastMsg[data.id] = data; });
+    });
+    Object.values(messengerRoomLastMsg).forEach(data => {
+      const lastSeen = parseInt(localStorage.getItem(`msg_seen_${user ? user.ic : ''}_${data.id}`) || '0');
       if (data.lastTimestamp && data.lastTimestamp > lastSeen && data.lastSenderIC !== (user ? user.ic : '')) {
-        messengerUnreadRooms.add(d.id);
+        messengerUnreadRooms.add(data.id);
       } else {
-        messengerUnreadRooms.delete(d.id);
+        messengerUnreadRooms.delete(data.id);
       }
     });
-
     messengerRoomsInitialLoad = false;
     render();
-  });
+  };
+
+  const groupQ = query(collection(db, 'messenger_rooms'), where('participants', 'array-contains', GROUP_PARTICIPANT));
+  const dmQ    = query(collection(db, 'messenger_rooms'), where('participants', 'array-contains', user.ic));
+  const u1 = onSnapshot(groupQ, snap => { cache.group = {}; snap.docs.forEach(d => { cache.group[d.id] = d.data(); }); rebuild(); }, e => console.warn('Rooms(group) listener:', e));
+  const u2 = onSnapshot(dmQ,    snap => { cache.dm = {};    snap.docs.forEach(d => { cache.dm[d.id] = d.data(); });    rebuild(); }, e => console.warn('Rooms(dm) listener:', e));
+  messengerRoomsUnsub = () => { u1(); u2(); };
 };
 
 window.openRoom = function(roomId, roomName, type) {
@@ -4046,7 +4063,7 @@ window.openRoom = function(roomId, roomName, type) {
   const roomRef = doc(db, 'messenger_rooms', roomId);
   getDoc(roomRef).then(snap => {
     if (!snap.exists()) {
-      setDoc(roomRef, { id: roomId, name: roomName, type: messengerRoomType, lastMessage: '', lastTimestamp: 0, lastSenderName: '', lastSenderIC: '' });
+      setDoc(roomRef, { id: roomId, name: roomName, type: messengerRoomType, participants: roomParticipants(roomId), lastMessage: '', lastTimestamp: 0, lastSenderName: '', lastSenderIC: '' });
     }
   });
 
@@ -4122,15 +4139,16 @@ window.sendMessage = async function(e) {
       fileType = messengerFileObj.type;
       fileSize = messengerFileObj.size;
     }
+    const participants = roomParticipants(messengerRoomId);
     const msgId = Date.now().toString() + '_' + Math.random().toString(36).substr(2, 6);
     await setDoc(doc(db, 'messenger_messages', msgId), {
-      roomId: messengerRoomId, id: msgId,
+      roomId: messengerRoomId, id: msgId, participants,
       senderIC: user.ic, senderName: user.name, senderBranch: user.branch || '',
       text: text || '', fileUrl: fileUrl || null, fileName: fileName || null,
       fileType: fileType || null, fileSize: fileSize || null, timestamp: Date.now()
     });
     await setDoc(doc(db, 'messenger_rooms', messengerRoomId), {
-      id: messengerRoomId, name: messengerRoomName, type: messengerRoomType,
+      id: messengerRoomId, name: messengerRoomName, type: messengerRoomType, participants,
       lastMessage: fileUrl ? `📎 ${fileName}` : text,
       lastTimestamp: Date.now(), lastSenderName: user.name, lastSenderIC: user.ic
     }, { merge: true });
