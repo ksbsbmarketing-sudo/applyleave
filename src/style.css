@@ -902,6 +902,46 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   border-radius: 20px;
 }
 
+/* My status bar (Yahoo Messenger style) */
+.msg-mystatus {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.55rem 0.7rem; margin: 0 0 0.55rem;
+  border-radius: 14px;
+  background: rgba(163,177,198,0.12);
+  box-shadow: var(--shadow-inset-sm);
+}
+.msg-mystatus-avatar {
+  position: relative; flex-shrink: 0;
+  width: 40px; height: 40px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: #fff; font-weight: 700; font-size: 1.05rem;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-raised-xs);
+}
+.msg-status-dot {
+  position: absolute; bottom: -1px; right: -1px;
+  width: 13px; height: 13px; border-radius: 50%;
+  border: 2px solid var(--surface);
+}
+.msg-mystatus-info { flex: 1; min-width: 0; }
+.msg-mystatus-name {
+  font-size: 0.85rem; font-weight: 700; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.msg-mystatus-mood {
+  width: 100%; border: none; background: transparent;
+  font-family: inherit; font-size: 0.72rem; font-style: italic;
+  color: var(--text-muted); outline: none; padding: 0.1rem 0;
+}
+.msg-mystatus-mood:focus { color: var(--text); font-style: normal; }
+.msg-mystatus-select {
+  flex-shrink: 0; font-family: inherit; font-size: 0.72rem; font-weight: 600;
+  border: none; border-radius: 8px; padding: 0.3rem 0.4rem;
+  background: rgba(163,177,198,0.2); color: var(--text);
+  cursor: pointer; box-shadow: var(--shadow-inset-sm); outline: none;
+}
+.msg-room-offline .msg-room-avatar { filter: grayscale(0.45); opacity: 0.8; }
+
 .msg-room-item {
   display: flex;
   align-items: center;

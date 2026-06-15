@@ -2,6 +2,8 @@ import './style.css'
 import { countLeaveDays } from './leaveDays.js';
 import { recordBalances } from './leaveBalance.js';
 import { loadSectionState, toggleSection, saveSectionState, isOpen as isMsgSectionOpen } from './msgSections.js';
+import { applyEmoticons } from './emoticons.js';
+import { PRESENCE_STATUSES, DEFAULT_STATUS, getStatusMeta, resolveStatus, isVisibleToOthers, normalizeMood } from './presenceStatus.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -527,6 +529,9 @@ let presenceHeartbeatInterval = null;
 let msgToasts = []; // [{ id, roomId, roomName, senderName, preview, isDM, createdAt, timer }]
 // Messenger accordion (collapsible sections) — persisted per device.
 let msgSections = loadSectionState(typeof localStorage !== 'undefined' ? localStorage : null);
+// Yahoo-Messenger-style presence status + mood, persisted per device.
+let myStatus = (typeof localStorage !== 'undefined' && localStorage.getItem('ksb_msg_status')) || DEFAULT_STATUS;
+let myStatusMsg = (typeof localStorage !== 'undefined' && localStorage.getItem('ksb_msg_mood')) || '';
 let messengerRoomsInitialLoad = true;
 let msgNewMsgUnsub = null;
 const leaveCategories = [
@@ -3726,7 +3731,8 @@ window.initPresence = async function() {
   const writeOnline = () => setDoc(presRef, {
     ic: user.ic, name: user.name,
     branch: user.branch || '', role: user.role || '',
-    online: true, lastSeen: Date.now()
+    online: true, lastSeen: Date.now(),
+    status: myStatus, statusMsg: myStatusMsg
   }, { merge: true });
 
   await writeOnline();
@@ -3746,13 +3752,35 @@ window.initPresence = async function() {
     onlineUsers = {};
     snap.docs.forEach(d => {
       const data = d.data();
-      // Consider online if lastSeen within 3 minutes AND online flag is true
-      if (data.online && data.lastSeen && (now - data.lastSeen) < 3 * 60 * 1000) {
+      // Visible to others = online + fresh + not invisible (status-aware).
+      if (isVisibleToOthers(data, now)) {
         onlineUsers[data.ic] = data;
       }
     });
     if (view === 'messenger') render();
   });
+};
+
+// Set my own presence status (Available/Sibuk/Away/Invisible). Persists locally
+// and pushes to Firestore immediately so others see it without waiting a beat.
+window.setMyStatus = async function(status) {
+  if (!getStatusMeta(status) || status !== getStatusMeta(status).id) return;
+  myStatus = status;
+  try { localStorage.setItem('ksb_msg_status', status); } catch (_) {}
+  if (user) {
+    try { await setDoc(doc(db, 'user_presence', user.ic), { status, online: true, lastSeen: Date.now() }, { merge: true }); } catch (_) {}
+  }
+  render();
+};
+
+// Set my mood / status message (free text under my name).
+window.setMyMood = async function(text) {
+  myStatusMsg = normalizeMood(text);
+  try { localStorage.setItem('ksb_msg_mood', myStatusMsg); } catch (_) {}
+  if (user) {
+    try { await setDoc(doc(db, 'user_presence', user.ic), { statusMsg: myStatusMsg, lastSeen: Date.now() }, { merge: true }); } catch (_) {}
+  }
+  render();
 };
 
 window.stopPresence = async function() {
@@ -4172,7 +4200,7 @@ function renderMessageBubble(msg) {
       <div class="msg-bubble-wrap">
         ${!isOwn && messengerRoomType !== 'dm' ? `<div class="msg-sender-name">${msg.senderName}${msg.senderBranch ? ` · <span style="color:var(--text-muted);font-size:0.7rem;">${msg.senderBranch}</span>` : ''}</div>` : ''}
         <div class="msg-bubble ${isOwn ? 'own' : 'other'}">
-          ${msg.text ? `<div class="msg-text">${escapeHtml(msg.text)}</div>` : ''}
+          ${msg.text ? `<div class="msg-text">${escapeHtml(applyEmoticons(msg.text))}</div>` : ''}
           ${msg.fileUrl ? (isImage ?
             `<a href="${msg.fileUrl}" target="_blank" rel="noopener"><img src="${msg.fileUrl}" class="msg-img" alt="${msg.fileName || 'image'}" loading="lazy"></a>` :
             `<a href="${msg.fileUrl}" target="_blank" rel="noopener" class="msg-file-link">
@@ -4256,6 +4284,8 @@ function renderMessengerView() {
   // Safety: if no room is open, always show rooms list
   if (!messengerRoomId) messengerView = 'rooms';
 
+  const myMeta = getStatusMeta(myStatus);
+
   const otherStaff = staffList.filter(s => s.ic !== user.ic && !s.inactive && s.role !== 'super_admin')
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
@@ -4286,6 +4316,26 @@ function renderMessengerView() {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
           Messenger
         </h2>
+
+        <!-- My status (Yahoo Messenger style) -->
+        <div class="msg-mystatus">
+          <div class="msg-mystatus-avatar">
+            ${(user.name || '?')[0]}
+            <span class="msg-status-dot" style="background:${myMeta.color};"></span>
+          </div>
+          <div class="msg-mystatus-info">
+            <div class="msg-mystatus-name">${user.name}</div>
+            <input class="msg-mystatus-mood" type="text" maxlength="60"
+              value="${(myStatusMsg || '').replace(/"/g,'&quot;')}"
+              placeholder="Tetapkan mesej status…"
+              onchange="window.setMyMood(this.value)"
+              onkeydown="if(event.key==='Enter')this.blur();">
+          </div>
+          <select class="msg-mystatus-select" title="Tukar status" onchange="window.setMyStatus(this.value)">
+            ${PRESENCE_STATUSES.map(s => `<option value="${s.id}" ${s.id === myStatus ? 'selected' : ''}>${s.dot} ${s.label}</option>`).join('')}
+          </select>
+        </div>
+
         ${(function() {
           const onlineOthers = Object.values(onlineUsers).filter(u => u.ic !== user.ic);
           if (onlineOthers.length === 0) return '';
@@ -4300,7 +4350,8 @@ function renderMessengerView() {
             <div class="msg-online-chips-scroll" id="msg-section-body-online" style="${onlineOpen ? '' : 'display:none;'}">
               ${onlineOthers.map(u => {
                 const firstName = (u.name || '?').split(' ')[0];
-                return `<button class="msg-online-chip" onclick="window.openDM('${u.ic}','${(u.name||'').replace(/'/g,"\\'")}');event.stopPropagation();" title="${(u.name||'').replace(/"/g,'&quot;')} — ${(u.branch||'').replace(/"/g,'&quot;')}"><span style="width:7px;height:7px;border-radius:50%;background:#22c55e;flex-shrink:0;display:inline-block;"></span>${firstName}</button>`;
+                const cm = resolveStatus(u);
+                return `<button class="msg-online-chip" onclick="window.openDM('${u.ic}','${(u.name||'').replace(/'/g,"\\'")}');event.stopPropagation();" title="${(u.name||'').replace(/"/g,'&quot;')} — ${cm.label}${u.statusMsg ? ': ' + u.statusMsg.replace(/"/g,'&quot;') : ''}"><span style="width:7px;height:7px;border-radius:50%;background:${cm.color};flex-shrink:0;display:inline-block;"></span>${firstName}</button>`;
               }).join('')}
             </div>
           </div>`;
@@ -4339,16 +4390,22 @@ function renderMessengerView() {
             const last = messengerRoomLastMsg[dmId] || {};
             const isUnread = messengerUnreadRooms.has(dmId);
             const isActive = messengerRoomId === dmId;
-            const isOnline = !!onlineUsers[s.ic];
+            const pres = onlineUsers[s.ic];
+            const isOnline = !!pres;
+            const sm = isOnline ? resolveStatus(pres) : null;
+            // Buddy-list status line (YM): online → status label / mood; offline → last msg or branch
+            const statusLine = isOnline
+              ? `<span style="color:${sm.color};font-weight:600;">${sm.dot} ${pres.statusMsg ? pres.statusMsg : sm.label}</span>`
+              : (last.lastMessage || s.branch || (s.role||'').toUpperCase() || '');
             return `
-            <div class="msg-room-item ${isActive ? 'active' : ''}" data-staff-name="${(s.name||'').toLowerCase()}" onclick="window.openDM('${s.ic}','${s.name.replace(/'/g,"\\'")}')">
+            <div class="msg-room-item ${isActive ? 'active' : ''} ${isOnline ? '' : 'msg-room-offline'}" data-staff-name="${(s.name||'').toLowerCase()}" onclick="window.openDM('${s.ic}','${s.name.replace(/'/g,"\\'")}')">
               <div style="position:relative;flex-shrink:0;">
                 <div class="msg-room-avatar">${(s.name||'?')[0]}</div>
-                ${isOnline ? '<span class="msg-online-dot"></span>' : ''}
+                ${isOnline ? `<span class="msg-online-dot" style="background:${sm.color};box-shadow:0 0 0 1px ${sm.color}55;"></span>` : ''}
               </div>
               <div class="msg-room-info">
                 <div class="msg-room-name">${s.name}${isUnread ? '<span class="msg-unread-dot"></span>' : ''}</div>
-                <div class="msg-room-last">${isOnline ? '<span style="color:#16a34a;font-weight:600;">● Online</span>' : (last.lastMessage || s.branch || (s.role||'').toUpperCase() || '')}</div>
+                <div class="msg-room-last">${statusLine}</div>
               </div>
               ${last.lastTimestamp ? `<div class="msg-room-time">${formatMsgTime(last.lastTimestamp)}</div>` : ''}
             </div>`;
@@ -4372,7 +4429,10 @@ function renderMessengerView() {
             ${(function() {
               if (messengerRoomType !== 'dm') return '';
               const dmOtherIc = messengerRoomId.replace('dm_','').split('__').find(ic => ic !== user.ic);
-              return dmOtherIc && onlineUsers[dmOtherIc] ? '<span class="msg-online-dot" style="width:13px;height:13px;bottom:0;right:0;"></span>' : '';
+              const p = dmOtherIc && onlineUsers[dmOtherIc];
+              if (!p) return '';
+              const cm = resolveStatus(p);
+              return `<span class="msg-online-dot" style="width:13px;height:13px;bottom:0;right:0;background:${cm.color};box-shadow:0 0 0 1px ${cm.color}55;"></span>`;
             })()}
           </div>
           <div>
@@ -4381,8 +4441,11 @@ function renderMessengerView() {
               ${(function() {
                 if (messengerRoomType === 'dm') {
                   const dmOtherIc = messengerRoomId.replace('dm_','').split('__').find(ic => ic !== user.ic);
-                  if (dmOtherIc && onlineUsers[dmOtherIc]) {
-                    return '<span style="color:#22c55e;font-weight:600;font-size:0.75rem;">● Online sekarang</span>';
+                  const p = dmOtherIc && onlineUsers[dmOtherIc];
+                  if (p) {
+                    const cm = resolveStatus(p);
+                    const mood = p.statusMsg ? ` · ${escapeHtml(p.statusMsg)}` : '';
+                    return `<span style="color:${cm.color};font-weight:600;font-size:0.75rem;">${cm.dot} ${cm.label}${mood}</span>`;
                   }
                 }
                 return getRoomSubtitle(messengerRoomType);
