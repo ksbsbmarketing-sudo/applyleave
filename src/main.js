@@ -4,7 +4,6 @@ import { recordBalances } from './leaveBalance.js';
 import { loadSectionState, toggleSection, saveSectionState, isOpen as isMsgSectionOpen } from './msgSections.js';
 import { applyEmoticons } from './emoticons.js';
 import { PRESENCE_STATUSES, DEFAULT_STATUS, getStatusMeta, resolveStatus, isVisibleToOthers, normalizeMood } from './presenceStatus.js';
-import { roomParticipants, GROUP_PARTICIPANT } from './messengerParticipants.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -36,7 +35,8 @@ import {
   query,
   where,
   orderBy,
-  limit
+  limit,
+  documentId
 } from "firebase/firestore";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
@@ -3955,34 +3955,11 @@ function showBrowserNotif(senderName, roomName, text, roomId, roomType) {
   };
 }
 
-// ── New Message Listener (direct from messenger_messages collection) ──
-window.startNewMessageListener = function() {
-  if (msgNewMsgUnsub) { msgNewMsgUnsub(); msgNewMsgUnsub = null; }
-  if (!user) return;
-  const listenFrom = Date.now();
-  // Only notify for messages I'm allowed to see: public group messages, plus my
-  // own DMs. A DM between two other people never reaches my client.
-  const handle = (snap) => {
-    snap.docChanges().forEach(change => {
-      if (change.type !== 'added') return;
-      const data = change.doc.data();
-      if (!user || data.senderIC === user.ic) return;
-      const roomData = messengerRoomLastMsg[data.roomId] || {};
-      const roomType = roomData.type || (data.roomId.startsWith('dm_') ? 'dm' : 'group');
-      const roomName = roomType === 'dm' ? data.senderName : (roomData.name || data.senderName);
-      const msgText = data.text || (data.fileName ? `📎 ${data.fileName}` : '📎 Fail');
-      playMsgSound();
-      showMsgToast(data.roomId, roomName, roomType, data.senderName, msgText);
-      showBrowserNotif(data.senderName, roomName, msgText, data.roomId, roomType);
-    });
-  };
-  const groupQ = query(collection(db, 'messenger_messages'), where('participants', 'array-contains', GROUP_PARTICIPANT), where('timestamp', '>', listenFrom));
-  const dmQ    = query(collection(db, 'messenger_messages'), where('participants', 'array-contains', user.ic),        where('timestamp', '>', listenFrom));
-  const u1 = onSnapshot(groupQ, handle, e => console.warn('NewMsg(group) listener:', e));
-  const u2 = onSnapshot(dmQ,    handle, e => console.warn('NewMsg(dm) listener:', e));
-  msgNewMsgUnsub = () => { u1(); u2(); };
-};
-
+// New-message toasts are now derived from the per-room metadata listener in
+// initMessengerRooms (fireToasts). That avoids any global message query, so a
+// DM between two other people can never reach this client. These remain as
+// no-ops so existing call sites keep working.
+window.startNewMessageListener = function() {};
 window.stopNewMessageListener = function() {
   if (msgNewMsgUnsub) { msgNewMsgUnsub(); msgNewMsgUnsub = null; }
 };
@@ -4054,23 +4031,40 @@ window.dismissMsgToast = function(id) {
   render();
 };
 
+// The set of room ids THIS user may access: public group rooms + a DM room with
+// every other active staff. Firestore rules authorise these by roomId, and we
+// query them by documentId() so no global read of other people's DMs happens.
+const MSG_ROLE_ROOM_IDS = ['role_doktor','role_admin_staff','role_operation_staff','role_management','role_hod','role_supervisor'];
+function myMessengerRoomIds() {
+  const ids = ['all_ksb', ...MSG_ROLE_ROOM_IDS];
+  branches.forEach(b => ids.push(safeBranchId(b.name)));
+  staffList
+    .filter(s => s.ic !== user.ic && !s.inactive && s.role !== 'super_admin')
+    .forEach(s => ids.push(getDMRoomId(user.ic, s.ic)));
+  return [...new Set(ids)];
+}
+
 window.initMessengerRooms = function() {
   messengerRoomsInitialLoad = true;
   if (messengerRoomsUnsub) { messengerRoomsUnsub(); messengerRoomsUnsub = null; }
   if (!user) return;
 
-  // Two scoped listeners — never read other people's DM rooms:
-  //   • public group rooms (participants contains 'ALL')
-  //   • my own DM rooms    (participants contains my IC)
-  const cache = { group: {}, dm: {} };
+  // Listen ONLY to rooms I can access, by document id (chunked — Firestore 'in'
+  // allows max 30 ids per query). New-message toasts are derived from these room
+  // metadata changes, so there is no global message query at all.
+  const ids = myMessengerRoomIds();
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30));
+  const caches = chunks.map(() => ({}));
+  const seenTs = {};       // roomId -> last lastTimestamp we've toasted on
+  let baselined = false;   // skip toasts on the very first snapshot batch
+
   const rebuild = () => {
     messengerRoomLastMsg = {};
-    [cache.group, cache.dm].forEach(grp => {
-      Object.values(grp).forEach(data => { messengerRoomLastMsg[data.id] = data; });
-    });
+    caches.forEach(c => Object.values(c).forEach(data => { messengerRoomLastMsg[data.id] = data; }));
     Object.values(messengerRoomLastMsg).forEach(data => {
-      const lastSeen = parseInt(localStorage.getItem(`msg_seen_${user ? user.ic : ''}_${data.id}`) || '0');
-      if (data.lastTimestamp && data.lastTimestamp > lastSeen && data.lastSenderIC !== (user ? user.ic : '')) {
+      const lastSeen = parseInt(localStorage.getItem(`msg_seen_${user.ic}_${data.id}`) || '0');
+      if (data.lastTimestamp && data.lastTimestamp > lastSeen && data.lastSenderIC !== user.ic) {
         messengerUnreadRooms.add(data.id);
       } else {
         messengerUnreadRooms.delete(data.id);
@@ -4080,11 +4074,35 @@ window.initMessengerRooms = function() {
     render();
   };
 
-  const groupQ = query(collection(db, 'messenger_rooms'), where('participants', 'array-contains', GROUP_PARTICIPANT));
-  const dmQ    = query(collection(db, 'messenger_rooms'), where('participants', 'array-contains', user.ic));
-  const u1 = onSnapshot(groupQ, snap => { cache.group = {}; snap.docs.forEach(d => { cache.group[d.id] = d.data(); }); rebuild(); }, e => console.warn('Rooms(group) listener:', e));
-  const u2 = onSnapshot(dmQ,    snap => { cache.dm = {};    snap.docs.forEach(d => { cache.dm[d.id] = d.data(); });    rebuild(); }, e => console.warn('Rooms(dm) listener:', e));
-  messengerRoomsUnsub = () => { u1(); u2(); };
+  const fireToasts = () => {
+    Object.values(messengerRoomLastMsg).forEach(data => {
+      const rid = data.id;
+      if (!data.lastTimestamp) return;
+      const prev = seenTs[rid] || 0;
+      if (baselined && data.lastTimestamp > prev && data.lastSenderIC && data.lastSenderIC !== user.ic) {
+        const roomType = data.type || (rid.startsWith('dm_') ? 'dm' : 'group');
+        const roomName = roomType === 'dm' ? (data.lastSenderName || 'Mesej') : (data.name || data.lastSenderName || '');
+        const text = data.lastMessage || '📎 Mesej';
+        playMsgSound();
+        showMsgToast(rid, roomName, roomType, data.lastSenderName || '', text);
+        showBrowserNotif(data.lastSenderName || '', roomName, text, rid, roomType);
+      }
+      seenTs[rid] = Math.max(prev, data.lastTimestamp || 0);
+    });
+    baselined = true;
+  };
+
+  const unsubs = chunks.map((chunk, idx) => onSnapshot(
+    query(collection(db, 'messenger_rooms'), where(documentId(), 'in', chunk)),
+    snap => {
+      caches[idx] = {};
+      snap.docs.forEach(d => { caches[idx][d.id] = { id: d.id, ...d.data() }; });
+      rebuild();
+      fireToasts();
+    },
+    e => console.warn('Rooms chunk listener:', e)
+  ));
+  messengerRoomsUnsub = () => unsubs.forEach(u => u());
 };
 
 window.openRoom = function(roomId, roomName, type) {
@@ -4102,7 +4120,7 @@ window.openRoom = function(roomId, roomName, type) {
   const roomRef = doc(db, 'messenger_rooms', roomId);
   getDoc(roomRef).then(snap => {
     if (!snap.exists()) {
-      setDoc(roomRef, { id: roomId, name: roomName, type: messengerRoomType, participants: roomParticipants(roomId), lastMessage: '', lastTimestamp: 0, lastSenderName: '', lastSenderIC: '' });
+      setDoc(roomRef, { id: roomId, name: roomName, type: messengerRoomType, lastMessage: '', lastTimestamp: 0, lastSenderName: '', lastSenderIC: '' });
     }
   });
 
@@ -4178,16 +4196,15 @@ window.sendMessage = async function(e) {
       fileType = messengerFileObj.type;
       fileSize = messengerFileObj.size;
     }
-    const participants = roomParticipants(messengerRoomId);
     const msgId = Date.now().toString() + '_' + Math.random().toString(36).substr(2, 6);
     await setDoc(doc(db, 'messenger_messages', msgId), {
-      roomId: messengerRoomId, id: msgId, participants,
+      roomId: messengerRoomId, id: msgId,
       senderIC: user.ic, senderName: user.name, senderBranch: user.branch || '',
       text: text || '', fileUrl: fileUrl || null, fileName: fileName || null,
       fileType: fileType || null, fileSize: fileSize || null, timestamp: Date.now()
     });
     await setDoc(doc(db, 'messenger_rooms', messengerRoomId), {
-      id: messengerRoomId, name: messengerRoomName, type: messengerRoomType, participants,
+      id: messengerRoomId, name: messengerRoomName, type: messengerRoomType,
       lastMessage: fileUrl ? `📎 ${fileName}` : text,
       lastTimestamp: Date.now(), lastSenderName: user.name, lastSenderIC: user.ic
     }, { merge: true });

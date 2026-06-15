@@ -68,8 +68,28 @@ service cloud.firestore {
       allow delete: if signedIn();
     }
 
-    match /messenger_rooms/{id}    { allow read, write: if signedIn(); }
-    match /messenger_messages/{id} { allow read, write: if signedIn(); }
+    // Messenger DM privacy. Membership is derived from the roomId itself —
+    // DM rooms are "dm_<icA>__<icB>"; anything else is a public group room.
+    // Deriving from roomId means it enforces correctly on existing data with no
+    // migration. Clients must query DMs by roomId / documentId (not a global
+    // scan), which these rules authorise.
+    function isGroupRoom(rid) { return !rid.matches('dm_.*'); }
+    function dmHasMe(rid) {
+      return rid.matches('dm_' + myIC() + '__.*') || rid.matches('dm_.*__' + myIC());
+    }
+    function canSeeRoom(rid) { return signedIn() && (isGroupRoom(rid) || dmHasMe(rid)); }
+
+    match /messenger_rooms/{id} {
+      allow read, create, update: if canSeeRoom(id);
+      allow delete: if false;
+    }
+    match /messenger_messages/{mid} {
+      allow read:   if canSeeRoom(resource.data.roomId);
+      allow create: if canSeeRoom(request.resource.data.roomId)
+                    && request.resource.data.senderIC == myIC();
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.senderIC == myIC();
+    }
     match /notifications/{id}      { allow read, write: if signedIn(); }
     match /user_presence/{id}      { allow read, write: if signedIn(); }
 
