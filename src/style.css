@@ -931,23 +931,37 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   width: 13px; height: 13px; border-radius: 50%;
   border: 2px solid var(--surface);
 }
-.msg-mystatus-info { flex: 1 1 auto; min-width: 0; }
+.msg-mystatus-info {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem;
+}
 .msg-mystatus-name {
-  font-size: 0.82rem; font-weight: 700; color: var(--text); line-height: 1.2;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 0.8rem; font-weight: 700; color: var(--text); line-height: 1.2;
+  max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.msg-mystatus-mood {
-  width: 100%; border: none; background: transparent;
-  font-family: inherit; font-size: 0.7rem; font-style: italic;
-  color: var(--text-muted); outline: none; padding: 0.05rem 0;
-  text-overflow: ellipsis;
-}
-.msg-mystatus-mood:focus { color: var(--text); font-style: normal; }
+/* Status pill (stacked under the name). Flat — overrides the global input box. */
 .msg-mystatus-select {
-  flex-shrink: 0; max-width: 7rem; font-family: inherit; font-size: 0.72rem; font-weight: 700;
-  border: none; border-radius: 8px; padding: 0.3rem 0.45rem;
-  background: rgba(163,177,198,0.2);
-  cursor: pointer; box-shadow: var(--shadow-inset-sm); outline: none;
+  -webkit-appearance: none; appearance: none;
+  width: auto; max-width: 100%;
+  font-family: inherit; font-size: 0.7rem; font-weight: 700;
+  border: none; border-radius: 999px;
+  padding: 0.15rem 1.35rem 0.15rem 0.6rem;
+  box-shadow: none; cursor: pointer; outline: none;
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 9px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='3'><polyline points='6 9 12 15 18 9'/></svg>");
+}
+/* Mood = plain status line (flat, no form-field box). */
+.msg-mystatus-mood {
+  width: 100%; border: none; box-shadow: none; border-radius: 0;
+  background: transparent; padding: 0;
+  font-family: inherit; font-size: 0.7rem; font-style: italic;
+  color: var(--text-muted); outline: none; text-overflow: ellipsis;
+}
+.msg-mystatus-mood:focus {
+  color: var(--text); font-style: normal;
+  box-shadow: inset 0 -1px 0 rgba(163,177,198,0.5);
 }
 .msg-room-offline .msg-room-avatar { filter: grayscale(0.45); opacity: 0.8; }
 

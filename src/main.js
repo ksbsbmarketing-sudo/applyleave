@@ -4339,15 +4339,15 @@ function renderMessengerView() {
           </div>
           <div class="msg-mystatus-info">
             <div class="msg-mystatus-name">${user.name}</div>
+            <select class="msg-mystatus-select" title="Tukar status" style="color:${myMeta.color};background-color:${myMeta.color}1a;" onchange="window.setMyStatus(this.value)">
+              ${PRESENCE_STATUSES.map(s => `<option value="${s.id}" ${s.id === myStatus ? 'selected' : ''}>${s.dot} ${s.label}</option>`).join('')}
+            </select>
             <input class="msg-mystatus-mood" type="text" maxlength="60"
               value="${(myStatusMsg || '').replace(/"/g,'&quot;')}"
               placeholder="✎ Set mesej status…"
               onchange="window.setMyMood(this.value)"
               onkeydown="if(event.key==='Enter')this.blur();">
           </div>
-          <select class="msg-mystatus-select" title="Tukar status" style="color:${myMeta.color};" onchange="window.setMyStatus(this.value)">
-            ${PRESENCE_STATUSES.map(s => `<option value="${s.id}" ${s.id === myStatus ? 'selected' : ''}>${s.dot} ${s.label}</option>`).join('')}
-          </select>
         </div>
 
         ${(function() {
