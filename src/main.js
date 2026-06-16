@@ -112,6 +112,11 @@ const functions = getFunctions(firebaseApp);
 const AUTH_EMAIL_DOMAIN = 'ksb-leave.local';
 const emailForIC = (ic) => `${String(ic).replace(/[^a-zA-Z0-9]/g, '')}@${AUTH_EMAIL_DOMAIN}`;
 
+// Base URL of the free (no-Blaze) WhatsApp OTP password-reset backend on Vercel.
+// Set this to the deployed Vercel URL (e.g. 'https://ksb-otp.vercel.app').
+// While empty, "Lupa Kata Laluan?" tells the user the feature isn't configured yet.
+const OTP_API_BASE = 'https://otp-backend-ochre.vercel.app';
+
 // Pre-login directory (branch + name + ic) loaded under the anonymous bootstrap session.
 let directoryList = [];
 async function loadDirectory() {
@@ -235,10 +240,130 @@ window.saveWAToken = async function(token) {
   alert('✅ Token WhatsApp berjaya disimpan!');
 };
 
+// Self-service password reset via WhatsApp OTP. Runs pre-login, so it talks to
+// the external (no-Blaze) backend at OTP_API_BASE — the browser cannot reset a
+// forgotten Firebase Auth password itself. See otp-backend/.
+const OTP_ERR_MS = {
+  not_found: 'No. IC tidak dijumpai dalam sistem. Sila pilih nama anda dari senarai.',
+  inactive: 'Akaun anda tidak aktif. Sila hubungi HR/Admin.',
+  no_phone: 'Tiada nombor WhatsApp berdaftar untuk anda. Sila hubungi HR/Admin untuk set semula.',
+  self_send: 'Nombor anda ialah nombor penghantar sistem, jadi OTP tidak boleh dihantar kepadanya. Sila hubungi IT untuk set semula kata laluan.',
+  cooldown: 'Kod baru sahaja dihantar. Sila tunggu seminit sebelum meminta lagi.',
+  rate_limited: 'Terlalu banyak permintaan. Sila cuba semula dalam satu jam atau hubungi HR/Admin.',
+  send_failed: 'Gagal menghantar WhatsApp. Sila cuba lagi atau hubungi HR/Admin.',
+  missing_fields: 'Sila masukkan kod OTP.',
+  weak_password: 'Kata laluan mesti sekurang-kurangnya 6 aksara.',
+  expired: 'Kod OTP telah tamat tempoh. Sila minta kod baharu.',
+  too_many_attempts: 'Terlalu banyak percubaan salah. Sila minta kod baharu.',
+  no_request: 'Tiada permintaan reset aktif. Sila minta kod dahulu.',
+  no_account: 'Akaun log masuk tidak dijumpai. Sila hubungi HR/Admin.',
+  server_error: 'Ralat sistem. Sila cuba lagi sebentar.',
+};
+const otpErrMsg = (data) => OTP_ERR_MS[data && data.error] || 'Ralat tidak dijangka. Sila cuba lagi.';
+
+async function otpPost(path, payload) {
+  const res = await fetch(`${OTP_API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  let data = {};
+  try { data = await res.json(); } catch { /* non-JSON */ }
+  return { ok: res.ok, status: res.status, data };
+}
+
 window.forgotPassword = async function() {
-  // Passwords are hashed in Firebase Auth and cannot be retrieved. This is purely
-  // informational and must work before login (no staffList/phone available yet).
-  alert('🔐 PEMULIHAN KATA LALUAN\n\nDemi keselamatan, kata laluan tidak boleh dipaparkan semula.\n\nSila hubungi HR/Admin untuk menetapkan semula (reset) kata laluan anda. Selepas reset, kata laluan sementara anda ialah No. IC anda — dan anda boleh menukarnya melalui Settings → Security selepas log masuk.');
+  const ic = (document.querySelector('#login-staff')?.value || selectedLoginStaffIC || '').trim();
+  if (!ic) { alert('Sila pilih nama anda dari senarai (dropdown) dahulu, kemudian tekan "Lupa Kata Laluan?".'); return; }
+  if (!OTP_API_BASE) {
+    alert('ℹ️ Set semula kata laluan sendiri belum diaktifkan. Sila hubungi HR/Admin untuk reset kata laluan anda.');
+    return;
+  }
+
+  // Build a self-contained overlay (no dependency on the render() pipeline).
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:99999;padding:1rem;';
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.body.appendChild(overlay);
+
+  const card = (inner) => `
+    <div style="background:var(--bg,#fff);border-radius:18px;max-width:380px;width:100%;padding:1.6rem;box-shadow:0 24px 60px rgba(0,0,0,0.35);">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+        <span style="font-size:1.3rem;">🔐</span>
+        <h3 style="margin:0;font-size:1.05rem;font-weight:800;color:var(--text,#0f172a);">Set Semula Kata Laluan</h3>
+      </div>
+      ${inner}
+    </div>`;
+  const note = (msg, color) => `<div id="otp-note" style="margin-top:0.8rem;font-size:0.78rem;font-weight:600;color:${color};min-height:1.1rem;">${msg || ''}</div>`;
+  const btn = (id, label, bg) => `<button id="${id}" style="flex:1;padding:0.7rem;border:none;border-radius:10px;background:${bg};color:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">${label}</button>`;
+  const ghost = `<button id="otp-cancel" style="flex:1;padding:0.7rem;border:1px solid rgba(148,163,184,0.4);border-radius:10px;background:transparent;color:var(--text-muted,#64748b);font-weight:700;font-size:0.85rem;cursor:pointer;">Batal</button>`;
+  const field = 'width:100%;padding:0.7rem;border-radius:10px;border:1px solid rgba(148,163,184,0.4);font-size:0.9rem;box-sizing:border-box;';
+
+  const renderStep1 = () => {
+    overlay.innerHTML = card(`
+      <p style="font-size:0.82rem;color:var(--text-muted,#64748b);margin:0.3rem 0 0;">Kami akan menghantar kod pengesahan (OTP) ke nombor WhatsApp anda yang berdaftar dengan HR.</p>
+      ${note('', '#ef4444')}
+      <div style="display:flex;gap:0.6rem;margin-top:1rem;">${ghost}${btn('otp-send', 'Hantar Kod', 'linear-gradient(135deg,#3b82f6,#2563eb)')}</div>
+    `);
+    overlay.querySelector('#otp-cancel').onclick = close;
+    overlay.querySelector('#otp-send').onclick = async () => {
+      const sendBtn = overlay.querySelector('#otp-send');
+      const noteEl = overlay.querySelector('#otp-note');
+      sendBtn.disabled = true; sendBtn.textContent = 'Menghantar…';
+      try {
+        const r = await otpPost('/api/request-otp', { ic });
+        if (r.ok && r.data.ok) { renderStep2(r.data.phoneHint || ''); return; }
+        noteEl.textContent = '⚠️ ' + otpErrMsg(r.data);
+      } catch {
+        noteEl.textContent = '⚠️ Tiada sambungan internet. Sila cuba lagi.';
+      }
+      sendBtn.disabled = false; sendBtn.textContent = 'Hantar Kod';
+    };
+  };
+
+  const renderStep2 = (phoneHint) => {
+    overlay.innerHTML = card(`
+      <p style="font-size:0.82rem;color:var(--text-muted,#64748b);margin:0.3rem 0 0.9rem;">Kod telah dihantar ke WhatsApp <strong>${phoneHint}</strong>. Masukkan kod dan kata laluan baharu anda.</p>
+      <div style="display:flex;flex-direction:column;gap:0.6rem;">
+        <input id="otp-code" inputmode="numeric" maxlength="6" placeholder="Kod 6 digit" style="${field}letter-spacing:0.3em;text-align:center;font-weight:700;">
+        <input id="otp-pw1" type="password" placeholder="Kata laluan baharu (min 6 aksara)" style="${field}">
+        <input id="otp-pw2" type="password" placeholder="Sahkan kata laluan baharu" style="${field}">
+      </div>
+      ${note('', '#ef4444')}
+      <div style="display:flex;gap:0.6rem;margin-top:1rem;">${ghost}${btn('otp-confirm', 'Set Semula', 'linear-gradient(135deg,#10b981,#059669)')}</div>
+      <button id="otp-resend" style="margin-top:0.7rem;width:100%;background:none;border:none;color:var(--primary,#3b82f6);font-size:0.78rem;font-weight:600;cursor:pointer;text-decoration:underline;">Hantar semula kod</button>
+    `);
+    overlay.querySelector('#otp-cancel').onclick = close;
+    overlay.querySelector('#otp-resend').onclick = renderStep1;
+    overlay.querySelector('#otp-confirm').onclick = async () => {
+      const noteEl = overlay.querySelector('#otp-note');
+      const otp = overlay.querySelector('#otp-code').value.trim();
+      const pw1 = overlay.querySelector('#otp-pw1').value;
+      const pw2 = overlay.querySelector('#otp-pw2').value;
+      if (!otp) { noteEl.textContent = '⚠️ Sila masukkan kod OTP.'; return; }
+      if (pw1.length < 6) { noteEl.textContent = '⚠️ Kata laluan mesti sekurang-kurangnya 6 aksara.'; return; }
+      if (pw1 !== pw2) { noteEl.textContent = '⚠️ Kata laluan tidak sepadan.'; return; }
+      const cBtn = overlay.querySelector('#otp-confirm');
+      cBtn.disabled = true; cBtn.textContent = 'Menyimpan…';
+      try {
+        const r = await otpPost('/api/confirm-otp', { ic, otp, newPassword: pw1 });
+        if (r.ok && r.data.ok) {
+          close();
+          alert('✅ Kata laluan anda telah ditetapkan semula. Sila log masuk dengan kata laluan baharu.');
+          const pf = document.querySelector('#password'); if (pf) pf.value = '';
+          return;
+        }
+        if (r.data.error === 'mismatch') noteEl.textContent = `⚠️ Kod OTP salah. Baki percubaan: ${r.data.attemptsLeft ?? '?'}.`;
+        else noteEl.textContent = '⚠️ ' + otpErrMsg(r.data);
+      } catch {
+        noteEl.textContent = '⚠️ Tiada sambungan internet. Sila cuba lagi.';
+      }
+      cBtn.disabled = false; cBtn.textContent = 'Set Semula';
+    };
+  };
+
+  renderStep1();
 };
 
 window.testWANotification = async function() {
@@ -663,7 +788,7 @@ const HELP_FAQ = [
     a:'MC <strong>tidak</strong> auto-lulus sepenuhnya. Ia dihantar terus untuk semakan & kelulusan: cawangan <strong>Pahang → HR</strong>; <strong>Terengganu → HOD/PIC</strong> — tanpa melalui Peringkat 1 biasa. HR/HOD akan semak Sijil MC kemudian luluskan/tolak.' },
   { id:'forgot-password', cat:'Akaun', popular:true, keywords:['lupa','password','kata laluan','lupa kata laluan','reset'],
     q:'Lupa kata laluan',
-    a:'Di skrin log masuk, tekan <strong>"Lupa Kata Laluan?"</strong> → kata laluan akan dihantar ke <strong>WhatsApp</strong> anda. Pastikan nombor telefon anda telah didaftarkan oleh HR/Admin.' },
+    a:'Pilih nama anda dari senarai, kemudian tekan <strong>"Lupa Kata Laluan?"</strong> → satu <strong>kod OTP</strong> akan dihantar ke <strong>WhatsApp</strong> anda. Masukkan kod itu dan tetapkan kata laluan baharu terus di skrin. Pastikan nombor telefon anda telah didaftarkan oleh HR/Admin.' },
   { id:'update-phone', cat:'Akaun', keywords:['tukar telefon','profil','kemaskini','nombor telefon','tukar nombor'],
     q:'Tukar nombor telefon / kemas kini profil',
     a:'Nombor telefon & maklumat profil dikemas kini oleh <strong>HR/Admin</strong>. Sila hubungi mereka untuk sebarang perubahan.' },
@@ -3393,7 +3518,7 @@ function renderLogin() {
            </p>
            <p style="font-size: 1.05rem; color: var(--text-muted); margin-top: 0.5rem; line-height: 1.4; display: flex; align-items: flex-start; gap: 0.4rem;">
              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-             Klik <strong style="color: var(--primary);">Lupa Kata Laluan?</strong> untuk hantar kata laluan ke WhatsApp anda. Pastikan nombor telefon anda telah didaftarkan oleh HR/Admin.
+             Pilih nama anda, kemudian klik <strong style="color: var(--primary);">Lupa Kata Laluan?</strong> — satu kod OTP akan dihantar ke WhatsApp anda untuk menetapkan kata laluan baharu. Pastikan nombor telefon anda telah didaftarkan oleh HR/Admin.
            </p>
            <!-- First-login reminder -->
            <div style="margin-top:0.85rem;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:0.75rem;padding:0.75rem 1rem;display:flex;align-items:flex-start;gap:0.5rem;">

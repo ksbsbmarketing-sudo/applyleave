@@ -1,0 +1,13 @@
+{
+  "name": "ksb-otp-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Free (no-Blaze) WhatsApp OTP password-reset backend for KSB Leave, hosted on Vercel.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.7.0"
+  }
+}

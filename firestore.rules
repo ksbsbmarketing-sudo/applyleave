@@ -93,6 +93,11 @@ service cloud.firestore {
     match /notifications/{id}      { allow read, write: if signedIn(); }
     match /user_presence/{id}      { allow read, write: if signedIn(); }
 
+    // OTP password-reset state — written/read only by the external (no-Blaze)
+    // reset backend via the Admin SDK, which bypasses rules. Browsers (incl. the
+    // pre-login bootstrap) must never read OTP hashes, so deny all client access.
+    match /password_resets/{id} { allow read, write: if false; }
+
     match /audit_logs/{id} { allow read, create: if signedIn(); allow update: if false; allow delete: if manageStaff(); }
     match /wa_logs/{id}    { allow read, create: if signedIn(); allow update: if false; allow delete: if manageStaff(); }
   }
