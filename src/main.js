@@ -4910,8 +4910,18 @@ function renderDashboard() {
       if (_proofInput && _proofInput.files.length > 0) {
         const _proofFile = _proofInput.files[0];
         try {
+          // Sesetengah telefon (terutama Android/file manager) hantar File.type kosong →
+          // Firebase akan upload sebagai application/octet-stream → ditolak oleh storage rule
+          // (leave-proofs hanya benarkan image/* atau application/pdf). Kesan jenis dari nama
+          // fail sebagai sandaran supaya bukti jpg/pdf sentiasa lepas.
+          const _n = (_proofFile.name || '').toLowerCase();
+          const _ct = _proofFile.type
+            || (_n.endsWith('.pdf')  ? 'application/pdf'
+              : _n.endsWith('.png')  ? 'image/png'
+              : (_n.endsWith('.jpg') || _n.endsWith('.jpeg')) ? 'image/jpeg'
+              : 'application/octet-stream');
           const _pRef = storageRef(storage, `leave-proofs/${user.ic}/${Date.now()}_${_proofFile.name}`);
-          await uploadBytes(_pRef, _proofFile);
+          await uploadBytes(_pRef, _proofFile, { contentType: _ct });
           proofUrl = await getDownloadURL(_pRef);
           proofName = _proofFile.name;
         } catch (err) {
@@ -6274,7 +6284,7 @@ function renderView() {
                   <div style="font-size:0.75rem;font-weight:700;color:#ef4444;text-transform:uppercase;margin-bottom:0.6rem;">Surat Kematian — Wajib Muat Naik</div>
                   <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.75rem;">Cuti Ehsan hanya untuk kematian ayah, ibu, suami, isteri, atau anak. Had: 3 hari sahaja.</div>
                   <div style="display:flex;align-items:center;gap:0.75rem;">
-                    <input type="file" id="ehsan-upload" style="display:none;" onchange="window.handleFileSelect(this, 'ehsan-filename')">
+                    <input type="file" id="ehsan-upload" accept="image/jpeg,image/png,image/jpg,application/pdf" style="display:none;" onchange="window.handleFileSelect(this, 'ehsan-filename')">
                     <button type="button" onclick="document.getElementById('ehsan-upload').click()" style="padding:0.55rem 1rem;border-radius:8px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.1);color:#ef4444;font-size:0.75rem;font-weight:700;cursor:pointer;white-space:nowrap;">PILIH FAIL</button>
                     <span id="ehsan-filename" style="font-size:0.72rem;color:var(--text-muted);">Tiada fail dipilih</span>
                   </div>
@@ -6291,7 +6301,7 @@ function renderView() {
                   <div style="padding:1rem;border-radius:12px;border:1.5px dashed rgba(249,115,22,0.3);background:rgba(249,115,22,0.03);">
                     <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:0.75rem;">Sila muat naik gambar/bukti berkaitan (contoh: gambar banjir, kerosakan kenderaan dll)</div>
                     <div style="display:flex;align-items:center;gap:0.75rem;">
-                      <input type="file" id="emg-upload" style="display:none;" onchange="window.handleFileSelect(this, 'emg-filename')">
+                      <input type="file" id="emg-upload" accept="image/jpeg,image/png,image/jpg,application/pdf" style="display:none;" onchange="window.handleFileSelect(this, 'emg-filename')">
                       <button type="button" onclick="document.getElementById('emg-upload').click()" style="padding:0.55rem 1rem;border-radius:8px;border:1px solid rgba(249,115,22,0.3);background:rgba(249,115,22,0.1);color:#f97316;font-size:0.75rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;white-space:nowrap;">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                         PILIH FAIL BUKTI
