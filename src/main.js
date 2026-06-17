@@ -7114,6 +7114,12 @@ function renderView() {
                       "${req.reason}"
                   </div>
 
+                  ${req.proofUrl ? `
+                  <a href="${req.proofUrl}" target="_blank" rel="noopener" title="Lihat bukti yang dimuat naik pemohon${req.proofName ? ' (' + req.proofName + ')' : ''}" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;width:100%;margin-bottom:1.5rem;padding:0.7rem 1rem;border-radius:10px;color:#10b981;border:1px solid rgba(16,185,129,0.35);background:rgba(16,185,129,0.08);font-weight:700;font-size:0.85rem;text-decoration:none;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                      📎 Lihat Bukti${req.proofName ? ` — ${req.proofName}` : ''}
+                  </a>` : ''}
+
                   <div style="display:flex;gap:0.6rem;margin-bottom:1rem;">
                     <button class="neu-btn primary-text" onclick="printLeave(${req.id})" style="flex:1;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
