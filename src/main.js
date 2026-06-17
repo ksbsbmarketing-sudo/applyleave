@@ -1111,6 +1111,14 @@ window.canManageRequest = function(user, req) {
 
 window.handleFileSelect = function(input, displayId, noticeId) {
     if (input.files.length > 0) {
+        // Had saiz 10MB (selaras dengan had Cloudinary free tier).
+        if (input.files[0].size > 10 * 1024 * 1024) {
+            alert('Saiz fail terlalu besar. Had maksimum: 10MB');
+            input.value = '';
+            const _d = document.getElementById(displayId);
+            if (_d) _d.innerText = 'Tiada fail dipilih';
+            return;
+        }
         document.getElementById(displayId).innerText = input.files[0].name;
         if (noticeId) {
             const noticeEl = document.getElementById(noticeId);
@@ -4706,7 +4714,7 @@ function renderMessengerView() {
         ` : ''}
 
         <form class="msg-input-area" onsubmit="window.sendMessage(event)">
-          <label class="msg-file-btn" for="msg-file-input" title="Lampirkan fail">
+          <label class="msg-file-btn" for="msg-file-input" title="Lampirkan fail (maks 10MB)">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
             <input type="file" id="msg-file-input" style="display:none;"
               accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
@@ -6282,7 +6290,7 @@ function renderView() {
                     <span style="font-size:0.65rem;background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.2);border-radius:6px;padding:0.15rem 0.5rem;font-weight:700;">★ WAJIB</span>
                   </div>
                   <div style="padding:1rem;border-radius:12px;border:1.5px dashed rgba(59,130,246,0.3);background:rgba(59,130,246,0.03);">
-                    <div style="font-size:0.75rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;">Sila muat naik MC yang dikeluarkan oleh doktor (JPG/PNG/PDF, maks 500KB)</div>
+                    <div style="font-size:0.75rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;">Sila muat naik MC yang dikeluarkan oleh doktor (JPG/PNG/PDF, maks 10MB)</div>
                     <div style="display:flex;align-items:center;gap:0.75rem;">
                       <input type="file" id="mc-upload" accept="image/jpeg,image/png,image/jpg,application/pdf" style="display:none;" onchange="window.handleFileSelect(this, 'mc-filename', 'mc-notice')">
                       <button type="button" onclick="document.getElementById('mc-upload').click()" style="padding:0.55rem 1rem;border-radius:8px;border:1px solid rgba(59,130,246,0.3);background:rgba(59,130,246,0.1);color:#3b82f6;font-size:0.75rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;white-space:nowrap;">
@@ -6302,7 +6310,7 @@ function renderView() {
             ${isEhsan ? `
                 <div style="margin-bottom:1.5rem;padding:1rem;border-radius:12px;border:1.5px dashed rgba(239,68,68,0.3);background:rgba(239,68,68,0.03);">
                   <div style="font-size:0.75rem;font-weight:700;color:#ef4444;text-transform:uppercase;margin-bottom:0.6rem;">Surat Kematian — Wajib Muat Naik</div>
-                  <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.75rem;">Cuti Ehsan hanya untuk kematian ayah, ibu, suami, isteri, atau anak. Had: 3 hari sahaja.</div>
+                  <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.75rem;">Cuti Ehsan hanya untuk kematian ayah, ibu, suami, isteri, atau anak. Had: 3 hari sahaja. <strong>(JPG/PNG/PDF, maks 10MB)</strong></div>
                   <div style="display:flex;align-items:center;gap:0.75rem;">
                     <input type="file" id="ehsan-upload" accept="image/jpeg,image/png,image/jpg,application/pdf" style="display:none;" onchange="window.handleFileSelect(this, 'ehsan-filename')">
                     <button type="button" onclick="document.getElementById('ehsan-upload').click()" style="padding:0.55rem 1rem;border-radius:8px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.1);color:#ef4444;font-size:0.75rem;font-weight:700;cursor:pointer;white-space:nowrap;">PILIH FAIL</button>
@@ -6319,7 +6327,7 @@ function renderView() {
                     <span style="font-size:0.65rem;background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.2);border-radius:6px;padding:0.15rem 0.5rem;font-weight:700;">★ WAJIB</span>
                   </div>
                   <div style="padding:1rem;border-radius:12px;border:1.5px dashed rgba(249,115,22,0.3);background:rgba(249,115,22,0.03);">
-                    <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:0.75rem;">Sila muat naik gambar/bukti berkaitan (contoh: gambar banjir, kerosakan kenderaan dll)</div>
+                    <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:0.75rem;">Sila muat naik gambar/bukti berkaitan (contoh: gambar banjir, kerosakan kenderaan dll) <strong>(JPG/PNG/PDF, maks 10MB)</strong></div>
                     <div style="display:flex;align-items:center;gap:0.75rem;">
                       <input type="file" id="emg-upload" accept="image/jpeg,image/png,image/jpg,application/pdf" style="display:none;" onchange="window.handleFileSelect(this, 'emg-filename')">
                       <button type="button" onclick="document.getElementById('emg-upload').click()" style="padding:0.55rem 1rem;border-radius:8px;border:1px solid rgba(249,115,22,0.3);background:rgba(249,115,22,0.1);color:#f97316;font-size:0.75rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;white-space:nowrap;">
