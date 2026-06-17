@@ -1132,6 +1132,38 @@ window.handleFileSelect = function(input, displayId, noticeId) {
     }
 };
 
+// Master Logs: HR/Admin muat naik atau ganti bukti untuk cuti yang perlukan bukti
+// (MC / Cuti Kecemasan / Cuti Ehsan). Fail dimuat naik ke Cloudinary dan proofUrl/
+// proofName dikemas kini pada rekod cuti. Berguna untuk rekod lama yang belum ada bukti.
+window.reuploadProof = function(id) {
+  const rec = leaveRecords.find(r => r.id === id);
+  if (!rec) return;
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/jpeg,image/png,image/jpg,application/pdf';
+  inp.onchange = async () => {
+    const file = inp.files && inp.files[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { alert('Saiz fail terlalu besar. Had maksimum: 10MB'); return; }
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+      fd.append('folder', `leave-proofs/${rec.ic}`);
+      const resp = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, { method: 'POST', body: fd });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.secure_url) throw new Error((data.error && data.error.message) || ('Cloudinary HTTP ' + resp.status));
+      await updateDoc(doc(db, 'leaves', rec.docId), { proofUrl: data.secure_url, proofName: file.name });
+      if (window.logSystemActivity) window.logSystemActivity(`Re-uploaded proof for leave ${id} (${rec.type})`);
+      alert('✅ Bukti berjaya dimuat naik & disimpan.');
+    } catch (err) {
+      console.error('Re-upload proof failed:', err);
+      alert('🔴 Gagal memuat naik fail bukti. Sila cuba lagi atau semak sambungan internet anda.');
+    }
+  };
+  inp.click();
+};
+
 window.updateLocumInfo = function(id, field, value) {
   const record = leaveRecords.find(r => r.id === id);
   if (record) {
@@ -7552,6 +7584,7 @@ function renderView() {
                               <td style="padding: 1.5rem 1rem; text-align: right;">
                                   <div style="display: flex; gap: 1.25rem; justify-content: flex-end;">
                                       ${r.proofUrl ? `<a href="${r.proofUrl}" target="_blank" rel="noopener" title="Lihat Bukti${r.proofName ? ' (' + r.proofName + ')' : ''}" style="display:inline-flex;align-items:center;color:#10b981;transition:transform 0.2s;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></a>` : ''}
+                                      ${['MC','EL','EL_EMG'].includes(r.type) && ['admin','hr','super_admin'].includes(user.role) ? `<button onclick="window.reuploadProof(${r.id})" title="${r.proofUrl ? 'Ganti' : 'Muat Naik'} Bukti (JPG/PNG/PDF, maks 10MB)" style="background: none; border: none; cursor: pointer; color: #f59e0b; transition: transform 0.2s;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></button>` : ''}
                                       ${window.canManageRequest(user, r) && r.status !== 'CANCELLED' ? `<button onclick="window.cancelLeave(${r.id})" title="Batal Cuti" style="background: none; border: none; cursor: pointer; color: #f87171; transition: transform 0.2s;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg></button>` : ''}
                                       <button onclick="printLeave(${r.id})" style="background: none; border: none; cursor: pointer; color: var(--secondary); transition: transform 0.2s;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg></button>
                                       ${['admin', 'hr', 'super_admin'].includes(user.role) ? `
