@@ -109,6 +109,12 @@ const auth = getAuth(firebaseApp);
 const analytics = getAnalytics(firebaseApp);
 const storage = getStorage(firebaseApp);
 const functions = getFunctions(firebaseApp);
+
+// Cloudinary — hos bukti cuti (MC / Kecemasan / Ehsan). Firebase Storage TIDAK
+// diaktifkan untuk projek ni (perlu Blaze), jadi bukti dimuat naik ke Cloudinary
+// melalui "unsigned upload" (tiada backend/rahsia perlu — preset selamat didedah).
+const CLOUDINARY_CLOUD_NAME = 'dgm3fozmu';
+const CLOUDINARY_UPLOAD_PRESET = 'l1mrxwdx';
 const AUTH_EMAIL_DOMAIN = 'ksb-leave.local';
 const emailForIC = (ic) => `${String(ic).replace(/[^a-zA-Z0-9]/g, '')}@${AUTH_EMAIL_DOMAIN}`;
 
@@ -4899,9 +4905,10 @@ function renderDashboard() {
         return;
       }
       
-      // ── Muat naik fail bukti (MC / Kecemasan / Ehsan) ke Firebase Storage ──
-      // Fail wajib sudah disahkan dipilih di atas; di sini ia dimuat naik betul-betul
-      // dan URL disimpan dalam rekod untuk rujukan HR (dilihat semula di Master Logs).
+      // ── Muat naik fail bukti (MC / Kecemasan / Ehsan) ke Cloudinary ──
+      // Firebase Storage tidak diaktifkan (perlu Blaze), jadi bukti dimuat naik ke
+      // Cloudinary via unsigned upload. `secure_url` disimpan sebagai proofUrl untuk
+      // rujukan HR (dilihat semula sebagai "Lihat Bukti" di Master Logs).
       let proofUrl = null, proofName = null;
       const _proofInput = selectedLeaveType === 'MC'     ? document.getElementById('mc-upload')
                         : selectedLeaveType === 'EL_EMG' ? document.getElementById('emg-upload')
@@ -4910,19 +4917,21 @@ function renderDashboard() {
       if (_proofInput && _proofInput.files.length > 0) {
         const _proofFile = _proofInput.files[0];
         try {
-          // Sesetengah telefon (terutama Android/file manager) hantar File.type kosong →
-          // Firebase akan upload sebagai application/octet-stream → ditolak oleh storage rule
-          // (leave-proofs hanya benarkan image/* atau application/pdf). Kesan jenis dari nama
-          // fail sebagai sandaran supaya bukti jpg/pdf sentiasa lepas.
-          const _n = (_proofFile.name || '').toLowerCase();
-          const _ct = _proofFile.type
-            || (_n.endsWith('.pdf')  ? 'application/pdf'
-              : _n.endsWith('.png')  ? 'image/png'
-              : (_n.endsWith('.jpg') || _n.endsWith('.jpeg')) ? 'image/jpeg'
-              : 'application/octet-stream');
-          const _pRef = storageRef(storage, `leave-proofs/${user.ic}/${Date.now()}_${_proofFile.name}`);
-          await uploadBytes(_pRef, _proofFile, { contentType: _ct });
-          proofUrl = await getDownloadURL(_pRef);
+          const _fd = new FormData();
+          _fd.append('file', _proofFile);
+          _fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+          // Susun ikut IC supaya bukti mudah dikesan di Cloudinary.
+          _fd.append('folder', `leave-proofs/${user.ic}`);
+          // `auto` = Cloudinary kesan sendiri sama ada gambar (jpg/png) atau PDF.
+          const _resp = await fetch(
+            `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`,
+            { method: 'POST', body: _fd }
+          );
+          const _data = await _resp.json().catch(() => ({}));
+          if (!_resp.ok || !_data.secure_url) {
+            throw new Error((_data.error && _data.error.message) || ('Cloudinary HTTP ' + _resp.status));
+          }
+          proofUrl = _data.secure_url;
           proofName = _proofFile.name;
         } catch (err) {
           console.error('Proof upload failed:', err);
