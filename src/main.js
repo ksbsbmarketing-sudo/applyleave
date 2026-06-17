@@ -38,7 +38,6 @@ import {
   limit,
   documentId
 } from "firebase/firestore";
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // ── Reload-loop circuit breaker ─────────────────────────────────────────────
 // If the page reloads itself many times in a few seconds (e.g. a stale service
@@ -107,7 +106,6 @@ if (RECAPTCHA_V3_SITE_KEY && !RECAPTCHA_V3_SITE_KEY.startsWith('__')) {
 const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
 const analytics = getAnalytics(firebaseApp);
-const storage = getStorage(firebaseApp);
 const functions = getFunctions(firebaseApp);
 
 // Cloudinary — hos bukti cuti (MC / Kecemasan / Ehsan). Firebase Storage TIDAK
@@ -4320,9 +4318,22 @@ window.sendMessage = async function(e) {
   try {
     let fileUrl = null, fileName = null, fileType = null, fileSize = null;
     if (messengerFileObj) {
-      const fRef = storageRef(storage, `messenger/${messengerRoomId}/${Date.now()}_${messengerFileObj.name}`);
-      await uploadBytes(fRef, messengerFileObj.file);
-      fileUrl = await getDownloadURL(fRef);
+      // Lampiran messenger ke Cloudinary (Firebase Storage tidak diaktifkan — perlu Blaze).
+      // `auto` kesan sendiri gambar / PDF / fail lain (raw spt doc/xls). secure_url disimpan
+      // pada mesej dan dibuka melalui pautan fail dalam chat.
+      const _mfd = new FormData();
+      _mfd.append('file', messengerFileObj.file);
+      _mfd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+      _mfd.append('folder', `messenger/${messengerRoomId}`);
+      const _mresp = await fetch(
+        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`,
+        { method: 'POST', body: _mfd }
+      );
+      const _mdata = await _mresp.json().catch(() => ({}));
+      if (!_mresp.ok || !_mdata.secure_url) {
+        throw new Error((_mdata.error && _mdata.error.message) || ('Cloudinary HTTP ' + _mresp.status));
+      }
+      fileUrl = _mdata.secure_url;
       fileName = messengerFileObj.name;
       fileType = messengerFileObj.type;
       fileSize = messengerFileObj.size;
