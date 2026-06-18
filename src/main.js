@@ -1873,22 +1873,27 @@ window.calculateYears = function(dateStr) {
     if(el) el.innerText = `${text} BERKHIDMAT`;
 };
 
-// Baki AL = baseline − guna sistem. Baseline = Pelarasan HR (baki migrasi) jika diisi,
-// jika tidak peruntukan tahunan penuh (CF + AL).
-function _recomputeAlBalanceFields() {
-    const cf = parseFloat(document.getElementById('ent-CF')?.value || 0);
-    const al = parseFloat(document.getElementById('ent-AL')?.value || 0);
-    const total = cf + al;
-    const totalEl = document.getElementById('al-total-display');
-    if (totalEl) totalEl.value = total.toFixed(0);
-    const adj = parseFloat(document.getElementById('al-adj-input')?.value || 0);
-    const sysUsed = parseFloat(document.getElementById('al-sys-used-display')?.dataset.used || 0);
-    const baseline = adj > 0 ? adj : total;
-    const balEl = document.getElementById('al-balance-display');
-    if (balEl) balEl.value = Math.max(0, baseline - sysUsed).toFixed(1);
-}
-window._updateAlTotal = _recomputeAlBalanceFields;
-window._updateAlBalance = _recomputeAlBalanceFields;
+// Formula B: Baki = Jumlah − Guna Sebelum Sistem − Guna Dalam Sistem − Pelarasan HR.
+// prefix: 'al' | 'mc' | 'el'. AL ada Jumlah = CF + ent_AL; MC/EL = ent terus.
+window._recalcLeaveBalance = function(prefix) {
+    let total;
+    if (prefix === 'al') {
+        const cf = parseFloat(document.getElementById('ent-CF')?.value || 0);
+        const al = parseFloat(document.getElementById('ent-AL')?.value || 0);
+        total = cf + al;
+        const tEl = document.getElementById('al-total-display');
+        if (tEl) tEl.value = total.toFixed(0);
+    } else {
+        total = parseFloat(document.getElementById('ent-' + prefix.toUpperCase())?.value || 0);
+    }
+    const pre = parseFloat(document.getElementById(prefix + '-used-pre-input')?.value || 0);
+    const sys = parseFloat(document.getElementById(prefix + '-sys-used-display')?.dataset.used || 0);
+    const pel = parseFloat(document.getElementById(prefix + '-pelarasan-input')?.value || 0);
+    const balEl = document.getElementById(prefix + '-balance-display');
+    if (balEl) balEl.value = Math.max(0, total - pre - sys - pel).toFixed(1);
+};
+window._updateAlTotal   = () => window._recalcLeaveBalance('al');
+window._updateAlBalance = () => window._recalcLeaveBalance('al');
 
 let systemAuditLogs = [];
 
@@ -1968,7 +1973,8 @@ window.printLeave = function(id) {
     const { before: bakiTerdahulu, after: bakiSelepas } = recordBalances({
       record,
       ent: stats.ent,
-      alAdj: record.type === 'AL' ? parseFloat(staffObj.al_adj || 0) : 0,
+      // Potongan bukan-rekod (Formula B): Guna Sebelum Sistem + Pelarasan HR (AL/MC/EL).
+      alAdj: (stats.usedPre || 0) + (stats.pelarasan || 0),
       records: leaveRecords,
     });
     // KELAYAKAN CUTI TAHUNAN: untuk AL guna kelayakan tahunan penuh; jenis lain guna entitlement jenis itu.
@@ -2651,14 +2657,11 @@ window.generateAttendanceReport = function() {
 
   const renderRows = (arr, isDoctor) => arr.map((s,i) => {
     const ml = getMonthLeave(s.ic), yl = getYTDLeave(s.ic);
-    // Baki Cuti = baki semasa (baseline Pelarasan HR / peruntukan − guna) / peruntukan setahun
-    const alBaseline = window.getEarnedAL(s);
-    const alEnt = (s.ent_AL !== undefined && s.ent_AL !== null ? parseFloat(s.ent_AL) : window.getEntitlementAL(s)) + parseFloat(s.ent_CF || 0);
-    const alUsed = parseFloat((yl['AL']||0).toFixed(1));
-    const alRem = Math.max(0, alBaseline - alUsed);
-    const mcEntStored = s['ent_MC']; const mcEnt = (mcEntStored!==undefined&&mcEntStored!==null)?parseFloat(mcEntStored):14;
-    const mcUsed = parseFloat((yl['MC']||0).toFixed(1));
-    const mcRem = Math.max(0, mcEnt - mcUsed);
+    // Baki Cuti = baki Formula B (getLeaveStats) / peruntukan setahun
+    const alSt = window.getLeaveStats(s, 'AL');
+    const alEnt = alSt.ent, alRem = alSt.bal;
+    const mcSt = window.getLeaveStats(s, 'MC');
+    const mcEnt = mcSt.ent, mcRem = mcSt.bal;
     const al = ml['AL']||0, mc = ml['MC']||0;
     const el = (ml['EL']||0)+(ml['EL_EMG']||0), up = ml['UP']||0;
     const last = isDoctor ? (ml['CME']||0) : ((ml['HL']||0)+(ml['ML']||0)+(ml['ML_PL']||0));
@@ -3842,31 +3845,21 @@ window.getMonthsWorkedThisYear = function(startDate) {
 
 window.getEarnedAL = function(staffObj) {
   if (!staffObj) return 0;
-  // Model migrasi pertengahan tahun:
-  //  • Jika HR telah set "Pelarasan HR" (al_adj > 0) ia ialah BAKI AL TINGGAL yang
-  //    dimigrasi dari sistem manual — itulah baseline sebenar staf.
-  //  • Jika belum diisi, fallback ke peruntukan tahunan penuh (ent_AL + CF) — TIADA
-  //    prorata ÷12 (sistem bermula pertengahan tahun, prorata setahun tidak sah).
-  const adj = parseFloat(staffObj.al_adj || 0);
-  if (adj > 0) return adj;
-  const entitlement = window.getEntitlementAL(staffObj);
-  const cf = parseFloat(staffObj.ent_CF || 0); // Baki AL dibawa dari tahun lepas
-  return entitlement + cf;
+  // Jumlah Peruntukan AL = peruntukan tahunan (ent_AL) + baki dibawa (ent_CF).
+  // Tiada prorata ÷12. Potongan (guna sebelum sistem, guna sistem, pelarasan HR)
+  // dikira dalam getLeaveStats (Formula B).
+  return window.getEntitlementAL(staffObj) + parseFloat(staffObj.ent_CF || 0);
 };
 
 window.getLeaveStats = function(staff, type) {
   if (!staff) return { used: 0, ent: 0, bal: 0 };
 
   const records = leaveRecords.filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === type);
-  let usedFromRecords = records.reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
-  // AL: baki = baseline (Pelarasan HR / peruntukan) − cuti diluluskan dalam sistem.
-  // al_adj BUKAN "guna" lagi — ia baseline (lihat getEarnedAL). Jadi used = rekod sistem sahaja.
-  const used = usedFromRecords;
+  const usedSys = records.reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
 
   let ent = 0;
   if (type === 'AL') {
-    // Baseline AL: Pelarasan HR (baki migrasi) jika diisi, jika tidak peruntukan penuh
-    ent = window.getEarnedAL(staff);
+    ent = window.getEarnedAL(staff); // Jumlah = ent_AL + CF
   } else {
     // ML_PL entitlement is saved as ent_PL by the HR form (legacy key)
     const entKey = type === 'ML_PL' ? 'ent_PL' : `ent_${type}`;
@@ -3876,12 +3869,23 @@ window.getLeaveStats = function(staff, type) {
       : (leaveCategories.find(c => c.id === type)?.entitlement || 0);
   }
 
+  // Formula B (AL/MC/EL): Baki = Jumlah − Guna Sebelum Sistem − Guna Dalam Sistem − Pelarasan HR.
+  // Medan {jenis}_used_pre & {jenis}_pelarasan diisi HR (lalai 0). Jenis lain: baki = ent − used.
+  let usedPre = 0, pelarasan = 0;
+  if (type === 'AL' || type === 'MC' || type === 'EL') {
+    const p = type.toLowerCase();
+    usedPre   = parseFloat(staff[`${p}_used_pre`]  || 0);
+    pelarasan = parseFloat(staff[`${p}_pelarasan`] || 0);
+  }
+
   return {
-    used: used,
-    usedFromRecords: type === 'AL' ? usedFromRecords : used,
-    adj: type === 'AL' ? parseFloat(staff.al_adj || 0) : 0,
+    used: usedSys,
+    usedFromRecords: usedSys,
+    usedPre: usedPre,
+    pelarasan: pelarasan,
+    adj: pelarasan,
     ent: ent,
-    bal: Math.max(0, ent - used)
+    bal: Math.max(0, ent - usedPre - usedSys - pelarasan)
   };
 };
 
@@ -4895,10 +4899,9 @@ function renderDashboard() {
 
       let leaveBreakdown = '';
       if (selectedLeaveType === 'AL') {
-          const earned = window.getEarnedAL(user);
-          const usedAL = leaveRecords.filter(r => r.ic === user.ic && r.status === 'APPROVED' && r.type === 'AL').reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
-          const currentBal = earned - usedAL;
-          
+          // Baki AL sebenar = Formula B (Jumlah − Guna Sebelum − Guna Sistem − Pelarasan HR)
+          const currentBal = window.getLeaveStats(user, 'AL').bal;
+
           if (diffDays > currentBal) {
               const unpaidDays = diffDays - Math.max(0, currentBal);
               const paidDays = diffDays - unpaidDays;
@@ -5188,9 +5191,13 @@ function renderDashboard() {
                       }
                   });
 
-                  // Simpan pelarasan manual HR (cuti AL sebelum sistem / pindahan dari rekod HR)
-                  const adjInput = document.getElementById('al-adj-input');
-                  if (adjInput) updates.al_adj = Math.max(0, parseFloat(adjInput.value) || 0);
+                  // Formula B: simpan "Guna Sebelum Sistem" & "Pelarasan HR" untuk AL/MC/EL.
+                  ['al', 'mc', 'el'].forEach(p => {
+                      const preEl = document.getElementById(`${p}-used-pre-input`);
+                      const pelEl = document.getElementById(`${p}-pelarasan-input`);
+                      if (preEl) updates[`${p}_used_pre`]  = Math.max(0, parseFloat(preEl.value) || 0);
+                      if (pelEl) updates[`${p}_pelarasan`] = Math.max(0, parseFloat(pelEl.value) || 0);
+                  });
 
                   try {
                       await updateDoc(doc(db, "staff", staffObj.ic), updates);
@@ -5803,9 +5810,10 @@ function renderPersonalDashboard() {
   const cmeStats = window.getLeaveStats(user, 'CME');
   const cfStats = window.getLeaveStats(user, 'CF');
 
-  // Baki AL = sumber rasmi getLeaveStats (baseline Pelarasan HR / peruntukan − guna sistem)
+  // Baki AL = baki Pelarasan HR (baseline − guna sistem); penyebut = peruntukan setahun
+  // (ent_AL + CF) supaya selaras dengan report "SENARAI BILANGAN CUTI".
   const balAL = alStats.bal.toFixed(2);
-  const earnedAL = alStats.ent;
+  const earnedAL = (user.ent_AL !== undefined && user.ent_AL !== null ? parseFloat(user.ent_AL) : window.getEntitlementAL(user)) + parseFloat(user.ent_CF || 0);
 
   const pendingCount = myRecords.filter(r => (r.status || '').includes('PENDING') || (r.status || '').includes('RECOM') || (r.status || '').includes('HOD') || r.status === 'TL APPROVED').length;
 
@@ -5868,8 +5876,9 @@ function renderPersonalDashboard() {
            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem 0.75rem; font-size: 0.78rem; color: var(--text-muted); border-top: 1px solid rgba(163,177,198,0.15); padding-top: 0.6rem;">
              <span>Bawa Lepas (CF):</span><span style="font-weight:700;color:var(--text-secondary);">${parseFloat(user.ent_CF||0).toFixed(0)} hari</span>
              <span>Peruntukan ${new Date().getFullYear()}:</span><span style="font-weight:700;color:var(--text-secondary);">${(user.ent_AL !== undefined ? parseFloat(user.ent_AL) : window.getEntitlementAL(user)).toFixed(0)} hari</span>
-             <span>Digunakan:</span><span style="font-weight:700;color:#ef4444;">${alStats.used.toFixed(1)} hari</span>
-             ${alStats.adj > 0 ? `<span>Pelarasan HR:</span><span style="font-weight:700;color:#f59e0b;">${alStats.adj.toFixed(1)} hari</span>` : ''}
+             ${alStats.usedPre > 0 ? `<span>Guna Sebelum Sistem:</span><span style="font-weight:700;color:#0ea5e9;">${alStats.usedPre.toFixed(1)} hari</span>` : ''}
+             <span>Digunakan (Sistem):</span><span style="font-weight:700;color:#ef4444;">${alStats.used.toFixed(1)} hari</span>
+             ${alStats.pelarasan > 0 ? `<span>Pelarasan HR:</span><span style="font-weight:700;color:#f59e0b;">${alStats.pelarasan.toFixed(1)} hari</span>` : ''}
            </div>
         </div>
 
@@ -6154,39 +6163,24 @@ function renderView() {
               </div>` : '<div style="font-size:0.68rem;color:var(--text-muted);">Cuti ini tiada had — diambil mengikut keperluan.</div>'}
 
               ${isAL ? (() => {
-                const rawEnt      = window.getEntitlementAL(user);
-                const cfEnt       = parseFloat(user.ent_CF || 0);
-                const totalPeruntukan = rawEnt + cfEnt;
-                const usedFromRec = myRecords.filter(r => r.status === 'APPROVED' && r.type === 'AL').reduce((a, r) => a + parseFloat(r.days || 0), 0);
-                const adj         = parseFloat(user.al_adj || 0);
-                const isMigrated  = adj > 0;
-                const baseline    = isMigrated ? adj : totalPeruntukan;   // Pelarasan HR (baki migrasi) atau peruntukan penuh
-                const bakiSebenar = Math.max(0, baseline - usedFromRec);
+                const st = window.getLeaveStats(user, 'AL');
+                const rawEnt = window.getEntitlementAL(user);
+                const cfEnt  = parseFloat(user.ent_CF || 0);
+                const line = (icon, label, valHtml, color) => `
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:0.68rem;color:var(--text-muted);display:flex;align-items:center;gap:0.35rem;">${icon}${label}</span>
+                    <span style="font-size:0.75rem;font-weight:800;color:${color};">${valHtml}</span>
+                  </div>`;
                 return `
                 <div style="margin-top:0.8rem;border-top:1px solid ${selCat.color}22;padding-top:0.75rem;display:flex;flex-direction:column;gap:0.45rem;">
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:0.68rem;color:var(--text-muted);display:flex;align-items:center;gap:0.35rem;">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                      ${isMigrated ? 'Baki Migrasi (Pelarasan HR)' : 'Jumlah Diperuntukan'}
-                    </span>
-                    <span style="font-size:0.75rem;font-weight:800;color:var(--text);">${baseline} hari
-                      ${!isMigrated && cfEnt > 0 ? `<span style="font-size:0.6rem;font-weight:500;color:var(--text-muted);"> (AL ${rawEnt} + CF ${cfEnt})</span>` : ''}
-                    </span>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:0.68rem;color:var(--text-muted);display:flex;align-items:center;gap:0.35rem;">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-                      Digunakan (Sistem)
-                    </span>
-                    <span style="font-size:0.75rem;font-weight:800;color:#ef4444;">${usedFromRec.toFixed(1)} hari</span>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:0.68rem;color:var(--text-muted);display:flex;align-items:center;gap:0.35rem;">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                      Baki AL Sebenar
-                    </span>
-                    <span style="font-size:0.75rem;font-weight:800;color:#10b981;">${bakiSebenar.toFixed(1)} hari</span>
-                  </div>
+                  ${line('<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+                    'Jumlah Diperuntukan',
+                    `${st.ent} hari${cfEnt > 0 ? ` <span style="font-size:0.6rem;font-weight:500;color:var(--text-muted);">(AL ${rawEnt} + CF ${cfEnt})</span>` : ''}`,
+                    'var(--text)')}
+                  ${st.usedPre > 0 ? line('<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Guna Sebelum Sistem', `${st.usedPre.toFixed(1)} hari`, '#0ea5e9') : ''}
+                  ${line('<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>', 'Digunakan (Sistem)', `${st.used.toFixed(1)} hari`, '#ef4444')}
+                  ${st.pelarasan > 0 ? line('<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>', 'Pelarasan HR', `${st.pelarasan.toFixed(1)} hari`, '#f59e0b') : ''}
+                  ${line('<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>', 'Baki AL Sebenar', `${st.bal.toFixed(1)} hari`, '#10b981')}
                 </div>`;
               })() : ''}
             </div>
@@ -8418,14 +8412,11 @@ function renderView() {
 
             const renderAttRow = (s, idx, isDoctor) => {
               const ml = getML(s.ic), yl = getYL(s.ic);
-              // Baki Cuti = baki semasa (baseline Pelarasan HR / peruntukan − guna) / peruntukan setahun
-              const alBaseline = window.getEarnedAL(s);
-              const alEnt = (s.ent_AL !== undefined && s.ent_AL !== null ? parseFloat(s.ent_AL) : window.getEntitlementAL(s)) + parseFloat(s.ent_CF || 0);
-              const alUsed = parseFloat((yl['AL']||0).toFixed(1));
-              const alRem = Math.max(0, alBaseline - alUsed);
-              const mcEntS = s['ent_MC']; const mcEnt = (mcEntS!==undefined&&mcEntS!==null)?parseFloat(mcEntS):14;
-              const mcUsed = parseFloat((yl['MC']||0).toFixed(1));
-              const mcRem = Math.max(0, mcEnt - mcUsed);
+              // Baki Cuti = baki Formula B (getLeaveStats) / peruntukan setahun
+              const alSt = window.getLeaveStats(s, 'AL');
+              const alEnt = alSt.ent, alRem = alSt.bal;
+              const mcSt = window.getLeaveStats(s, 'MC');
+              const mcEnt = mcSt.ent, mcRem = mcSt.bal;
               const al = ml['AL']||0, mc = ml['MC']||0;
               const el = (ml['EL']||0)+(ml['EL_EMG']||0), up = ml['UP']||0;
               const last = isDoctor ? (ml['CME']||0) : ((ml['HL']||0)+(ml['ML']||0)+(ml['ML_PL']||0));
@@ -9440,9 +9431,8 @@ function renderView() {
       const proRataPerMonth = (entitlementAL / 12);
       const monthsWorked = window.getMonthsWorkedThisYear(user.startDate);
       const accumulated = parseFloat((proRataPerMonth * monthsWorked).toFixed(2));
-      // Baki sebenar ikut model migrasi (Pelarasan HR / peruntukan − guna), bukan prorata mentah.
+      // Baki sebenar ikut Formula B (getLeaveStats), bukan prorata mentah.
       const _polAlStats = user ? window.getLeaveStats(user, 'AL') : { ent: 0, used: 0, bal: 0 };
-      const _polMigrated = parseFloat((user && user.al_adj) || 0) > 0;
       
       return `
         <header class="top-bar">
@@ -9490,7 +9480,7 @@ function renderView() {
                              <div style="font-size: 2rem; font-weight: 700; color: var(--secondary);">${(entitlementAL / 12).toFixed(2)} <span style="font-size: 1rem; color: var(--text-muted); font-weight: 500;">hari</span></div>
                           </div>
                           <div>
-                             <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem;">${_polMigrated ? 'Baki Migrasi (Pelarasan HR)' : 'Peruntukan Tersedia'}</div>
+                             <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem;">Jumlah Peruntukan</div>
                              <div style="font-size: 2rem; font-weight: 700; color: var(--accent);">${parseFloat(_polAlStats.ent.toFixed(2))} <span style="font-size: 1rem; color: var(--text-muted); font-weight: 500;">hari</span></div>
                           </div>
                            <div>
@@ -9500,10 +9490,10 @@ function renderView() {
                        </div>
 
                        <div style="text-align: right; font-size: 0.75rem; color: var(--primary); font-style: italic; border-top: 1px dashed var(--border); padding-top: 1rem; font-weight: 600;">
-                          ${_polMigrated ? 'Baki Migrasi (Pelarasan HR)' : 'Peruntukan Penuh'} ${parseFloat(_polAlStats.ent.toFixed(2))} − Digunakan ${parseFloat(_polAlStats.used.toFixed(2))} = Baki ${parseFloat(_polAlStats.bal.toFixed(2))} hari
+                          Jumlah Peruntukan ${parseFloat(_polAlStats.ent.toFixed(2))} − Guna Sebelum ${parseFloat((_polAlStats.usedPre||0).toFixed(2))} − Guna Sistem ${parseFloat(_polAlStats.used.toFixed(2))} − Pelarasan ${parseFloat((_polAlStats.pelarasan||0).toFixed(2))} = Baki ${parseFloat(_polAlStats.bal.toFixed(2))} hari
                        </div>
                        <div style="text-align: right; font-size: 0.65rem; color: var(--text-muted); font-style: italic; margin-top: 0.4rem;">
-                          *Prorata di atas adalah rujukan formula sahaja. Baki sebenar bermula dari pelarasan/peruntukan HR (sistem mula pertengahan tahun).
+                          *Prorata di atas adalah rujukan formula sahaja. Baki sebenar = Jumlah Peruntukan − Guna Sebelum Sistem − Guna Dalam Sistem − Pelarasan HR.
                        </div>
                     </div>
                 </section>
@@ -9934,15 +9924,54 @@ function renderModal() {
 
   const serviceDurationText = window.getServiceDurationText(staff.startDate);
 
-  // Kiraan AL semasa untuk paparan dalam modal
-  const _modalSysUsedAL = leaveRecords
-    .filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === 'AL')
+  // Kiraan AL/MC/EL untuk modal (Formula B: Jumlah − Guna Sebelum − Guna Sistem − Pelarasan)
+  const _modalSysUsed = (t) => leaveRecords
+    .filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === t)
     .reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
-  const _modalAlAdj = parseFloat(staff.al_adj || 0);
+  const _modalSysUsedAL   = _modalSysUsed('AL');
+  const _modalAlUsedPre   = parseFloat(staff.al_used_pre  || 0);
+  const _modalAlPelarasan = parseFloat(staff.al_pelarasan || 0);
   const _modalTotalAL = parseFloat(staff.ent_CF !== undefined ? staff.ent_CF : 0) + parseFloat(staff.ent_AL !== undefined ? staff.ent_AL : window.getEntitlementAL(staff));
-  // Baseline = Pelarasan HR (baki migrasi) jika diisi, jika tidak peruntukan tahunan penuh.
-  const _modalBaseline = _modalAlAdj > 0 ? _modalAlAdj : _modalTotalAL;
-  const _modalAlBalance = Math.max(0, _modalBaseline - _modalSysUsedAL);
+  const _modalAlBalance = Math.max(0, _modalTotalAL - _modalAlUsedPre - _modalSysUsedAL - _modalAlPelarasan);
+
+  // Helper HTML breakdown untuk MC & EL (tiada CF). prefix: 'mc'|'el'.
+  const _leaveBreakdownHTML = (prefix, typeId, title, annualDefault, accent) => {
+    const sys = _modalSysUsed(typeId);
+    const ann = (staff['ent_' + typeId] !== undefined && staff['ent_' + typeId] !== null) ? parseFloat(staff['ent_' + typeId]) : annualDefault;
+    const pre = parseFloat(staff[prefix + '_used_pre'] || 0);
+    const pel = parseFloat(staff[prefix + '_pelarasan'] || 0);
+    const bal = Math.max(0, ann - pre - sys - pel);
+    return `
+      <div style="margin-top:1.75rem;padding-top:1.5rem;border-top:1px solid rgba(163,177,198,0.15);">
+        <div style="font-size: 0.7rem; text-transform: uppercase; color: ${accent}; font-weight: 700; letter-spacing: 1px; margin-bottom: 1rem;">${title} — Peruntukan & Baki</div>
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.25rem;">
+          <div style="display: flex; flex-direction: column;">
+            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Peruntukan Setahun</label>
+            <input type="number" id="ent-${typeId}" class="neu-inset" min="0" step="0.5" value="${ann}" oninput="window._recalcLeaveBalance('${prefix}')" style="border-left: 3px solid ${accent};">
+          </div>
+          <div style="display: flex; flex-direction: column;">
+            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Guna Dalam Sistem</label>
+            <input type="number" id="${prefix}-sys-used-display" class="neu-inset" disabled value="${sys.toFixed(1)}" data-used="${sys}" style="border-left: 3px solid #ef4444; color:#ef4444; font-weight:700; opacity:1; cursor:default;">
+            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Dari rekod cuti diluluskan</span>
+          </div>
+          <div style="display: flex; flex-direction: column;">
+            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #0ea5e9; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Guna Sebelum Sistem</label>
+            <input type="number" id="${prefix}-used-pre-input" class="neu-inset" min="0" step="0.5" value="${pre}" oninput="window._recalcLeaveBalance('${prefix}')" style="border-left: 3px solid #0ea5e9;">
+            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Rekod guna sebelum sistem</span>
+          </div>
+          <div style="display: flex; flex-direction: column;">
+            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #f59e0b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Pelarasan HR</label>
+            <input type="number" id="${prefix}-pelarasan-input" class="neu-inset" min="0" step="0.5" value="${pel}" oninput="window._recalcLeaveBalance('${prefix}')" style="border-left: 3px solid #f59e0b;">
+            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Potongan pembetulan HR</span>
+          </div>
+          <div style="display: flex; flex-direction: column; grid-column: span 2;">
+            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #10b981; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Baki ${typeId} Sebenar</label>
+            <input type="number" id="${prefix}-balance-display" class="neu-inset" disabled value="${bal.toFixed(1)}" style="border-left: 3px solid #10b981; font-weight:800; color:#10b981; opacity:1; cursor:default;">
+            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Peruntukan − Guna Sebelum − Guna Sistem − Pelarasan HR</span>
+          </div>
+        </div>
+      </div>`;
+  };
 
   return `
     <div class="modal-overlay" id="modal-backdrop">
@@ -10053,40 +10082,47 @@ function renderModal() {
               </div>
             </div>
 
-            <!-- Baris 2: Penggunaan semasa & baki sebenar -->
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px dashed rgba(163,177,198,0.2);">
+            <!-- Baris 2: Potongan & baki sebenar (Formula B) -->
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.25rem; margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px dashed rgba(163,177,198,0.2);">
               <div style="display: flex; flex-direction: column;">
-                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">AL Digunakan (Rekod Sistem)</label>
+                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #0ea5e9; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Guna Sebelum Sistem</label>
+                <input type="number" id="al-used-pre-input" class="neu-inset" min="0" step="0.5"
+                  value="${_modalAlUsedPre}"
+                  oninput="window._recalcLeaveBalance('al')"
+                  style="border-left: 3px solid #0ea5e9;">
+                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Rekod AL yang digunakan sebelum sistem</span>
+              </div>
+              <div style="display: flex; flex-direction: column;">
+                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Guna Dalam Sistem</label>
                 <input type="number" id="al-sys-used-display" class="neu-inset" disabled
                   value="${_modalSysUsedAL.toFixed(1)}"
                   data-used="${_modalSysUsedAL}"
                   style="border-left: 3px solid #ef4444; color: #ef4444; font-weight: 700; opacity: 1; cursor: default;">
-                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Dikira dari rekod cuti yang diluluskan</span>
+                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Dari rekod cuti yang diluluskan</span>
               </div>
               <div style="display: flex; flex-direction: column;">
-                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #f59e0b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Pelarasan HR — Baki AL Tinggal (Migrasi)</label>
-                <input type="number" id="al-adj-input" class="neu-inset" min="0" step="0.5"
-                  value="${_modalAlAdj}"
-                  oninput="window._updateAlBalance();"
+                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #f59e0b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Pelarasan HR</label>
+                <input type="number" id="al-pelarasan-input" class="neu-inset" min="0" step="0.5"
+                  value="${_modalAlPelarasan}"
+                  oninput="window._recalcLeaveBalance('al')"
                   style="border-left: 3px solid #f59e0b;">
-                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Baki AL sebenar staf semasa dimigrasi ke sistem. Biar KOSONG jika belum migrasi → sistem guna peruntukan penuh.</span>
+                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Potongan pembetulan HR</span>
               </div>
               <div style="display: flex; flex-direction: column;">
                 <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #10b981; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Baki AL Sebenar</label>
                 <input type="number" id="al-balance-display" class="neu-inset" disabled
                   value="${_modalAlBalance.toFixed(1)}"
                   style="border-left: 3px solid #10b981; font-weight: 800; color: #10b981; opacity: 1; cursor: default;">
-                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Baki Migrasi − Digunakan (atau Peruntukan − Digunakan jika belum migrasi)</span>
+                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Jumlah − Guna Sebelum − Guna Sistem − Pelarasan HR</span>
               </div>
             </div>
           </div>
 
-          <!-- Grid cuti lain (bukan AL) -->
+          ${_leaveBreakdownHTML('mc', 'MC', 'MC — Cuti Sakit', 14, '#10b981')}
+          ${_leaveBreakdownHTML('el', 'EL', 'EL — Cuti Ehsan', 3, '#f59e0b')}
+
+          <!-- Grid cuti lain (AL/MC/EL ada breakdown sendiri di atas) -->
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem 2rem; border-top: 1px solid rgba(163,177,198,0.15); padding-top: 1.5rem;">
-            <div style="display: flex; flex-direction: column;">
-               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">MC &mdash; Cuti Sakit</label>
-               <input type="number" id="ent-MC" class="neu-inset" value="${staff.ent_MC !== undefined ? staff.ent_MC : 14}">
-            </div>
              <div style="display: flex; flex-direction: column;">
                <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">HL &mdash; Cuti Hospitalisasi</label>
                <input type="number" id="ent-HL" class="neu-inset" value="${staff.ent_HL !== undefined ? staff.ent_HL : 60}">
@@ -10102,10 +10138,6 @@ function renderModal() {
             <div style="display: flex; flex-direction: column;">
                <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">EL &mdash; Cuti Kecemasan</label>
                <input type="number" id="ent-EL_EMG" class="neu-inset" value="${staff.ent_EL_EMG !== undefined ? staff.ent_EL_EMG : 0}">
-            </div>
-            <div style="display: flex; flex-direction: column;">
-               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">BL &mdash; Ihsan (Death)</label>
-               <input type="number" id="ent-EL" class="neu-inset" value="${staff.ent_EL !== undefined ? staff.ent_EL : 3}">
             </div>
             <div style="display: flex; flex-direction: column;">
                <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">UL &mdash; Tanpa Gaji</label>
