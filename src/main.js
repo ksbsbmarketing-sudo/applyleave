@@ -972,6 +972,27 @@ window.saveRbac = async function() {
     render();
 };
 
+// Togol mod "Guna Dalam Sistem": manual (HR isi sendiri) ↔ auto (kira dari rekod diluluskan).
+window.toggleAutoSystemUsage = async function() {
+    if (!['admin', 'super_admin'].includes(user?.role)) {
+        alert('Hanya Super Admin / Admin boleh menukar tetapan ini.');
+        return;
+    }
+    const turningOn = !autoSystemUsage;
+    const msg = turningOn
+        ? '⚠️ HIDUPKAN MOD AUTO?\n\nBaki "Guna Dalam Sistem" untuk AL/MC/EL akan dikira AUTOMATIK daripada rekod cuti yang DILULUSKAN dalam sistem. Nilai "Guna Dalam Sistem (Manual)" yang HR isi akan DIABAIKAN.\n\nPastikan SEMUA cuti sedia ada sudah direkod & diluluskan dalam sistem (sync penuh) sebelum hidupkan.\n\nTeruskan?'
+        : '↩️ MATIKAN MOD AUTO (kembali manual)?\n\nBaki "Guna Dalam Sistem" akan kembali ikut nilai manual yang HR isi (rekod diluluskan TIDAK dikira automatik).\n\nTeruskan?';
+    if (!confirm(msg)) return;
+    try {
+        await setDoc(doc(db, 'settings', 'leaveConfig'), { autoSystemUsage: turningOn, updatedAt: Date.now(), updatedBy: user.name || user.ic }, { merge: true });
+        window.logSystemActivity(`Set AUTO "Guna Dalam Sistem" = ${turningOn ? 'ON (auto rekod)' : 'OFF (manual)'}`);
+        alert(turningOn ? '✅ Mod AUTO dihidupkan. Baki kini dikira dari rekod diluluskan.' : '✅ Mod manual dihidupkan semula.');
+    } catch (e) {
+        console.error('Error toggling autoSystemUsage:', e);
+        alert('Ralat: Gagal menyimpan tetapan. Sila semak sambungan internet.');
+    }
+};
+
 const _rbacCodeDefaults = JSON.parse(JSON.stringify(window.rbacMatrix));
 
 // Staff config — categories & role labels loaded from Firestore
@@ -1888,10 +1909,11 @@ window._recalcLeaveBalance = function(prefix) {
     }
     const pre = parseFloat(document.getElementById(prefix + '-used-pre-input')?.value || 0);
     const sysAuto = parseFloat(document.getElementById(prefix + '-sys-used-display')?.dataset.used || 0);
-    const sysAdj = parseFloat(document.getElementById(prefix + '-sys-adj-input')?.value || 0);
+    const sysManual = parseFloat(document.getElementById(prefix + '-sys-adj-input')?.value || 0);
+    const sys = autoSystemUsage ? sysAuto : sysManual;
     const pel = parseFloat(document.getElementById(prefix + '-pelarasan-input')?.value || 0);
     const balEl = document.getElementById(prefix + '-balance-display');
-    if (balEl) balEl.value = Math.max(0, total - pre - (sysAuto + sysAdj) - pel).toFixed(1);
+    if (balEl) balEl.value = Math.max(0, total - pre - sys - pel).toFixed(1);
 };
 window._updateAlTotal   = () => window._recalcLeaveBalance('al');
 window._updateAlBalance = () => window._recalcLeaveBalance('al');
@@ -1974,10 +1996,10 @@ window.printLeave = function(id) {
     const { before: bakiTerdahulu, after: bakiSelepas } = recordBalances({
       record,
       ent: stats.ent,
-      // Potongan bukan-rekod (Formula B): Guna Sebelum + Guna Sistem (tambahan HR) + Pelarasan HR.
-      alAdj: (stats.usedPre || 0) + (stats.usedSysAdj || 0) + (stats.pelarasan || 0),
-      // Auto-rekod dimatikan → jangan kira rekod diluluskan (selari dengan getLeaveStats).
-      records: AUTO_SYSTEM_USAGE ? leaveRecords : [],
+      // Potongan bukan-rekod: Guna Sebelum + Pelarasan HR (+ Guna Sistem manual bila mod manual).
+      alAdj: (stats.usedPre || 0) + (stats.pelarasan || 0) + (autoSystemUsage ? 0 : (stats.usedSysAdj || 0)),
+      // Mod manual → jangan kira rekod diluluskan (selari dengan getLeaveStats).
+      records: autoSystemUsage ? leaveRecords : [],
     });
     // KELAYAKAN CUTI TAHUNAN: untuk AL guna kelayakan tahunan penuh; jenis lain guna entitlement jenis itu.
     const kelayakan = record.type === 'AL' ? window.getEntitlementAL(staffObj) : stats.ent;
@@ -3132,6 +3154,12 @@ async function initData() {
     render();
   });
 
+  // Flag "Auto Guna Dalam Sistem" — disegerakkan live ke semua peranti.
+  onSnapshot(doc(db, 'settings', 'leaveConfig'), (snap) => {
+    autoSystemUsage = !!(snap.exists() && snap.data().autoSystemUsage === true);
+    render();
+  });
+
   onSnapshot(doc(db, "settings", "rbac"), (docSnap) => {
     if (docSnap.exists()) {
         const data = docSnap.data();
@@ -3846,9 +3874,12 @@ window.getMonthsWorkedThisYear = function(startDate) {
 };
 
 // Buat masa ini auto-rekod DIMATIKAN: "Guna Dalam Sistem" = angka manual HR sahaja
-// (rekod cuti diluluskan TIDAK ditolak automatik) sehingga data sync sepenuhnya.
-// Tukar ke `true` untuk hidupkan semula kiraan automatik dari rekod diluluskan.
-const AUTO_SYSTEM_USAGE = false;
+// AUTO mode "Guna Dalam Sistem":
+//  • false (manual): HR isi sendiri bilangan hari guna dalam sistem; rekod diluluskan diabai.
+//  • true  (auto)  : dikira automatik dari rekod cuti diluluskan; nilai manual diabai.
+// Disimpan di Firestore (settings/leaveConfig). Toggle via butang dalam tab RBAC
+// (window.toggleAutoSystemUsage). Lalai false sehingga data sync sepenuhnya.
+let autoSystemUsage = false;
 
 window.getEarnedAL = function(staffObj) {
   if (!staffObj) return 0;
@@ -3862,9 +3893,7 @@ window.getLeaveStats = function(staff, type) {
   if (!staff) return { used: 0, ent: 0, bal: 0 };
 
   const records = leaveRecords.filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === type);
-  // Auto-rekod dimatikan buat masa ini (lihat AUTO_SYSTEM_USAGE) — HR adjust "Guna Dalam
-  // Sistem" secara manual. Bila dihidupkan, rekod diluluskan dikira automatik.
-  const recordsUsed = AUTO_SYSTEM_USAGE ? records.reduce((acc, r) => acc + parseFloat(r.days || 0), 0) : 0;
+  const recordsUsed = records.reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
 
   let ent = 0;
   if (type === 'AL') {
@@ -3879,7 +3908,7 @@ window.getLeaveStats = function(staff, type) {
   }
 
   // Formula B (AL/MC/EL): Baki = Jumlah − Guna Sebelum Sistem − Guna Dalam Sistem − Pelarasan HR.
-  // Guna Dalam Sistem = rekod diluluskan (auto) + tambahan manual HR ({jenis}_used_sys_adj).
+  // "Guna Dalam Sistem" = rekod diluluskan (mod AUTO) ATAU nilai manual HR (mod manual).
   // Medan {jenis}_used_pre, {jenis}_used_sys_adj, {jenis}_pelarasan diisi HR (lalai 0).
   let usedPre = 0, pelarasan = 0, usedSysAdj = 0;
   if (type === 'AL' || type === 'MC' || type === 'EL') {
@@ -3888,7 +3917,7 @@ window.getLeaveStats = function(staff, type) {
     pelarasan  = parseFloat(staff[`${p}_pelarasan`]    || 0);
     usedSysAdj = parseFloat(staff[`${p}_used_sys_adj`] || 0);
   }
-  const usedSys = recordsUsed + usedSysAdj; // auto + tambahan manual HR
+  const usedSys = autoSystemUsage ? recordsUsed : usedSysAdj;
 
   return {
     used: usedSys,
@@ -8931,6 +8960,23 @@ function renderView() {
             </div>
           </div>
 
+          <!-- Toggle: Auto "Guna Dalam Sistem" -->
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem;padding:0.95rem 1.15rem;border-radius:12px;border:1px solid ${autoSystemUsage ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'};background:${autoSystemUsage ? 'rgba(16,185,129,0.06)' : 'rgba(245,158,11,0.06)'};">
+            <div style="display:flex;align-items:flex-start;gap:0.7rem;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${autoSystemUsage ? '#10b981' : '#f59e0b'}" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="23 4 23 10 17 10"/></svg>
+              <div>
+                <div style="font-size:0.85rem;font-weight:700;">Auto "Guna Dalam Sistem" — AL / MC / EL</div>
+                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.15rem;max-width:560px;line-height:1.5;">
+                  Status: <strong style="color:${autoSystemUsage ? '#10b981' : '#f59e0b'};">${autoSystemUsage ? 'AUTO (dikira dari rekod diluluskan)' : 'MANUAL (HR isi sendiri)'}</strong>.
+                  Hidupkan AUTO hanya setelah SEMUA cuti sedia ada telah direkod & diluluskan dalam sistem (sync penuh). Bila AUTO, nilai manual diabaikan.
+                </div>
+              </div>
+            </div>
+            <button onclick="window.toggleAutoSystemUsage()" style="width:auto;padding:0.6rem 1.2rem;display:flex;align-items:center;gap:0.5rem;font-weight:700;font-size:0.8rem;border-radius:9px;border:1px solid ${autoSystemUsage ? 'rgba(245,158,11,0.4)' : 'rgba(16,185,129,0.4)'};background:${autoSystemUsage ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.12)'};color:${autoSystemUsage ? '#f59e0b' : '#10b981'};cursor:pointer;white-space:nowrap;">
+              ${autoSystemUsage ? '↩️ Kembali Manual' : '⚡ Hidupkan Auto'}
+            </button>
+          </div>
+
           <!-- Legend: access types -->
           <div style="display:flex;flex-wrap:wrap;gap:0.45rem;margin-bottom:0.55rem;align-items:center;">
             <span style="font-size:0.65rem;font-weight:700;color:var(--text-muted);letter-spacing:0.6px;text-transform:uppercase;margin-right:0.2rem;">Akses:</span>
@@ -9944,22 +9990,17 @@ function renderModal() {
     .filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === t)
     .reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
 
-  // Medan "Guna Dalam Sistem" — bergantung pada AUTO_SYSTEM_USAGE.
-  //  • OFF (semasa): satu medan manual yang HR boleh adjust.
-  //  • ON  (nanti) : Rekod Auto (read-only) + Tambahan HR (editable).
-  const _sysUsageFieldsHTML = (prefix, autoVal, adjVal) => AUTO_SYSTEM_USAGE ? `
+  // Medan "Guna Dalam Sistem" — bergantung pada autoSystemUsage.
+  //  • AUTO ON : satu medan Rekod Auto (read-only) dari rekod diluluskan.
+  //  • MANUAL  : satu medan editable yang HR isi sendiri.
+  const _sysUsageFieldsHTML = (prefix, autoVal, adjVal) => autoSystemUsage ? `
           <div style="display: flex; flex-direction: column;">
-            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Guna Sistem (Rekod Auto)</label>
+            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Guna Dalam Sistem (Rekod Auto)</label>
             <input type="number" id="${prefix}-sys-used-display" class="neu-inset" disabled value="${autoVal.toFixed(1)}" data-used="${autoVal}" style="border-left: 3px solid #ef4444; color:#ef4444; font-weight:700; opacity:1; cursor:default;">
-            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Dari rekod cuti diluluskan</span>
-          </div>
-          <div style="display: flex; flex-direction: column;">
-            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #ef4444; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Guna Sistem (Tambahan HR)</label>
-            <input type="number" id="${prefix}-sys-adj-input" class="neu-inset" min="0" step="0.5" value="${adjVal}" oninput="window._recalcLeaveBalance('${prefix}')" style="border-left: 3px solid #ef4444;">
-            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Tambahan guna sistem (ditambah pada rekod auto)</span>
+            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Auto dari rekod cuti diluluskan (mod manual dimatikan)</span>
           </div>` : `
           <div style="display: flex; flex-direction: column;">
-            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #ef4444; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Guna Dalam Sistem</label>
+            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #ef4444; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Guna Dalam Sistem (Manual)</label>
             <input type="number" id="${prefix}-sys-adj-input" class="neu-inset" min="0" step="0.5" value="${adjVal}" oninput="window._recalcLeaveBalance('${prefix}')" style="border-left: 3px solid #ef4444;">
             <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Bilangan hari telah digunakan dalam sistem (isi manual)</span>
           </div>`;
@@ -9969,7 +10010,7 @@ function renderModal() {
   const _modalAlUsedSysAdj = parseFloat(staff.al_used_sys_adj || 0);
   const _modalAlPelarasan  = parseFloat(staff.al_pelarasan    || 0);
   const _modalTotalAL = parseFloat(staff.ent_CF !== undefined ? staff.ent_CF : 0) + parseFloat(staff.ent_AL !== undefined ? staff.ent_AL : window.getEntitlementAL(staff));
-  const _modalAlBalance = Math.max(0, _modalTotalAL - _modalAlUsedPre - ((AUTO_SYSTEM_USAGE ? _modalSysUsedAL : 0) + _modalAlUsedSysAdj) - _modalAlPelarasan);
+  const _modalAlBalance = Math.max(0, _modalTotalAL - _modalAlUsedPre - (autoSystemUsage ? _modalSysUsedAL : _modalAlUsedSysAdj) - _modalAlPelarasan);
 
   // Helper HTML breakdown untuk MC & EL (tiada CF). prefix: 'mc'|'el'.
   const _leaveBreakdownHTML = (prefix, typeId, title, annualDefault, accent) => {
@@ -9978,7 +10019,7 @@ function renderModal() {
     const pre = parseFloat(staff[prefix + '_used_pre'] || 0);
     const sysAdj = parseFloat(staff[prefix + '_used_sys_adj'] || 0);
     const pel = parseFloat(staff[prefix + '_pelarasan'] || 0);
-    const bal = Math.max(0, ann - pre - ((AUTO_SYSTEM_USAGE ? sys : 0) + sysAdj) - pel);
+    const bal = Math.max(0, ann - pre - (autoSystemUsage ? sys : sysAdj) - pel);
     return `
       <div style="margin-top:1.75rem;padding-top:1.5rem;border-top:1px solid rgba(163,177,198,0.15);">
         <div style="font-size: 0.7rem; text-transform: uppercase; color: ${accent}; font-weight: 700; letter-spacing: 1px; margin-bottom: 1rem;">${title} — Peruntukan & Baki</div>
