@@ -1887,10 +1887,11 @@ window._recalcLeaveBalance = function(prefix) {
         total = parseFloat(document.getElementById('ent-' + prefix.toUpperCase())?.value || 0);
     }
     const pre = parseFloat(document.getElementById(prefix + '-used-pre-input')?.value || 0);
-    const sys = parseFloat(document.getElementById(prefix + '-sys-used-display')?.dataset.used || 0);
+    const sysAuto = parseFloat(document.getElementById(prefix + '-sys-used-display')?.dataset.used || 0);
+    const sysAdj = parseFloat(document.getElementById(prefix + '-sys-adj-input')?.value || 0);
     const pel = parseFloat(document.getElementById(prefix + '-pelarasan-input')?.value || 0);
     const balEl = document.getElementById(prefix + '-balance-display');
-    if (balEl) balEl.value = Math.max(0, total - pre - sys - pel).toFixed(1);
+    if (balEl) balEl.value = Math.max(0, total - pre - (sysAuto + sysAdj) - pel).toFixed(1);
 };
 window._updateAlTotal   = () => window._recalcLeaveBalance('al');
 window._updateAlBalance = () => window._recalcLeaveBalance('al');
@@ -1973,8 +1974,8 @@ window.printLeave = function(id) {
     const { before: bakiTerdahulu, after: bakiSelepas } = recordBalances({
       record,
       ent: stats.ent,
-      // Potongan bukan-rekod (Formula B): Guna Sebelum Sistem + Pelarasan HR (AL/MC/EL).
-      alAdj: (stats.usedPre || 0) + (stats.pelarasan || 0),
+      // Potongan bukan-rekod (Formula B): Guna Sebelum + Guna Sistem (tambahan HR) + Pelarasan HR.
+      alAdj: (stats.usedPre || 0) + (stats.usedSysAdj || 0) + (stats.pelarasan || 0),
       records: leaveRecords,
     });
     // KELAYAKAN CUTI TAHUNAN: untuk AL guna kelayakan tahunan penuh; jenis lain guna entitlement jenis itu.
@@ -3855,7 +3856,7 @@ window.getLeaveStats = function(staff, type) {
   if (!staff) return { used: 0, ent: 0, bal: 0 };
 
   const records = leaveRecords.filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === type);
-  const usedSys = records.reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
+  const recordsUsed = records.reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
 
   let ent = 0;
   if (type === 'AL') {
@@ -3870,17 +3871,21 @@ window.getLeaveStats = function(staff, type) {
   }
 
   // Formula B (AL/MC/EL): Baki = Jumlah − Guna Sebelum Sistem − Guna Dalam Sistem − Pelarasan HR.
-  // Medan {jenis}_used_pre & {jenis}_pelarasan diisi HR (lalai 0). Jenis lain: baki = ent − used.
-  let usedPre = 0, pelarasan = 0;
+  // Guna Dalam Sistem = rekod diluluskan (auto) + tambahan manual HR ({jenis}_used_sys_adj).
+  // Medan {jenis}_used_pre, {jenis}_used_sys_adj, {jenis}_pelarasan diisi HR (lalai 0).
+  let usedPre = 0, pelarasan = 0, usedSysAdj = 0;
   if (type === 'AL' || type === 'MC' || type === 'EL') {
     const p = type.toLowerCase();
-    usedPre   = parseFloat(staff[`${p}_used_pre`]  || 0);
-    pelarasan = parseFloat(staff[`${p}_pelarasan`] || 0);
+    usedPre    = parseFloat(staff[`${p}_used_pre`]     || 0);
+    pelarasan  = parseFloat(staff[`${p}_pelarasan`]    || 0);
+    usedSysAdj = parseFloat(staff[`${p}_used_sys_adj`] || 0);
   }
+  const usedSys = recordsUsed + usedSysAdj; // auto + tambahan manual HR
 
   return {
     used: usedSys,
-    usedFromRecords: usedSys,
+    usedFromRecords: recordsUsed,
+    usedSysAdj: usedSysAdj,
     usedPre: usedPre,
     pelarasan: pelarasan,
     adj: pelarasan,
@@ -5191,12 +5196,14 @@ function renderDashboard() {
                       }
                   });
 
-                  // Formula B: simpan "Guna Sebelum Sistem" & "Pelarasan HR" untuk AL/MC/EL.
+                  // Formula B: simpan "Guna Sebelum Sistem", "Guna Sistem (Tambahan HR)" & "Pelarasan HR".
                   ['al', 'mc', 'el'].forEach(p => {
                       const preEl = document.getElementById(`${p}-used-pre-input`);
+                      const sysAdjEl = document.getElementById(`${p}-sys-adj-input`);
                       const pelEl = document.getElementById(`${p}-pelarasan-input`);
-                      if (preEl) updates[`${p}_used_pre`]  = Math.max(0, parseFloat(preEl.value) || 0);
-                      if (pelEl) updates[`${p}_pelarasan`] = Math.max(0, parseFloat(pelEl.value) || 0);
+                      if (preEl)    updates[`${p}_used_pre`]     = Math.max(0, parseFloat(preEl.value) || 0);
+                      if (sysAdjEl) updates[`${p}_used_sys_adj`] = Math.max(0, parseFloat(sysAdjEl.value) || 0);
+                      if (pelEl)    updates[`${p}_pelarasan`]    = Math.max(0, parseFloat(pelEl.value) || 0);
                   });
 
                   try {
@@ -9929,18 +9936,20 @@ function renderModal() {
     .filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === t)
     .reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
   const _modalSysUsedAL   = _modalSysUsed('AL');
-  const _modalAlUsedPre   = parseFloat(staff.al_used_pre  || 0);
-  const _modalAlPelarasan = parseFloat(staff.al_pelarasan || 0);
+  const _modalAlUsedPre    = parseFloat(staff.al_used_pre     || 0);
+  const _modalAlUsedSysAdj = parseFloat(staff.al_used_sys_adj || 0);
+  const _modalAlPelarasan  = parseFloat(staff.al_pelarasan    || 0);
   const _modalTotalAL = parseFloat(staff.ent_CF !== undefined ? staff.ent_CF : 0) + parseFloat(staff.ent_AL !== undefined ? staff.ent_AL : window.getEntitlementAL(staff));
-  const _modalAlBalance = Math.max(0, _modalTotalAL - _modalAlUsedPre - _modalSysUsedAL - _modalAlPelarasan);
+  const _modalAlBalance = Math.max(0, _modalTotalAL - _modalAlUsedPre - (_modalSysUsedAL + _modalAlUsedSysAdj) - _modalAlPelarasan);
 
   // Helper HTML breakdown untuk MC & EL (tiada CF). prefix: 'mc'|'el'.
   const _leaveBreakdownHTML = (prefix, typeId, title, annualDefault, accent) => {
     const sys = _modalSysUsed(typeId);
     const ann = (staff['ent_' + typeId] !== undefined && staff['ent_' + typeId] !== null) ? parseFloat(staff['ent_' + typeId]) : annualDefault;
     const pre = parseFloat(staff[prefix + '_used_pre'] || 0);
+    const sysAdj = parseFloat(staff[prefix + '_used_sys_adj'] || 0);
     const pel = parseFloat(staff[prefix + '_pelarasan'] || 0);
-    const bal = Math.max(0, ann - pre - sys - pel);
+    const bal = Math.max(0, ann - pre - (sys + sysAdj) - pel);
     return `
       <div style="margin-top:1.75rem;padding-top:1.5rem;border-top:1px solid rgba(163,177,198,0.15);">
         <div style="font-size: 0.7rem; text-transform: uppercase; color: ${accent}; font-weight: 700; letter-spacing: 1px; margin-bottom: 1rem;">${title} — Peruntukan & Baki</div>
@@ -9950,14 +9959,19 @@ function renderModal() {
             <input type="number" id="ent-${typeId}" class="neu-inset" min="0" step="0.5" value="${ann}" oninput="window._recalcLeaveBalance('${prefix}')" style="border-left: 3px solid ${accent};">
           </div>
           <div style="display: flex; flex-direction: column;">
-            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Guna Dalam Sistem</label>
+            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #0ea5e9; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Guna Sebelum Sistem</label>
+            <input type="number" id="${prefix}-used-pre-input" class="neu-inset" min="0" step="0.5" value="${pre}" oninput="window._recalcLeaveBalance('${prefix}')" style="border-left: 3px solid #0ea5e9;">
+            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Rekod guna sebelum sistem</span>
+          </div>
+          <div style="display: flex; flex-direction: column;">
+            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Guna Sistem (Rekod Auto)</label>
             <input type="number" id="${prefix}-sys-used-display" class="neu-inset" disabled value="${sys.toFixed(1)}" data-used="${sys}" style="border-left: 3px solid #ef4444; color:#ef4444; font-weight:700; opacity:1; cursor:default;">
             <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Dari rekod cuti diluluskan</span>
           </div>
           <div style="display: flex; flex-direction: column;">
-            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #0ea5e9; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Guna Sebelum Sistem</label>
-            <input type="number" id="${prefix}-used-pre-input" class="neu-inset" min="0" step="0.5" value="${pre}" oninput="window._recalcLeaveBalance('${prefix}')" style="border-left: 3px solid #0ea5e9;">
-            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Rekod guna sebelum sistem</span>
+            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #ef4444; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Guna Sistem (Tambahan HR)</label>
+            <input type="number" id="${prefix}-sys-adj-input" class="neu-inset" min="0" step="0.5" value="${sysAdj}" oninput="window._recalcLeaveBalance('${prefix}')" style="border-left: 3px solid #ef4444;">
+            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Tambahan guna sistem (ditambah pada rekod auto)</span>
           </div>
           <div style="display: flex; flex-direction: column;">
             <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #f59e0b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Pelarasan HR</label>
@@ -10093,12 +10107,20 @@ function renderModal() {
                 <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Rekod AL yang digunakan sebelum sistem</span>
               </div>
               <div style="display: flex; flex-direction: column;">
-                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Guna Dalam Sistem</label>
+                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Guna Sistem (Rekod Auto)</label>
                 <input type="number" id="al-sys-used-display" class="neu-inset" disabled
                   value="${_modalSysUsedAL.toFixed(1)}"
                   data-used="${_modalSysUsedAL}"
                   style="border-left: 3px solid #ef4444; color: #ef4444; font-weight: 700; opacity: 1; cursor: default;">
                 <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Dari rekod cuti yang diluluskan</span>
+              </div>
+              <div style="display: flex; flex-direction: column;">
+                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #ef4444; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Guna Sistem (Tambahan HR)</label>
+                <input type="number" id="al-sys-adj-input" class="neu-inset" min="0" step="0.5"
+                  value="${_modalAlUsedSysAdj}"
+                  oninput="window._recalcLeaveBalance('al')"
+                  style="border-left: 3px solid #ef4444;">
+                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Tambahan guna sistem (ditambah pada rekod auto)</span>
               </div>
               <div style="display: flex; flex-direction: column;">
                 <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #f59e0b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Pelarasan HR</label>
