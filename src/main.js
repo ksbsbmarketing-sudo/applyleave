@@ -737,7 +737,7 @@ const HELP_FAQ = [
     action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
   { id:'mc-submit', cat:'Cuti', popular:true, keywords:['mc','sakit','medical','sijil','cuti sakit','hantar mc'],
     q:'Macam mana mohon Cuti Sakit (MC)?',
-    a:'<strong>Langkah mohon MC:</strong><br>1. <em>Mohon Cuti</em> → pilih <strong>Medical Leave (MC)</strong>.<br>2. Pilih tarikh (boleh tarikh hari ini / ke belakang — <strong>tiada had notis 3/7 hari</strong> untuk MC).<br>3. <strong>WAJIB muat naik Sijil Sakit (MC)</strong> sebelum hantar.<br>4. Tekan Hantar.<br><br>MC dihantar <strong>terus untuk semakan & kelulusan</strong>: cawangan <strong>Pahang → HR</strong>; cawangan <strong>Terengganu → HOD/PIC</strong>. Anda tak perlu pilih pelulus.',
+    a:'<strong>Langkah mohon MC:</strong><br>1. <em>Mohon Cuti</em> → pilih <strong>Medical Leave (MC)</strong>.<br>2. Pilih tarikh (boleh tarikh hari ini / ke belakang — <strong>tiada had notis 3/7 hari</strong> untuk MC).<br>3. <strong>WAJIB muat naik Sijil Sakit (MC)</strong> sebelum hantar.<br>4. Pilih <strong>Pelulus Peringkat 1</strong> (HOD/Supervisor) seperti permohonan AL.<br>5. Tekan Hantar.<br><br>MC kini <strong>mengikut step kelulusan penuh sama seperti AL</strong>: disokong Pelulus Peringkat 1 dahulu, kemudian diluluskan HR/Admin. Sijil Sakit masih wajib dimuat naik.',
     action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
   { id:'emergency-submit', cat:'Cuti', keywords:['kecemasan','emergency','cuti kecemasan','el'],
     q:'Macam mana mohon Cuti Kecemasan?',
@@ -3556,21 +3556,36 @@ function renderLogin() {
           </button>
         </div>
 
-        <div style="margin-top: 1.25rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
-           <p style="font-size: 1rem; color: var(--text-muted); line-height: 1.4;">
-             Sila pilih cawangan dan nama anda untuk log masuk. Admin boleh setkan password anda dalam bahagian Management.
-           </p>
-           <p style="font-size: 1.05rem; color: var(--text-muted); margin-top: 0.5rem; line-height: 1.4; display: flex; align-items: flex-start; gap: 0.4rem;">
-             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-             Pilih nama anda, kemudian klik <strong style="color: var(--primary);">Lupa Kata Laluan?</strong> — satu kod OTP akan dihantar ke WhatsApp anda untuk menetapkan kata laluan baharu. Pastikan nombor telefon anda telah didaftarkan oleh HR/Admin.
-           </p>
-           <!-- First-login reminder -->
-           <div style="margin-top:0.85rem;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:0.75rem;padding:0.75rem 1rem;display:flex;align-items:flex-start;gap:0.5rem;">
-             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-             <p style="font-size:0.78rem;color:var(--text-muted);margin:0;line-height:1.5;">
-               <strong style="color:#ef4444;">Log masuk pertama?</strong> Kata laluan awal anda adalah <strong>No. IC</strong>. Sistem akan minta anda tukar kata laluan selepas log masuk pertama bagi keselamatan akaun.
+        <div style="margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem;">
+
+           <!-- Tip: cara log masuk -->
+           <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="flex-shrink:0; margin-top:2px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+             <p style="font-size:0.8rem; color:var(--text-muted); margin:0; line-height:1.5;">
+               Pilih cawangan dan nama anda untuk log masuk. Admin boleh tetapkan kata laluan anda dalam bahagian <strong>Management</strong>.
              </p>
            </div>
+
+           <!-- Tip: lupa kata laluan -->
+           <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="flex-shrink:0; margin-top:2px;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+             <p style="font-size:0.8rem; color:var(--text-muted); margin:0; line-height:1.5;">
+               Pilih nama anda, kemudian klik <strong style="color:var(--primary);">Lupa Kata Laluan?</strong> — kod OTP akan dihantar ke WhatsApp anda untuk menetapkan kata laluan baharu. Pastikan nombor telefon anda telah didaftarkan oleh HR/Admin.
+             </p>
+           </div>
+
+           <!-- First-login reminder -->
+           <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:0.75rem; padding:0.75rem 0.9rem; display:flex; align-items:flex-start; gap:0.6rem;">
+             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" style="flex-shrink:0; margin-top:2px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+             <p style="font-size:0.8rem; color:var(--text-muted); margin:0; line-height:1.5;">
+               <strong style="color:#ef4444;">Log masuk pertama?</strong> Kata laluan awal anda adalah <strong>No. IC</strong>. Sistem akan minta anda menukar kata laluan selepas log masuk pertama bagi keselamatan akaun.
+             </p>
+           </div>
+        </div>
+
+        <!-- Hak Cipta -->
+        <div style="margin-top:1.25rem;text-align:center;">
+          <p style="font-size:0.72rem;color:var(--text-muted);letter-spacing:0.3px;margin:0;">© 2026 Hak Cipta Terpelihara · KSBSB IT @ LukhzzIsZa</p>
         </div>
       </div>
     </div>
@@ -4842,6 +4857,7 @@ function renderDashboard() {
             </div>
           </div>
           <button id="logout" class="btn-logout">Logout</button>
+          <p style="font-size:0.68rem;color:var(--text-muted);text-align:center;margin:0.85rem 0 0;letter-spacing:0.3px;">© 2026 Hak Cipta Terpelihara<br>KSBSB IT @ LukhzzIsZa</p>
         </div>
       </aside>
 
@@ -4922,16 +4938,10 @@ function renderDashboard() {
       const _sbmIsOpBalokTL = window.getStaffGroup(user) === 'operation_balok' &&
           !!(approvalRouting['operation_balok'] || {}).needs_tl;
 
-      // Cuti Sakit (MC) — tidak perlu pilih pelulus (TL/HOD); destinasi ikut negeri
-      const _isMCsubmit = selectedLeaveType === 'MC';
-      const _sbmBranchObj = branches.find(b => b.name === user.branch);
-      const _isTerengganuApplicant = !!(_sbmBranchObj && _sbmBranchObj.state === 'Terengganu');
-      // Pahang MC → terus ke HR (Peringkat 2). Terengganu MC → terus ke HOD/PIC (PENDING).
-      const _mcDirectToHR = _isMCsubmit && !_isTerengganuApplicant;
-
       // Wajib pilih TL (Peringkat 0) untuk op-balok
+      // (MC kini ikut step kelulusan penuh sama seperti AL — tiada lagi laluan terus ke HR)
       const selectedTL = leaveForm.querySelector('#tl-select')?.value;
-      if (!_isMCsubmit && _sbmIsOpBalokTL && !selectedTL) {
+      if (_sbmIsOpBalokTL && !selectedTL) {
           alert('🔴 WAJIB: Sila pilih Team Leader (Pelulus Peringkat 0) sebelum menghantar permohonan cuti.\n\nPermohonan tidak dapat diproses tanpa sokongan Team Leader.');
           leaveForm.querySelector('#tl-select')?.focus();
           return;
@@ -4940,7 +4950,7 @@ function renderDashboard() {
       // Wajib pilih pelulus Peringkat 1 (kecuali op-balok — Supervisor auto, atau jika tiada pelulus langsung — HR luluskan terus)
       const selectedHODCheck = leaveForm.querySelector('#hod-select')?.value;
       const _hasP1Approvers = window.getRoutingP1Approvers(user).length > 0;
-      if (!_isMCsubmit && !_sbmIsOpBalokTL && _hasP1Approvers && !selectedHODCheck) {
+      if (!_sbmIsOpBalokTL && _hasP1Approvers && !selectedHODCheck) {
           alert('🔴 WAJIB: Sila pilih Pelulus Peringkat 1 (HOD / PIC_HOD / Supervisor) sebelum menghantar permohonan cuti.\n\nPermohonan tidak dapat diproses tanpa kelulusan Peringkat 1.');
           leaveForm.querySelector('#hod-select')?.focus();
           return;
@@ -5008,9 +5018,8 @@ function renderDashboard() {
         handoverName: handover,
         hodIC: selectedHOD || null,
         tlIC: selectedTL || null,
-        // Pahang MC langkau HOD/Supervisor → senarai kelulusan HR (HOD APPROVED).
-        // Terengganu MC → HOD/PIC cawangan sendiri (PENDING). Cuti lain → PENDING.
-        status: _mcDirectToHR ? 'HOD APPROVED' : 'PENDING',
+        // Semua jenis cuti (termasuk MC) bermula PENDING & ikut step kelulusan penuh seperti AL.
+        status: 'PENDING',
         // Bukti (MC/Kecemasan/Ehsan) — null untuk jenis cuti lain & rekod lama.
         proofUrl: proofUrl || null,
         proofName: proofName || null
@@ -5018,50 +5027,12 @@ function renderDashboard() {
 
       try {
           await setDoc(doc(db, "leaves", newRecord.id.toString()), newRecord);
-          window.logSystemActivity(_isMCsubmit ? `Submitted MC direct to ${_mcDirectToHR ? 'HR' : 'HOD/PIC'} (${diffDays} days)` : `Applied for ${leaveTypeName} (${diffDays} days)`);
-          if (_isMCsubmit) {
-              const _mcDest = _mcDirectToHR ? 'HR' : 'HOD / PIC_HOD';
-              window.addNotification(user.ic, 'leave_submitted', '📋 Cuti Sakit Dihantar', `Cuti Sakit (MC) anda (${startDate}${startDate!==endDate?' → '+endDate:''}, ${diffDays} hari) telah dihantar terus kepada ${_mcDest} untuk semakan & kelulusan.`, newRecord.id.toString());
-          } else {
-              window.addNotification(user.ic, 'leave_submitted', '📋 Permohonan Cuti Dihantar', `Permohonan ${leaveTypeName} anda (${startDate} → ${endDate}, ${diffDays} hari) telah berjaya dihantar dan sedang menunggu kelulusan.`, newRecord.id.toString());
-          }
+          window.logSystemActivity(`Applied for ${leaveTypeName} (${diffDays} days)`);
+          window.addNotification(user.ic, 'leave_submitted', '📋 Permohonan Cuti Dihantar', `Permohonan ${leaveTypeName} anda (${startDate} → ${endDate}, ${diffDays} hari) telah berjaya dihantar dan sedang menunggu kelulusan.`, newRecord.id.toString());
       } catch (err) {
           console.error("Error adding leave record: ", err);
           alert("Ralat menghantar permohonan ke pangkalan data.");
           return;
-      }
-
-      // ── Pahang Cuti Sakit (MC): terus ke HR untuk semakan & kelulusan (langkau HOD/Supervisor) ──
-      if (_mcDirectToHR) {
-        const dateLabel = `${startDate}${startDate !== endDate ? ' → ' + endDate : ''}`;
-        const hrToNotify = staffList.filter(s =>
-          ['hr', 'admin', 'super_admin'].includes(s.role) && s.phone && !s.inactive
-        );
-        const hrMcMsg = `🩺 *CUTI SAKIT (MC) BARU — Perlu Semakan & Kelulusan HR*\n\nPermohonan Cuti Sakit dihantar terus kepada HR (tanpa melalui HOD/Supervisor) untuk semakan & kelulusan:\n\n👤 Staf: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📅 Tarikh: ${dateLabel}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\nSila semak Sijil Sakit (MC) dalam sistem, kemudian luluskan / tolak permohonan.\n\n🔗 *Log masuk untuk kelulusan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
-        if (WHATSAPP_ENABLED()) hrToNotify.forEach(hr => window.sendWhatsApp(hr.phone, hrMcMsg));
-        // Inbox kepada HR/Admin (selari dengan WhatsApp)
-        window.notifyApproversInbox(
-          staffList.filter(s => ['hr', 'admin', 'super_admin'].includes(s.role)),
-          '📥 Cuti Sakit (MC) Perlu Kelulusan HR',
-          `${user.name} menghantar Cuti Sakit (MC) (${dateLabel}, ${diffDays} hari) terus untuk semakan & kelulusan HR.`,
-          newRecord.id.toString(), user.ic);
-        if (WHATSAPP_ENABLED() && user.phone) {
-          const mcConfirm = `✅ *CUTI SAKIT (MC) DIHANTAR*\n\nSalam ${user.name},\n\nPermohonan Cuti Sakit anda telah dihantar *terus kepada HR* untuk semakan & kelulusan.\n\n📋 *Butiran:*\n• Tarikh: ${dateLabel}\n• Tempoh: ${diffDays} hari\n• Sebab: ${reason}\n\nAnda akan dimaklumkan setelah HR membuat keputusan. Semoga cepat sembuh. 🌻\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
-          window.sendWhatsApp(user.phone, mcConfirm);
-        }
-        navigator.clipboard.writeText(copyText).catch(() => {});
-        let mcStatus = '✅ Permohonan Cuti Sakit (MC) dihantar terus kepada HR untuk semakan & kelulusan.';
-        if (!WHATSAPP_ENABLED()) {
-          mcStatus += '\n\n⚠️ Token WhatsApp belum dikonfigurasi — notifikasi HR tidak dihantar.';
-        } else if (hrToNotify.length) {
-          mcStatus += `\n\n📲 Notifikasi dihantar kepada HR/Admin:\n${hrToNotify.map(h => h.name).join(', ')}`;
-        } else {
-          mcStatus += '\n\n⚠️ Tiada HR/Admin (dengan nombor telefon) dijumpai untuk notifikasi.';
-        }
-        alert(mcStatus);
-        view = 'dashboard';
-        render();
-        return;
       }
 
       // WA Peringkat 0/1: notify TL yang dipilih (op-balok) atau approver biasa
@@ -6400,9 +6371,8 @@ function renderView() {
             </div>`;
             })()}
 
-            <!-- SECTION: Pelulus Peringkat 1 — sembunyikan untuk MC (auto-lulus) & op-balok jika needs_tl aktif -->
+            <!-- SECTION: Pelulus Peringkat 1 — sembunyikan untuk op-balok jika needs_tl aktif (MC kini ikut step penuh seperti AL) -->
             ${(() => {
-              if (isMC) return ''; // MC auto-lulus — tiada pelulus diperlukan
               const _isOpBalokTL = window.getStaffGroup(user) === 'operation_balok' &&
                   !!(approvalRouting['operation_balok'] || {}).needs_tl;
               if (_isOpBalokTL) return ''; // P1 auto (Supervisor Balok) — pilih auto
@@ -6431,7 +6401,6 @@ function renderView() {
             })()}
 
             ${(() => {
-                if (isMC) return ''; // MC auto-lulus — tiada aliran kelulusan ditunjukkan
                 const branchObj = branches.find(b => b.name === user.branch);
                 const isPahang = branchObj && branchObj.state === 'Pahang';
                 const isTerengganu = branchObj && branchObj.state === 'Terengganu';
