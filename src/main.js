@@ -3155,8 +3155,9 @@ async function initData() {
   });
 
   // Flag "Auto Guna Dalam Sistem" — disegerakkan live ke semua peranti.
+  // Lalai AUTO; hanya MANUAL bila config tetapkan autoSystemUsage === false secara eksplisit.
   onSnapshot(doc(db, 'settings', 'leaveConfig'), (snap) => {
-    autoSystemUsage = !!(snap.exists() && snap.data().autoSystemUsage === true);
+    autoSystemUsage = !(snap.exists() && snap.data().autoSystemUsage === false);
     render();
   });
 
@@ -3873,13 +3874,12 @@ window.getMonthsWorkedThisYear = function(startDate) {
   }
 };
 
-// Buat masa ini auto-rekod DIMATIKAN: "Guna Dalam Sistem" = angka manual HR sahaja
 // AUTO mode "Guna Dalam Sistem":
-//  • false (manual): HR isi sendiri bilangan hari guna dalam sistem; rekod diluluskan diabai.
 //  • true  (auto)  : dikira automatik dari rekod cuti diluluskan; nilai manual diabai.
+//  • false (manual): HR isi sendiri bilangan hari guna dalam sistem; rekod diluluskan diabai.
 // Disimpan di Firestore (settings/leaveConfig). Toggle via butang dalam tab RBAC
-// (window.toggleAutoSystemUsage). Lalai false sehingga data sync sepenuhnya.
-let autoSystemUsage = false;
+// (window.toggleAutoSystemUsage). Lalai AUTO; hanya MANUAL bila config eksplisit false.
+let autoSystemUsage = true;
 
 window.getEarnedAL = function(staffObj) {
   if (!staffObj) return 0;
@@ -3916,6 +3916,16 @@ window.getLeaveStats = function(staff, type) {
     usedPre    = parseFloat(staff[`${p}_used_pre`]     || 0);
     pelarasan  = parseFloat(staff[`${p}_pelarasan`]    || 0);
     usedSysAdj = parseFloat(staff[`${p}_used_sys_adj`] || 0);
+  }
+  // Fallback warisan (AL sahaja): sebelum Formula B, HR simpan "Baki AL Tinggal" dalam
+  // medan al_adj. Jika medan Formula B belum diisi langsung, terjemah al_adj ke "Guna
+  // Sebelum Sistem": usedPre = Jumlah − al_adj  ⇒  Baki = Jumlah − usedPre = al_adj.
+  // Ini memulihkan baki sedia ada HR tanpa migrasi data; hilang sebaik HR simpan semula.
+  // Nota: al_adj === 0 bermaksud "tidak dimigrasi" (guna peruntukan penuh), jadi fallback
+  // hanya untuk al_adj > 0 — selari dengan model lama (baseline = al_adj jika > 0).
+  if (type === 'AL' && staff.al_used_pre === undefined &&
+      staff.al_pelarasan === undefined && parseFloat(staff.al_adj || 0) > 0) {
+    usedPre = Math.max(0, ent - parseFloat(staff.al_adj || 0));
   }
   const usedSys = autoSystemUsage ? recordsUsed : usedSysAdj;
 
@@ -10006,10 +10016,14 @@ function renderModal() {
           </div>`;
 
   const _modalSysUsedAL   = _modalSysUsed('AL');
-  const _modalAlUsedPre    = parseFloat(staff.al_used_pre     || 0);
   const _modalAlUsedSysAdj = parseFloat(staff.al_used_sys_adj || 0);
   const _modalAlPelarasan  = parseFloat(staff.al_pelarasan    || 0);
   const _modalTotalAL = parseFloat(staff.ent_CF !== undefined ? staff.ent_CF : 0) + parseFloat(staff.ent_AL !== undefined ? staff.ent_AL : window.getEntitlementAL(staff));
+  // Fallback warisan al_adj → "Guna Sebelum Sistem" (selari dengan getLeaveStats) supaya
+  // nilai sedia ada HR terpapar dalam modal dan kekal apabila HR simpan semula.
+  const _modalAlUsedPre = (staff.al_used_pre === undefined && staff.al_pelarasan === undefined && parseFloat(staff.al_adj || 0) > 0)
+    ? Math.max(0, _modalTotalAL - parseFloat(staff.al_adj || 0))
+    : parseFloat(staff.al_used_pre || 0);
   const _modalAlBalance = Math.max(0, _modalTotalAL - _modalAlUsedPre - (autoSystemUsage ? _modalSysUsedAL : _modalAlUsedSysAdj) - _modalAlPelarasan);
 
   // Helper HTML breakdown untuk MC & EL (tiada CF). prefix: 'mc'|'el'.
