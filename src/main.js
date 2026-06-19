@@ -522,6 +522,7 @@ let user = null;
 let currentSessionId = null;
 let sessionUnsubscribe = null;
 let duplicateSessionDetected = false;
+let sessionKickHandled = false; // guard: auto-logout sesi lama hanya dicetus sekali
 let view = 'login'; // 'login', 'dashboard', 'management', 'leave-form', 'policy', 'settings'
 window.setView = function(v) {
   if (v === 'leave-form') {
@@ -3081,6 +3082,7 @@ async function initData() {
           user = savedUser;
           currentSessionId = savedSID;
           duplicateSessionDetected = false;
+          sessionKickHandled = false;
           startSessionListener(savedIC, savedSID);
           window.initMessengerRooms();
           window.initInbox();
@@ -3719,6 +3721,7 @@ function renderLogin() {
     showPhoneReminderModal = !showFirstLoginWarning && (!_ph || !_ph.startsWith('6'));
     currentSessionId = Date.now().toString() + '_' + Math.random().toString(36).substring(2);
     duplicateSessionDetected = false;
+    sessionKickHandled = false;
     localStorage.setItem('ksb_session_' + user.ic, currentSessionId);
     localStorage.setItem('ksb_logged_in_ic', user.ic);
     localStorage.setItem('ksb_logged_in_sid', currentSessionId);
@@ -3796,6 +3799,31 @@ window.selectLoginStaff = function(ic, name) {
   window.setLoginStaff(ic);
 };
 
+// Auto-logout sesi lama: dicetus bila login baru dikesan (sessionId berbeza) pada peranti
+// ini atau tab lain dalam pelayar yang sama. "Login terbaru menang" — sesi lama ditamatkan.
+// Selamat: logout() tidak memadam doc sessions/{ic}, jadi rekod sesi baru kekal utuh.
+function handleDuplicateSessionKick() {
+  if (sessionKickHandled) return;
+  sessionKickHandled = true;
+  if (sessionUnsubscribe) { sessionUnsubscribe(); sessionUnsubscribe = null; }
+  if (!document.getElementById('session-kick-overlay')) {
+    const overlay = document.createElement('div');
+    overlay.id = 'session-kick-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(15,23,42,0.92);display:flex;align-items:center;justify-content:center;padding:1.5rem;';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:18px;max-width:380px;width:100%;padding:2rem 1.75rem;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
+        <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#dc2626,#991b1b);display:flex;align-items:center;justify-content:center;margin:0 auto 1.25rem;">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+        </div>
+        <div style="font-size:1.15rem;font-weight:800;color:#0f172a;margin-bottom:0.6rem;">Dilog Keluar</div>
+        <div style="font-size:0.9rem;color:#475569;line-height:1.5;">Akaun ini telah dilog masuk di peranti atau lokasi lain. Atas sebab keselamatan, sesi ini akan ditamatkan.</div>
+        <div style="font-size:0.8rem;color:#94a3b8;margin-top:1rem;">Membawa anda ke skrin log masuk…</div>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+  setTimeout(() => { window.logout(); }, 3000);
+}
+
 // Start Firestore session listener for cross-device detection
 function startSessionListener(ic, sid) {
   if (sessionUnsubscribe) { sessionUnsubscribe(); sessionUnsubscribe = null; }
@@ -3803,8 +3831,7 @@ function startSessionListener(ic, sid) {
     if (!user || !snap.exists()) return;
     const data = snap.data();
     if (data && data.sessionId && data.sessionId !== sid) {
-      duplicateSessionDetected = true;
-      render();
+      handleDuplicateSessionKick();
     }
   });
 }
@@ -3813,8 +3840,7 @@ function startSessionListener(ic, sid) {
 window.addEventListener('storage', (e) => {
   if (user && e.key === 'ksb_session_' + user.ic) {
     if (e.newValue && e.newValue !== currentSessionId) {
-      duplicateSessionDetected = true;
-      render();
+      handleDuplicateSessionKick();
     }
   }
 });
@@ -4842,20 +4868,9 @@ function renderMessengerView() {
 
 function renderDashboard() {
   app.innerHTML = `
-    ${duplicateSessionDetected ? `
-    <div id="duplicate-session-banner" style="position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff;padding:0.85rem 1.25rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;box-shadow:0 4px 24px rgba(220,38,38,0.5);animation:fadeIn 0.3s ease;">
-      <div style="display:flex;align-items:center;gap:0.75rem;flex:1;min-width:0;">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-        <div>
-          <div style="font-weight:700;font-size:0.95rem;">⚠️ Pengesanan Akaun Berganda</div>
-          <div style="font-size:0.78rem;opacity:0.9;margin-top:0.1rem;">Akaun anda telah dilog masuk di peranti atau lokasi lain. Sesi ini mungkin tidak selamat.</div>
-        </div>
-      </div>
-      <button onclick="window.logout()" style="flex-shrink:0;background:rgba(255,255,255,0.18);border:1.5px solid rgba(255,255,255,0.5);color:#fff;padding:0.45rem 1rem;border-radius:8px;cursor:pointer;font-weight:700;font-size:0.82rem;white-space:nowrap;">Log Keluar Sekarang</button>
-    </div>
-    ` : ''}
+    <!-- Sesi berganda kini dikendali oleh auto-logout (handleDuplicateSessionKick), bukan banner. -->
     <!-- Floating Action Menu - V1.6.8 Stable Fix -->
-    <div class="fab-menu ${mobileMenuOpen ? 'active' : ''}" style="${duplicateSessionDetected ? 'top: calc(var(--fab-top, 1.5rem) + 56px);' : ''}">
+    <div class="fab-menu ${mobileMenuOpen ? 'active' : ''}">
       <button class="fab-main" onclick="window.toggleMobileMenu()">
         <i data-lucide="menu" width="24" height="24" style="color:#fff;"></i>
       </button>
