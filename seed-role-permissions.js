@@ -19,6 +19,7 @@ const ROLE_PERMISSIONS = {
   juru_xray:    { canApprove: false, manageStaff: false },
   sonographer:  { canApprove: false, manageStaff: false },
   juru_audio:   { canApprove: false, manageStaff: false },
+  pemandu:      { canApprove: false, manageStaff: false },
 };
 
 async function main() {

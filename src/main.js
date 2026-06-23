@@ -949,6 +949,12 @@ window.rbacMatrix = {
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
+    },
+    pemandu: {
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
+        report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
+        can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
     }
 };
 
@@ -998,10 +1004,10 @@ const _rbacCodeDefaults = JSON.parse(JSON.stringify(window.rbacMatrix));
 
 // Staff config — categories & role labels loaded from Firestore
 const CORE_CATEGORIES = ['Admin Staff', 'Operation Staff', 'Doctor'];
-const CORE_ROLES = ['super_admin', 'admin', 'hr', 'hod_cawangan', 'hod_balok', 'doctor_pic', 'supervisor', 'team_leader', 'staff', 'juru_xray', 'sonographer', 'juru_audio'];
+const CORE_ROLES = ['super_admin', 'admin', 'hr', 'hod_cawangan', 'hod_balok', 'doctor_pic', 'supervisor', 'team_leader', 'staff', 'juru_xray', 'sonographer', 'juru_audio', 'pemandu'];
 window.staffConfig = {
     staffCategories: [...CORE_CATEGORIES],
-    roleLabels: { super_admin:'Super Admin', admin:'Admin', hr:'HR', hod_cawangan:'HOD Cawangan', hod_balok:'HOD Balok', doctor_pic:'Doctor PIC', supervisor:'Supervisor', team_leader:'Team Leader', staff:'Staff', juru_xray:'Juru X-Ray', sonographer:'Sonographer', juru_audio:'Juru Audio' },
+    roleLabels: { super_admin:'Super Admin', admin:'Admin', hr:'HR', hod_cawangan:'HOD Cawangan', hod_balok:'HOD Balok', doctor_pic:'Doctor PIC', supervisor:'Supervisor', team_leader:'Team Leader', staff:'Staff', juru_xray:'Juru X-Ray', sonographer:'Sonographer', juru_audio:'Juru Audio', pemandu:'Pemandu' },
     customRoles: []
 };
 window.resetRbac = function() {
@@ -1637,6 +1643,7 @@ const ROUTING_DEFAULTS = {
   operation_balok:  { needs_tl: true,  p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
   xray_sono_balok:  { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
   juru_audio_balok: { needs_tl: false, p1_doctor_pic: false, p1_supervisor: false, p1_hod_balok: true,  needs_p2: true  },
+  pemandu_balok:    { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
 };
 let approvalRouting = JSON.parse(JSON.stringify(ROUTING_DEFAULTS));
 
@@ -1648,6 +1655,7 @@ window.getStaffGroup = function(s) {
   // Peranan paramedik — laluan kelulusan khusus, hanya di Balok
   if (['juru_xray', 'sonographer'].includes(s.role) && isBalok) return 'xray_sono_balok';
   if (s.role === 'juru_audio'                        && isBalok) return 'juru_audio_balok';
+  if (s.role === 'pemandu'                           && isBalok) return 'pemandu_balok';
 
   // Hanya Operation Staff di Balok → TL → Supervisor → HR
   if (isBalok && s.category === 'Operation Staff') return 'operation_balok';
