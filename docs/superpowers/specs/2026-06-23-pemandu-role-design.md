@@ -44,6 +44,10 @@ Semua dalam fail sedia ada:
    p1_hod_balok: false, needs_p2: true }`.
 6. **`seed-role-permissions.js`** (≈ baris 9): tambah
    `pemandu: { canApprove: false, manageStaff: false }`.
+7. **`src/main.js` — array `roles` jadual RBAC** (≈ baris 8954): tambah entri
+   `pemandu`. Jadual Access Control dibina daripada array hardcoded ini, BUKAN
+   daripada `rbacMatrix`/`roleLabels`, jadi role baru mesti ditambah di sini
+   secara manual atau ia tidak muncul dalam UI RBAC.
 
 ## Nota Deployment (Kritikal)
 

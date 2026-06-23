@@ -8963,7 +8963,8 @@ function renderView() {
             { key: 'staff',       label: 'Staff',        color: '#94a3b8', bg: 'rgba(148,163,184,0.04)', bottomBorder: '2px solid rgba(163,177,198,0.3)',  desc: 'Kakitangan Am' },
             { key: 'juru_xray',   label: 'Juru X-Ray',   color: '#ec4899', bg: 'rgba(236,72,153,0.04)', bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Paramedik Pengimejan' },
             { key: 'sonographer', label: 'Sonographer',  color: '#6366f1', bg: 'rgba(99,102,241,0.04)', bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Paramedik Ultrasound' },
-            { key: 'juru_audio',  label: 'Juru Audio',   color: '#0d9488', bg: 'rgba(13,148,136,0.04)', bottomBorder: 'none',                             desc: 'Paramedik Audiologi' },
+            { key: 'juru_audio',  label: 'Juru Audio',   color: '#0d9488', bg: 'rgba(13,148,136,0.04)', bottomBorder: '1px solid rgba(163,177,198,0.12)', desc: 'Paramedik Audiologi' },
+            { key: 'pemandu',     label: 'Pemandu',      color: '#a16207', bg: 'rgba(161,98,7,0.04)',   bottomBorder: 'none',                             desc: 'Pemandu Kenderaan' },
           ];
 
           const grpTh = (emoji, label, span, color, isLast) => `<th colspan="${span}" style="padding:0.7rem 0.75rem;font-weight:800;font-size:0.72rem;letter-spacing:0.8px;text-transform:uppercase;color:${color};border-right:${isLast ? '1px solid rgba(163,177,198,0.15)' : '3px solid rgba(163,177,198,0.3)'};border-bottom:2px solid ${color}44;background:${color}0f;text-align:center;white-space:nowrap;">${emoji} ${label}</th>`;
