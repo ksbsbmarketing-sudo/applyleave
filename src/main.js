@@ -3883,9 +3883,30 @@ window.getEntitlementAL = function(staffObj) {
   // Fallback branch logic
   const branchObj = branches.find(b => b.name === (staffObj.branch || '').trim());
   if (branchObj && branchObj.state === 'Terengganu') return 16;
-  
+
   // Pahang Logic
   return years >= 5 ? 20 : 16;
+};
+
+// Peruntukan MC setahun ikut tahun khidmat (Akta Kerja 1955 s.60F):
+//   < 2 tahun = 14, 2–5 tahun = 18, > 5 tahun = 22.
+// ent_MC kekal sebagai override HR (keutamaan tertinggi). Jika startDate tiada,
+// jatuh ke 14 (tier terendah) — HR perlu isi startDate untuk peruntukan tepat.
+window.getEntitlementMC = function(staffObj) {
+  if (!staffObj) return 14;
+  if (staffObj.ent_MC !== undefined && staffObj.ent_MC !== null) {
+    return parseFloat(staffObj.ent_MC);
+  }
+  let years = 0;
+  if (staffObj.startDate) {
+    const start = new Date(staffObj.startDate);
+    const now = new Date();
+    years = now.getFullYear() - start.getFullYear();
+    if (now.getMonth() < start.getMonth() || (now.getMonth() === start.getMonth() && now.getDate() < start.getDate())) {
+      years--;
+    }
+  }
+  return years >= 5 ? 22 : years >= 2 ? 18 : 14;
 };
 
 window.getMonthsWorkedThisYear = function(startDate) {
@@ -3932,6 +3953,8 @@ window.getLeaveStats = function(staff, type) {
   let ent = 0;
   if (type === 'AL') {
     ent = window.getEarnedAL(staff); // Jumlah = ent_AL + CF
+  } else if (type === 'MC') {
+    ent = window.getEntitlementMC(staff); // peruntukan MC ikut tahun khidmat (14/18/22)
   } else {
     // ML_PL entitlement is saved as ent_PL by the HR form (legacy key)
     const entKey = type === 'ML_PL' ? 'ent_PL' : `ent_${type}`;
@@ -10224,7 +10247,7 @@ function renderModal() {
             </div>
           </div>
 
-          ${_leaveBreakdownHTML('mc', 'MC', 'MC — Cuti Sakit', 14, '#10b981')}
+          ${_leaveBreakdownHTML('mc', 'MC', 'MC — Cuti Sakit', window.getEntitlementMC(staff), '#10b981')}
           ${_leaveBreakdownHTML('el', 'EL', 'EL — Cuti Ehsan', 3, '#f59e0b')}
 
           <!-- Grid cuti lain (AL/MC/EL ada breakdown sendiri di atas) -->
