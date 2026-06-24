@@ -1,10 +1,14 @@
 import admin from "firebase-admin";
 import fs from "fs";
 
-// Pull live Firestore data down to local public/data/*.json snapshots.
+// Pull live Firestore data down to local ./data/*.json snapshots.
 // Read-only on prod: it only reads collections, never writes to Firestore.
 // Uses ADC (Application Default Credentials) — run `gcloud auth application-default login`
 // (or set GOOGLE_APPLICATION_CREDENTIALS to a service-account key) first.
+//
+// IMPORTANT: write to ./data (project root, NOT public/). Vite copies public/ into
+// dist/ on build, so snapshots placed under public/ get DEPLOYED and exposed publicly
+// (they contain staff IC numbers / PII). ./data is outside publicDir, never deployed.
 
 admin.initializeApp({
   projectId: "apply-leave-89ebb"
@@ -37,17 +41,20 @@ async function pull() {
   try {
     console.log("Pulling from Firestore (apply-leave-89ebb)...\n");
 
+    // Snapshots go to ./data (NOT public/) so they are never bundled into dist/.
+    fs.mkdirSync("./data", { recursive: true });
+
     // Leaves — sort by numeric id for a stable, diff-friendly file.
     const leaves = await pullCollection("leaves", (a, b) => Number(a.id) - Number(b.id));
-    fs.writeFileSync("./public/data/leaves.json", JSON.stringify(leaves, null, 2) + "\n");
-    console.log(`✅ Pulled ${leaves.length} leave records  → public/data/leaves.json`);
+    fs.writeFileSync("./data/leaves.json", JSON.stringify(leaves, null, 2) + "\n");
+    console.log(`✅ Pulled ${leaves.length} leave records  → data/leaves.json`);
 
     // Staff — sort by name to keep the snapshot pair in sync.
     const staff = await pullCollection("staff", (a, b) =>
       String(a.name || "").localeCompare(String(b.name || ""))
     );
-    fs.writeFileSync("./public/data/staff.json", JSON.stringify(staff, null, 2) + "\n");
-    console.log(`✅ Pulled ${staff.length} staff records  → public/data/staff.json`);
+    fs.writeFileSync("./data/staff.json", JSON.stringify(staff, null, 2) + "\n");
+    console.log(`✅ Pulled ${staff.length} staff records  → data/staff.json`);
 
     process.exit(0);
   } catch (err) {
