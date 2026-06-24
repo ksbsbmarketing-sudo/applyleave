@@ -10034,12 +10034,12 @@ function renderModal() {
   const staff = staffList.find(s => s.ic === editingStaff);
   if (!staff) return '';
 
-  // Generate a mock start date if none exists, just to show the UI parity
-  if (!staff.startDate) {
-      const randomYear = 2013 + Math.floor(Math.random() * 10);
-      staff.startDate = `${randomYear}-01-10`;
-  }
-
+  // Nota: JANGAN jana startDate palsu di sini. Dulu modal mengisi tarikh rawak
+  // bila startDate kosong — ia mengubah objek global staffList (rujukan), lalu
+  // getEntitlementAL kira tahun khidmat dari tarikh rawak tu (AL 16 vs 20 secara
+  // rawak setiap kali modal dibuka), jadi baki AL tak padan dengan Management Hub.
+  // Biarkan startDate kosong → getEntitlementAL deterministik (years 0). HR perlu
+  // isi Service Start Date sebenar untuk peruntukan tepat.
   const serviceDurationText = window.getServiceDurationText(staff.startDate);
 
   // Kiraan AL/MC/EL untuk modal (Formula B: Jumlah − Guna Sebelum − Guna Sistem − Pelarasan)
@@ -10132,7 +10132,7 @@ function renderModal() {
                          <span id="years-badge-text">${serviceDurationText} BERKHIDMAT</span>
                      </span>
                  </div>
-                 <input type="date" id="edit-start-date" oninput="window.calculateYears(this.value)" class="neu-inset" value="${staff.startDate}" style="color-scheme: light;">
+                 <input type="date" id="edit-start-date" oninput="window.calculateYears(this.value)" class="neu-inset" value="${staff.startDate || ''}" style="color-scheme: light;">
               </div>
 
               <div style="display: flex; flex-direction: column;">
