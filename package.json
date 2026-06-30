@@ -8,6 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "pull": "node pull_from_prod.js",
+    "provision": "node provision-auth.js",
+    "seed:roles": "node seed-role-permissions.js",
     "start:mcp": "node src/mcp-server/index.js"
   },
   "devDependencies": {
