@@ -6937,8 +6937,8 @@ function renderView() {
               + '</div>'
               // AL / MC / HL compact stats
               + '<div style="display:flex;gap:0.5rem;align-items:center;flex-shrink:0;">'
-              +   statCell('AL', al.used.toFixed(1), window.getEntitlementAL(staff).toFixed(1), alLow ? '#ef4444' : '#38bdf8')
-              +   statCell('MC', mc.used, mc.ent, '#10b981')
+              +   statCell('AL', al.bal.toFixed(1), al.ent.toFixed(1), alLow ? '#ef4444' : '#38bdf8')
+              +   statCell('MC', mc.bal, mc.ent, '#10b981')
               +   statCell('HL', hl.used, hl.ent, '#06b6d4')
               + '</div>'
               // Edit + Delete buttons
@@ -7014,8 +7014,8 @@ function renderView() {
             +   '</div>'
             + '</div>'
             + '<div style="display:flex;gap:0.5rem;align-items:center;flex-shrink:0;">'
-            +   statCell('AL', al.used.toFixed(1), window.getEntitlementAL(staff).toFixed(1), alLow ? '#ef4444' : '#38bdf8')
-            +   statCell('MC', mc.used, mc.ent, '#10b981')
+            +   statCell('AL', al.bal.toFixed(1), al.ent.toFixed(1), alLow ? '#ef4444' : '#38bdf8')
+            +   statCell('MC', mc.bal, mc.ent, '#10b981')
             +   statCell('HL', hl.used, hl.ent, '#06b6d4')
             + '</div>'
             + '<button class="btn-logout" data-ic="' + staff.ic + '" onclick="window.setEditingStaff(this.dataset.ic)" style="flex-shrink:0;width:auto;padding:0.2rem 0.65rem;font-size:0.75rem;">Edit</button>'
