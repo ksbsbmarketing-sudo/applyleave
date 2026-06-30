@@ -462,7 +462,7 @@ window.checkOverduePendingReminders = async function() {
           // Guna routing config untuk cari pelulus
           const applicant = staffList.find(s => s.ic === record.ic);
           if (applicant) {
-            const p1List = window.getRoutingP1Approvers ? window.getRoutingP1Approvers(applicant) : [];
+            const p1List = window.getRoutingP1Approvers ? window.getRoutingP1Approvers(applicant, record.type) : [];
             for (const approver of p1List) {
               if (approver.phone && !sent.has(approver.ic)) {
                 await window.sendWhatsApp(approver.phone, buildReminderMsg(record, ageDays, 1));
@@ -1114,6 +1114,13 @@ window.canManageRequest = function(user, req) {
     // Guna routing config
     const applicant = staffList.find(s => s.ic === req.ic);
     if (!applicant) return false;
+
+    // Pengecualian "terus ke HR" — Pelulus Peringkat 1 (HOD/Supervisor/Doctor PIC)
+    // tidak boleh urus. HR/Admin sudah dibenarkan di atas. Guna flag tersimpan;
+    // fallback kira semula untuk rekod lama tanpa flag.
+    const skipP1 = (req.directHR != null) ? !!req.directHR : window.shouldSkipP1(applicant, req.type);
+    if (skipP1) return false;
+
     const group = window.getStaffGroup(applicant);
     const cfg   = approvalRouting[group] || {};
 
@@ -1679,7 +1686,22 @@ window.staffNeedsP2 = function(s) {
   return cfg ? cfg.needs_p2 !== false : true;
 };
 
-window.getRoutingP1Approvers = function(staffMember) {
+// Pengecualian Laluan Kelulusan — permohonan TERUS ke HR, skip Pelulus Peringkat 1
+// (HOD / Penyelia). Sumber tunggal kebenaran untuk SEMUA bahagian (borang, padanan
+// pelulus, senarai pending, kelulusan HR, paparan config):
+//   (a) HOD Balok memohon cuti SENDIRI — semua jenis cuti (tak perlu HOD lain lulus).
+//   (b) Kakitangan Admin Balok (admin_balok) untuk MC / EL / ML / ML_PL sahaja.
+const P1_SKIP_TYPES_ADMIN_BALOK = ['MC', 'EL', 'ML', 'ML_PL'];
+window.shouldSkipP1 = function(applicant, leaveType) {
+  if (!applicant) return false;
+  if (applicant.role === 'hod_balok') return true;                                  // (a)
+  if (window.getStaffGroup(applicant) === 'admin_balok'
+      && P1_SKIP_TYPES_ADMIN_BALOK.includes(leaveType)) return true;                // (b)
+  return false;
+};
+
+window.getRoutingP1Approvers = function(staffMember, leaveType) {
+  if (window.shouldSkipP1(staffMember, leaveType)) return [];
   const group = window.getStaffGroup(staffMember);
   const cfg   = approvalRouting[group] || {};
   let candidates = [];
@@ -2181,10 +2203,10 @@ window.staffEditOwnLeave = async function(id) {
     window.logSystemActivity(`Staff edited own leave ${id} (reset to PENDING)`);
     // Re-notify approvers that this needs (re-)action.
     const applicant = staffList.find(s => s.ic === rec.ic) || user;
-    const approvers = window.getRoutingP1Approvers(applicant).filter(s => s.phone);
+    const approvers = window.getRoutingP1Approvers(applicant, rec.type).filter(s => s.phone);
     const info = `\n\n👤 Pemohon: *${applicant.name}*\n📅 Tarikh: ${newStart} → ${newEnd}\n⏱ Tempoh: ${days} hari\n💬 Sebab: ${newReason}\n\n🔗 https://apply-leave-89ebb.web.app`;
     approvers.forEach(a => window.sendWhatsApp(a.phone, `🔁 *PERMOHONAN CUTI DIKEMASKINI — Perlu Sokongan Semula*${info}`));
-    window.notifyApproversInbox(window.getRoutingP1Approvers(applicant),
+    window.notifyApproversInbox(window.getRoutingP1Approvers(applicant, rec.type),
       '🔁 Cuti Dikemaskini — Perlu Sokongan Semula',
       `${applicant.name} mengubah permohonan cuti (kini ${newStart} → ${newEnd}); memerlukan sokongan semula.`,
       id.toString(), rec.ic);
@@ -2271,8 +2293,11 @@ window.finalizeLeave = async function(id) {
             // Jika PENDING, minta pengesahan — bezakan "tiada pelulus berdaftar" vs "bypass sengaja"
             if (record.status === 'PENDING') {
                 const _ap = applicant || staffList.find(s => s.ic === record.ic);
-                const _noP1 = !!(_ap && window.getRoutingP1Approvers(_ap).length === 0);
-                const _confirmMsg = _noP1
+                const _directHR = (record.directHR != null) ? !!record.directHR : window.shouldSkipP1(_ap, record.type);
+                const _noP1 = !_directHR && !!(_ap && window.getRoutingP1Approvers(_ap, record.type).length === 0);
+                const _confirmMsg = _directHR
+                    ? `Permohonan ${leaveTypeName} bagi ${record.name} dilaluankan TERUS ke HR (tanpa HOD) mengikut polisi.\n\nLuluskan sekarang?`
+                    : _noP1
                     ? `Staf ${record.name} tiada Pelulus Peringkat 1 (HOD/Supervisor) berdaftar untuk cawangan/kategori ini.\n\nLuluskan terus sebagai HR/Admin?`
                     : `⚠️ Permohonan ini BELUM dinilai oleh HOD/Supervisor.\n\nAdakah anda pasti mahu luluskan terus (bypass) bagi ${record.name}?`;
                 if (!confirm(_confirmMsg)) return;
@@ -2505,9 +2530,13 @@ window.resendLeaveWA = function(id) {
             // PENDING dengan HOD dipilih: peringatan kepada HOD
             recipients = staffList.filter(s => s.ic === record.hodIC && s.phone);
             msg = `🔔 *PERINGATAN — Permohonan Cuti Menunggu Sokongan Anda (Peringkat 1)*\n\nPermohonan cuti di bawah masih menunggu sokongan anda.${info}`;
+        } else if (record.directHR || (applicant && window.shouldSkipP1(applicant, record.type))) {
+            // Terus ke HR (skip HOD): peringatan kepada HR/Admin
+            recipients = staffList.filter(s => ['admin', 'hr', 'super_admin'].includes(s.role) && s.phone && !s.inactive);
+            msg = `🔔 *PERINGATAN — Permohonan Cuti Menunggu Kelulusan HR*\n\nPermohonan cuti di bawah dilaluankan terus ke HR dan masih menunggu kelulusan.${info}`;
         } else {
             // PENDING routing auto: peringatan kepada semua P1 approver
-            recipients = window.getRoutingP1Approvers(applicant || { branch: record.branch, category: record.category }).filter(s => s.phone);
+            recipients = window.getRoutingP1Approvers(applicant || { branch: record.branch, category: record.category }, record.type).filter(s => s.phone);
             msg = `🔔 *PERINGATAN — Permohonan Cuti Menunggu Sokongan Anda (Peringkat 1)*\n\nPermohonan cuti di bawah masih menunggu sokongan anda.${info}`;
         }
     } else if (record.status === 'TL APPROVED') {
@@ -5036,6 +5065,9 @@ function renderDashboard() {
       const _sbmIsOpBalokTL = window.getStaffGroup(user) === 'operation_balok' &&
           !!(approvalRouting['operation_balok'] || {}).needs_tl;
 
+      // Pengecualian "terus ke HR" (skip HOD) — ikut jenis cuti & peranan pemohon.
+      const _sbmDirectHR = window.shouldSkipP1(user, selectedLeaveType);
+
       // Wajib pilih TL (Peringkat 0) untuk op-balok
       // (MC kini ikut step kelulusan penuh sama seperti AL — tiada lagi laluan terus ke HR)
       const selectedTL = leaveForm.querySelector('#tl-select')?.value;
@@ -5047,7 +5079,7 @@ function renderDashboard() {
 
       // Wajib pilih pelulus Peringkat 1 (kecuali op-balok — Supervisor auto, atau jika tiada pelulus langsung — HR luluskan terus)
       const selectedHODCheck = leaveForm.querySelector('#hod-select')?.value;
-      const _hasP1Approvers = window.getRoutingP1Approvers(user).length > 0;
+      const _hasP1Approvers = window.getRoutingP1Approvers(user, selectedLeaveType).length > 0;
       if (!_sbmIsOpBalokTL && _hasP1Approvers && !selectedHODCheck) {
           alert('🔴 WAJIB: Sila pilih Pelulus Peringkat 1 (HOD / PIC_HOD / Supervisor) sebelum menghantar permohonan cuti.\n\nPermohonan tidak dapat diproses tanpa kelulusan Peringkat 1.');
           leaveForm.querySelector('#hod-select')?.focus();
@@ -5114,8 +5146,11 @@ function renderDashboard() {
         endDate,
         reason,
         handoverName: handover,
-        hodIC: selectedHOD || null,
+        hodIC: _sbmDirectHR ? null : (selectedHOD || null),
         tlIC: selectedTL || null,
+        // Permohonan terus ke HR (skip HOD) — disimpan supaya laluan kekal stabil
+        // walaupun polisi berubah kemudian. null untuk laluan biasa & rekod lama.
+        directHR: _sbmDirectHR || null,
         // Semua jenis cuti (termasuk MC) bermula PENDING & ikut step kelulusan penuh seperti AL.
         status: 'PENDING',
         // Bukti (MC/Kecemasan/Ehsan) — null untuk jenis cuti lain & rekod lama.
@@ -5140,11 +5175,15 @@ function renderDashboard() {
         // Op-balok: notify hanya TL yang dipilih oleh staff (bukan semua TL)
         hodToNotify = staffList.filter(s => s.ic === selectedTL && s.phone);
         hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 0 (Sokongan Team Leader)*\n\nPermohonan cuti memerlukan sokongan anda (Team Leader) sebelum dihantar ke Supervisor.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+      } else if (_sbmDirectHR) {
+        // Terus ke HR — HR/Admin ialah pelulus (bukan HOD)
+        hodToNotify = staffList.filter(s => ['admin', 'hr', 'super_admin'].includes(s.role) && s.phone && !s.inactive);
+        hodMsg = `📩 *PERMOHONAN CUTI BARU — Kelulusan HR (Terus)*\n\nPermohonan cuti ini dilaluankan TERUS kepada HR/Admin untuk kelulusan (tanpa peringkat HOD).\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
       } else if (selectedHOD) {
         hodToNotify = staffList.filter(s => s.ic === selectedHOD && s.phone);
         hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
       } else {
-        hodToNotify = window.getRoutingP1Approvers(user).filter(s => s.phone);
+        hodToNotify = window.getRoutingP1Approvers(user, selectedLeaveType).filter(s => s.phone);
         hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
       }
 
@@ -5152,17 +5191,19 @@ function renderDashboard() {
 
       // Inbox kepada pelulus (selari dengan WhatsApp) — peringkat yang sesuai
       const _apprStaff = _sbmIsOpBalokTL ? staffList.filter(s => s.ic === selectedTL)
+        : _sbmDirectHR ? staffList.filter(s => ['admin', 'hr', 'super_admin'].includes(s.role) && !s.inactive)
         : selectedHOD ? staffList.filter(s => s.ic === selectedHOD)
-        : window.getRoutingP1Approvers(user);
+        : window.getRoutingP1Approvers(user, selectedLeaveType);
       window.notifyApproversInbox(_apprStaff,
         '📥 Permohonan Cuti Perlu Tindakan',
-        `${user.name} memohon ${leaveTypeName} (${startDate}${startDate !== endDate ? ' → ' + endDate : ''}, ${diffDays} hari). Memerlukan ${_sbmIsOpBalokTL ? 'sokongan Team Leader (Peringkat 0)' : 'kelulusan Peringkat 1'} anda.`,
+        `${user.name} memohon ${leaveTypeName} (${startDate}${startDate !== endDate ? ' → ' + endDate : ''}, ${diffDays} hari). Memerlukan ${_sbmIsOpBalokTL ? 'sokongan Team Leader (Peringkat 0)' : _sbmDirectHR ? 'kelulusan HR/Admin' : 'kelulusan Peringkat 1'} anda.`,
         newRecord.id.toString(), user.ic);
 
       // WA pengesahan kepada pemohon sendiri
       if (user.phone) {
         const nextStage = _sbmIsOpBalokTL
           ? 'Sokongan Team Leader (Peringkat 0)'
+          : _sbmDirectHR ? 'Kelulusan HR/Admin'
           : 'Sokongan HOD/Supervisor (Peringkat 1)';
         const confirmMsg = `✅ *PERMOHONAN CUTI DIHANTAR*\n\nSalam ${user.name},\n\nPermohonan cuti anda telah berjaya dihantar dengan sebab: *${reason}*\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${startDate} → ${endDate}\n• Tempoh: ${diffDays} hari\n\nPermohonan sedang menunggu *${nextStage}*. Anda akan dimaklumkan setiap kemaskini status.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
         window.sendWhatsApp(user.phone, confirmMsg);
@@ -5180,7 +5221,9 @@ function renderDashboard() {
       const adminCCMsg = _sbmIsOpBalokTL
         ? `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan Team Leader)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan Team Leader (Peringkat 0).\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`
         : `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan HOD)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan HOD/Supervisor (Peringkat 1).\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
-      adminCC.forEach(admin => window.sendWhatsApp(admin.phone, adminCCMsg));
+      // Untuk laluan "terus ke HR", HR/Admin sudah menerima notifikasi pelulus di atas —
+      // elak hantar WA berganda melalui CC.
+      if (!_sbmDirectHR) adminCC.forEach(admin => window.sendWhatsApp(admin.phone, adminCCMsg));
 
       // Build status message
       const waEnabled = WHATSAPP_ENABLED();
@@ -5189,10 +5232,10 @@ function renderDashboard() {
       if (!waEnabled) {
         statusMsg += '⚠️ AMARAN: Token WhatsApp belum dikonfigurasi. Notifikasi WA TIDAK dihantar. Sila hubungi Super Admin untuk tetapkan token Fonnte dalam WA Settings.';
       } else if (hodToNotify.length === 0) {
-        const noRecipientLabel = _sbmIsOpBalokTL ? 'Team Leader' : 'HOD/Supervisor';
+        const noRecipientLabel = _sbmIsOpBalokTL ? 'Team Leader' : _sbmDirectHR ? 'HR/Admin' : 'HOD/Supervisor';
         statusMsg += `⚠️ Tiada pelulus dijumpai untuk menerima notifikasi WA. Sila pastikan ${noRecipientLabel} telah didaftarkan dengan nombor telefon dalam sistem.`;
       } else {
-        const notifLabel = _sbmIsOpBalokTL ? 'Team Leader (Peringkat 0)' : 'Pelulus Peringkat 1';
+        const notifLabel = _sbmIsOpBalokTL ? 'Team Leader (Peringkat 0)' : _sbmDirectHR ? 'HR/Admin (Kelulusan Terus)' : 'Pelulus Peringkat 1';
         statusMsg += `📲 Notifikasi WA dihantar kepada ${notifLabel}:\n${recipientNames}`;
       }
 
@@ -5365,9 +5408,9 @@ function renderDashboard() {
                   if (!isAdminEditor) {
                       const applicant = staffList.find(s => s.ic === rec.ic) || user;
                       const info = `\n\n👤 Pemohon: *${applicant.name}*\n📅 Tarikh: ${elStart} → ${elEnd}\n⏱ Tempoh: ${elDays} hari\n\n🔗 https://apply-leave-89ebb.web.app`;
-                      window.getRoutingP1Approvers(applicant).filter(s => s.phone).forEach(a =>
+                      window.getRoutingP1Approvers(applicant, rec.type).filter(s => s.phone).forEach(a =>
                           window.sendWhatsApp(a.phone, `🔁 *PERMOHONAN CUTI DIKEMASKINI — Perlu Sokongan Semula*${info}`));
-                      window.notifyApproversInbox(window.getRoutingP1Approvers(applicant),
+                      window.notifyApproversInbox(window.getRoutingP1Approvers(applicant, rec.type),
                           '🔁 Cuti Dikemaskini — Perlu Sokongan Semula',
                           `${applicant.name} mengubah permohonan cuti (kini ${elStart} → ${elEnd}, ${elDays} hari); memerlukan sokongan semula.`,
                           editingLeaveId.toString(), rec.ic);
@@ -6463,6 +6506,17 @@ function renderView() {
               const _isOpBalokTL = window.getStaffGroup(user) === 'operation_balok' &&
                   !!(approvalRouting['operation_balok'] || {}).needs_tl;
               if (_isOpBalokTL) return ''; // P1 auto (Supervisor Balok) — pilih auto
+              // Laluan terus ke HR — tiada pilihan HOD; tunjuk notis sahaja.
+              if (window.shouldSkipP1(user, selectedLeaveType)) {
+                return `
+            <div style="margin-bottom:1.5rem;border-radius:14px;border:1.5px solid rgba(5,150,105,0.3);background:rgba(5,150,105,0.06);padding:1rem 1.15rem;">
+              <div style="display:flex;align-items:center;gap:0.5rem;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span style="font-size:0.78rem;font-weight:700;color:#059669;">Kelulusan Terus ke HR</span>
+              </div>
+              <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.4rem;">Permohonan ini tidak memerlukan kelulusan HOD/Penyelia. Ia akan dihantar TERUS kepada HR/Admin untuk kelulusan akhir.</div>
+            </div>`;
+              }
               return `
             <div style="margin-bottom:1.5rem;">
               <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
@@ -6474,7 +6528,7 @@ function renderView() {
                     <select id="hod-select" class="neu-inset" required style="appearance:none;padding-right:2.5rem;font-weight:600;color-scheme:light;font-size:0.85rem;border:1.5px solid rgba(239,68,68,0.4);background:rgba(239,68,68,0.03);" onchange="this.style.border='1.5px solid '+(this.value?'rgba(16,185,129,0.4)':'rgba(239,68,68,0.4)');this.style.background=this.value?'rgba(16,185,129,0.03)':'rgba(239,68,68,0.03)'">
                         <option value="">-- Pilih Pelulus Peringkat 1 (WAJIB) --</option>
                         ${(() => {
-                            const approvers = window.getRoutingP1Approvers(user);
+                            const approvers = window.getRoutingP1Approvers(user, selectedLeaveType);
                             if (!approvers.length) return '<option value="" disabled>-- Tiada Pelulus (HR/Admin akan luluskan terus) --</option>';
                             const rl = { doctor_pic:'Doctor PIC', hod_balok:'HOD Balok', supervisor:'Supervisor' };
                             return approvers.map(s => `<option value="${s.ic}">${s.name} (${rl[s.role]||s.role.toUpperCase()})</option>`).join('');
@@ -6597,6 +6651,27 @@ function renderView() {
 
                         </div>
                     </div>`;
+                }
+
+                // Laluan terus ke HR (skip HOD) — paparkan aliran 1-peringkat.
+                if (window.shouldSkipP1(user, selectedLeaveType)) {
+                    return `
+                <div style="border-radius:14px;border:1.5px solid #05966933;background:rgba(5,150,105,0.05);padding:1.1rem 1.25rem;margin-bottom:0.25rem;">
+                    <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.85rem;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path></svg>
+                        <span style="font-size:0.78rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#059669;">Aliran Kelulusan Cuti — Terus ke HR</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:0.55rem;">
+                        <div style="display:flex;align-items:flex-start;gap:0.75rem;">
+                            <div style="flex-shrink:0;width:24px;height:24px;border-radius:50%;background:#059669;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.72rem;font-weight:800;margin-top:1px;">1</div>
+                            <div>
+                                <div style="font-size:0.82rem;font-weight:700;color:var(--text);">Kelulusan Akhir HR/Admin</div>
+                                <div style="font-size:0.78rem;color:#059669;font-weight:600;margin-top:0.1rem;">HR / Admin — KSB HQ</div>
+                                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.1rem;">${user.role === 'hod_balok' ? 'Permohonan HOD Balok dihantar terus ke HR — tanpa kelulusan HOD lain.' : 'Cuti MC / EL / Bersalin / Paterniti staf admin Balok dihantar terus ke HR — tanpa peringkat HOD.'}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
                 }
 
                 return `
@@ -9535,6 +9610,15 @@ function renderView() {
                   }).join('')}
                 </tbody>
               </table>
+            </div>
+
+            <div style="margin-top:0.9rem;border-radius:10px;border:1px solid rgba(5,150,105,0.25);background:rgba(5,150,105,0.05);padding:0.75rem 0.9rem;">
+              <div style="font-size:0.68rem;font-weight:800;letter-spacing:0.6px;text-transform:uppercase;color:#059669;margin-bottom:0.35rem;">Pengecualian — Terus ke HR (Skip HOD)</div>
+              <ul style="margin:0;padding-left:1.1rem;font-size:0.72rem;color:var(--text-muted);line-height:1.5;">
+                <li><strong>Kakitangan Admin Balok</strong> — cuti <strong>MC, EL, Cuti Bersalin (ML), Cuti Paterniti (ML_PL)</strong> dihantar terus ke HR tanpa kelulusan HOD Balok. (Cuti lain seperti AL kekal lalu HOD.)</li>
+                <li><strong>HOD Balok</strong> yang memohon cuti sendiri — <strong>semua jenis cuti</strong> terus ke HR, tanpa kelulusan HOD lain.</li>
+              </ul>
+              <div style="font-size:0.66rem;color:var(--text-muted);margin-top:0.4rem;">Peraturan ini terpakai automatik di seluruh sistem (borang, senarai pending, kelulusan HR) dan tidak boleh ditogol di jadual di atas.</div>
             </div>
           </section>
 
