@@ -1,16 +1,19 @@
 // Pure leave-day counting. No Firebase/DOM dependencies so it is unit-testable.
 //
-// countLeaveDays(startDate, endDate, isAdminStaff, holidayDates):
+// countLeaveDays(startDate, endDate, isAdminStaff, holidayDates, calendarOnly):
 //   - isAdminStaff false → inclusive calendar-day count (legacy behaviour)
 //   - isAdminStaff true  → only Mon–Fri days that are not public holidays
 //   - holidayDates: array or Set of 'YYYY-MM-DD' strings (the staff's state holidays)
+//   - calendarOnly true  → always inclusive calendar-day count, even for admin staff.
+//       Used for statutory calendar-day entitlements (maternity/paternity/hospitalisation)
+//       which run as consecutive calendar days and must NOT skip weekends/holidays.
 //   - returns 0 when the range is invalid (end before start)
-export function countLeaveDays(startDate, endDate, isAdminStaff, holidayDates = []) {
+export function countLeaveDays(startDate, endDate, isAdminStaff, holidayDates = [], calendarOnly = false) {
   const start = parseYMD(startDate);
   const end = parseYMD(endDate);
   if (!start || !end || end < start) return 0;
 
-  if (!isAdminStaff) {
+  if (!isAdminStaff || calendarOnly) {
     return Math.round((end - start) / 86400000) + 1; // inclusive calendar days
   }
 

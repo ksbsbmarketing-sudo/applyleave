@@ -2139,16 +2139,23 @@ window.recalcEditLeaveDays = function() {
     const e = document.querySelector('#el-end')?.value;
     const daysEl = document.querySelector('#el-days');
     if (!s || !e || !daysEl) return;
-    daysEl.value = window.computeLeaveDays(s, e, staffList.find(x => x.ic === rec.ic));
+    daysEl.value = window.computeLeaveDays(s, e, staffList.find(x => x.ic === rec.ic), rec.type);
 };
 
+// Cuti berasaskan HARI KALENDAR berturut-turut mengikut undang-undang — tidak
+// langkau hujung minggu/cuti umum walaupun untuk staf admin (Cuti Bersalin 98,
+// Paterniti 7, Hospitalisasi 60).
+const CALENDAR_DAY_LEAVE_TYPES = ['ML', 'ML_PL', 'HL'];
+
 // Chargeable leave-day count for a staff member over a date range.
-// Admin Staff (Mon–Fri) skip weekends + their state's public holidays;
-// everyone else counts all calendar days. Returns whole days (callers apply half-day).
-window.computeLeaveDays = function(startDate, endDate, staff) {
+// Admin Staff (Mon–Fri) skip weekends + their state's public holidays; everyone
+// else counts all calendar days. Calendar-day leave types (ML/ML_PL/HL) ALWAYS
+// count calendar days regardless of category. Returns whole days (callers apply half-day).
+window.computeLeaveDays = function(startDate, endDate, staff, leaveType) {
   const isAdmin = !!staff && (staff.category === 'Admin Staff' || staff.category === 'Admin');
+  const calendarOnly = CALENDAR_DAY_LEAVE_TYPES.includes(leaveType);
   let holidayDates = [];
-  if (isAdmin) {
+  if (isAdmin && !calendarOnly) {
     const branchObj = branches.find(b => b.name === (staff.branch || ''));
     const state = branchObj ? branchObj.state : null;
     const list = state === 'Terengganu' ? publicHolidays.terengganu
@@ -2156,7 +2163,7 @@ window.computeLeaveDays = function(startDate, endDate, staff) {
                : [];
     holidayDates = (list || []).map(h => h.date);
   }
-  return countLeaveDays(startDate, endDate, isAdmin, holidayDates);
+  return countLeaveDays(startDate, endDate, isAdmin, holidayDates, calendarOnly);
 };
 
 // Staff edits their OWN leave's dates/reason. Resets to PENDING (re-approval),
@@ -2183,7 +2190,7 @@ window.staffEditOwnLeave = async function(id) {
   if (newReason !== rec.reason)   changes.push(`• Sebab: "${rec.reason}" → "${newReason}"`);
   if (!changes.length) { alert('Tiada perubahan dibuat.'); return; }
 
-  const days = window.computeLeaveDays(newStart, newEnd, staffList.find(s => s.ic === rec.ic) || user);
+  const days = window.computeLeaveDays(newStart, newEnd, staffList.find(s => s.ic === rec.ic) || user, rec.type);
   if (days <= 0) {
     alert('Tarikh yang dipilih tiada hari bekerja untuk staf pentadbiran. Sila pilih tarikh yang merangkumi hari bekerja (Isnin–Jumaat).');
     return;
@@ -5015,7 +5022,7 @@ function renderDashboard() {
       const reason = leaveForm.querySelector('textarea').value;
       const handover = leaveForm.querySelector('#handover-input')?.value || '';
       
-      let diffDays = window.computeLeaveDays(leaveStartDate, leaveEndDate, user);
+      let diffDays = window.computeLeaveDays(leaveStartDate, leaveEndDate, user, selectedLeaveType);
       if (diffDays <= 0) {
         alert('Tarikh yang dipilih tiada hari bekerja untuk staf pentadbiran. Sila pilih tarikh yang merangkumi hari bekerja (Isnin–Jumaat).');
         return;
