@@ -3286,7 +3286,7 @@ async function initData() {
 }
 
 // Migration helper removed as data is now live on Firestore.
-console.log('[SYSTEM] Version 1.1.0 - First Login Warning + Policy Flow + System URL');
+console.log('[SYSTEM] Version 2.1.0 - Inbox bulk actions + calendar-day leave + Admin-Balok routing');
 
 // Auth bootstrap. Returning users have a persisted real session (Firebase restores it
 // across reloads) — for them we subscribe to data immediately. Otherwise we sign in
@@ -5009,7 +5009,7 @@ function renderDashboard() {
           <span class="app-topbar-company">KLINIK SYED BADARUDDIN SDN. BHD.</span>
           <span class="app-topbar-system">Sistem Permohonan Cuti &amp; Rekod Pekerja</span>
         </div>
-        <span class="app-topbar-version">v2.0.0</span>
+        <span class="app-topbar-version">v2.1.0</span>
       </header>
       <aside class="sidebar">
         <nav class="nav-menu">
