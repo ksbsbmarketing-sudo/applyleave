@@ -1,0 +1,45 @@
+rules_version = '2';
+
+// Firebase Storage security rules — mirrors the Firestore auth model:
+// only non-anonymous Firebase Auth sessions (real staff logins) may read/write.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    // Leave proof files (MC / Cuti Ehsan / Cuti Kecemasan).
+    // Path written by the app: leave-proofs/{ic}/{timestamp}_{filename}
+    // - Any signed-in user may write (mirrors the working messenger rule).
+    // - Any signed-in user may read (HR views proofs in Master Logs).
+    // - Limit: 10 MB, images or PDF only (covers iPhone HEIC via image/*).
+    //
+    // NOTE: the per-IC write lock (request.auth.token.ic == ic) is intentionally
+    // OMITTED for now. The `ic` custom claim is set only by the auth-migration
+    // function (functions/index.js setCustomUserClaims), which is NOT yet deployed,
+    // so on current logins token.ic is undefined and that check would DENY every
+    // upload (PDF/JPG alike). Re-add `&& request.auth.token.ic == ic` as part of
+    // the auth-migration cutover, once claims are provisioned on live tokens.
+    match /leave-proofs/{ic}/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn()
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|application/pdf');
+    }
+
+    // Messenger media (photos / files shared in chat).
+    // Path written by the app: messenger/{roomId}/{timestamp}_{filename}
+    match /messenger/{roomId}/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn()
+        && request.resource.size < 25 * 1024 * 1024;
+    }
+
+    // Everything else: denied.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
