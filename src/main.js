@@ -6381,7 +6381,9 @@ function renderView() {
                       if (!leaveStartDate || !leaveEndDate) { const t = new Date().toISOString().split('T')[0]; leaveStartDate = t; leaveEndDate = t; }
                       const s = new Date(leaveStartDate), e = new Date(leaveEndDate);
                       if (isNaN(s) || isNaN(e)) return '?';
-                      let d = Math.floor((e - s) / (1000*60*60*24)) + 1;
+                      // Guna computeLeaveDays (sama seperti semasa hantar) supaya preview
+                      // tepat: staf Admin (mis. Admin Balok) langkau Sabtu/Ahad + cuti umum.
+                      let d = window.computeLeaveDays(leaveStartDate, leaveEndDate, user, selectedLeaveType);
                       if (applyHalfDay) d -= 0.5;
                       return d > 0 ? d : '—';
                     })()}
