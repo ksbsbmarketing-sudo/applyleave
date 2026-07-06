@@ -526,8 +526,8 @@ async function waitForApp(page) {
     🌐 LINK SISTEM UTAMA: <a href="https://apply-leave-89ebb.web.app" style="color: #7dd3fc; text-decoration: none; border-bottom: 1.5px solid #7dd3fc;">https://apply-leave-89ebb.web.app</a>
   </div>
   <div class="meta">
-    <span><strong>Versi</strong>3.0</span>
-    <span><strong>Tarikh</strong>Jun 2026</span>
+    <span><strong>Versi</strong>3.1</span>
+    <span><strong>Tarikh</strong>Julai 2026</span>
     <span><strong>Platform</strong>Web / PWA</span>
     <span><strong>Bahasa</strong>Bahasa Malaysia</span>
   </div>
@@ -575,6 +575,9 @@ async function waitForApp(page) {
 
   <div class="toc-section-label">Keselamatan</div>
   <div class="toc-item"><span class="num">25</span><span class="title">Amaran Log Masuk Pertama &amp; Tukar Kata Laluan</span></div>
+
+  <div class="toc-section-label">Notifikasi Dalaman</div>
+  <div class="toc-item"><span class="num">26</span><span class="title">Inbox — Notifikasi Dalam Aplikasi</span></div>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════ SEC 1 -->
@@ -771,7 +774,7 @@ async function waitForApp(page) {
   <h3>Langkah-Langkah Permohonan</h3>
   <div class="steps">
     <div class="step"><div class="step-num">1</div><div class="step-body"><strong>Pilih Jenis Cuti</strong> dari senarai kad yang terpapar</div></div>
-    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Pilih Tarikh Mula dan Tarikh Tamat</strong> (sistem kira hari bekerja automatik)</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Pilih Tarikh Mula dan Tarikh Tamat</strong> — "Jumlah Tempoh Cuti" dikira automatik (staf admin: Sabtu/Ahad &amp; cuti umum dilangkau; lihat Bab 6)</div></div>
     <div class="step"><div class="step-num">3</div><div class="step-body"><strong>Tandakan "Separuh Hari"</strong> jika perlu (0.5 hari)</div></div>
     <div class="step"><div class="step-num">4</div><div class="step-body"><strong>Pilih Pelulus</strong> — sistem tunjuk senarai berdasarkan kategori anda. <strong>Staff Operasi Balok:</strong> wajib pilih Team Leader (Peringkat 0) dahulu, Supervisor (Peringkat 1) ditetapkan automatik</div></div>
     <div class="step"><div class="step-num">5</div><div class="step-body"><strong>Masukkan Catatan/Sebab</strong> permohonan (pilihan)</div></div>
@@ -862,6 +865,21 @@ async function waitForApp(page) {
   <div class="callout info">
     <span class="callout-icon">ℹ️</span>
     <div>AL dikira secara <strong>pro-rata</strong> mengikut bilangan bulan bekerja dalam tahun semasa bagi staf baru.</div>
+  </div>
+
+  <h3>Cara Bilangan Hari Cuti Dikira</h3>
+  <p>Sistem mengira bilangan hari cuti secara automatik daripada Tarikh Mula dan Tarikh Tamat. Cara kiraan bergantung pada <strong>kategori staf</strong> dan <strong>jenis cuti</strong>:</p>
+  <table>
+    <thead><tr><th>Keadaan</th><th>Cara Kiraan</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Staff Admin</strong> (cuti biasa — AL, MC, EL, CME…)</td><td>Hanya <strong>hari bekerja Isnin–Jumaat</strong>. Sabtu, Ahad dan cuti umum negeri (Pahang / Terengganu) <strong>tidak dikira</strong>, kerana staf admin memang bercuti hujung minggu.</td></tr>
+      <tr><td><strong>Doktor &amp; Staff Operasi</strong></td><td>Semua <strong>hari kalendar</strong> dikira (termasuk Sabtu &amp; Ahad), kerana mereka bekerja mengikut syif/jadual.</td></tr>
+      <tr><td><strong>Cuti kalendar berturut</strong> — Bersalin (ML), Paterniti (PL), Hospitalisasi (HL)</td><td><strong>Sentiasa</strong> hari kalendar berturut-turut termasuk hujung minggu &amp; cuti umum, <em>walaupun</em> bagi staf admin — kerana ia kelayakan berkanun.</td></tr>
+    </tbody>
+  </table>
+  <div class="callout info">
+    <span class="callout-icon">🗓️</span>
+    <div><strong>Contoh (Staff Admin, cth. Admin Balok):</strong> memohon cuti <strong>Jumaat hingga Isnin</strong> hanya dikira sebagai <strong>2 hari</strong> (Jumaat + Isnin) — Sabtu &amp; Ahad tidak ditolak dari baki. Angka "Jumlah Tempoh Cuti" pada borang menunjukkan bilangan sebenar yang akan disimpan.</div>
   </div>
 </div>
 
@@ -1254,7 +1272,7 @@ async function waitForApp(page) {
 
   <hr class="divider">
   <p style="text-align:center;color:#94a3b8;font-size:0.82rem;margin-top:1.5rem;">
-    <em>Manual Rasmi Sistem KSB Leave Apply — Versi 2.4 — Jun 2026</em><br>
+    <em>Manual Rasmi Sistem KSB Leave Apply — Versi 3.1 — Julai 2026</em><br>
     Untuk pertanyaan lanjut, hubungi HR/Admin KSB<br>
     🌐 https://apply-leave-89ebb.web.app
   </p>
@@ -1467,7 +1485,7 @@ async function waitForApp(page) {
 
   <hr class="divider">
   <p style="text-align:center;color:#94a3b8;font-size:0.82rem;margin-top:1.5rem;">
-    <em>Manual Rasmi Sistem KSB Leave Apply — Versi 3.0 — Jun 2026</em><br>
+    <em>Manual Rasmi Sistem KSB Leave Apply — Versi 3.1 — Julai 2026</em><br>
     Untuk pertanyaan lanjut, hubungi HR/Admin KSB<br>
     🌐 https://apply-leave-89ebb.web.app
   </p>
@@ -1821,9 +1839,62 @@ async function waitForApp(page) {
     <div><strong>PENTING:</strong> Jangan kongsikan kata laluan anda kepada sesiapa. HR/Admin tidak akan pernah meminta kata laluan anda. Jika anda syak akaun telah dikompromikan, tukar kata laluan segera dan hubungi HR.</div>
   </div>
 
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ SEC 26 -->
+<div class="section">
+  <div class="section-header">
+    <div class="section-num">26</div>
+    <div class="section-title">Inbox — Notifikasi Dalam Aplikasi</div>
+  </div>
+
+  <p>Selain notifikasi WhatsApp, sistem menyimpan <strong>Inbox dalam aplikasi</strong> — satu senarai notifikasi peribadi bagi setiap staf. Inbox dikemas kini <strong>secara masa nyata</strong> dan boleh diakses melalui menu <strong>Inbox</strong> (lencana merah menunjukkan bilangan belum dibaca).</p>
+
+  <h3>Jenis Notifikasi</h3>
+  <table>
+    <thead><tr><th>Notifikasi</th><th>Bila Diterima</th></tr></thead>
+    <tbody>
+      <tr><td>📋 Permohonan Cuti Dihantar</td><td>Selepas anda berjaya menghantar permohonan cuti</td></tr>
+      <tr><td>📥 Cuti Perlu Kelulusan</td><td>Bila anda pelulus (HOD / Supervisor / TL / HR) bagi sesuatu permohonan</td></tr>
+      <tr><td>📋 Cuti Disokong (Peringkat 1 / Team Leader)</td><td>Bila permohonan anda disokong pada peringkat pertengahan</td></tr>
+      <tr><td>✅ Cuti Diluluskan</td><td>Bila permohonan anda diluluskan sepenuhnya oleh HR/Admin</td></tr>
+      <tr><td>❌ Cuti Ditolak</td><td>Bila permohonan anda ditolak</td></tr>
+      <tr><td>🗂️ Rekod Kelulusan</td><td>Rekod tindakan kelulusan yang anda buat (untuk rujukan)</td></tr>
+      <tr><td>🔔 / ⚠️ Peringatan</td><td>Peringatan berkaitan cuti / baki</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Membaca Notifikasi</h3>
+  <ul>
+    <li>Notifikasi <strong>belum dibaca</strong> ditandakan lencana <strong>BARU</strong> dan latar biru muda.</li>
+    <li><strong>Klik pada kad</strong> notifikasi untuk menandakannya sebagai <strong>dibaca</strong>.</li>
+  </ul>
+
+  <h3>Tindakan Pukal (Toolbar)</h3>
+  <p>Bar alat di atas senarai menyediakan tindakan pantas:</p>
+  <table>
+    <thead><tr><th>Butang</th><th>Fungsi</th></tr></thead>
+    <tbody>
+      <tr><td><strong>☐ Pilih semua</strong></td><td>Tanda atau nyahtanda semua notifikasi sekaligus.</td></tr>
+      <tr><td><strong>✓ Tandai semua dibaca</strong></td><td>Menandakan semua notifikasi belum-baca sebagai dibaca serentak (muncul hanya bila ada yang belum dibaca).</td></tr>
+      <tr><td><strong>🗑 Padam (N)</strong></td><td>Memadam notifikasi yang <strong>ditanda</strong> (N = bilangan dipilih). Butang mati bila tiada yang ditanda.</td></tr>
+    </tbody>
+  </table>
+  <p>Setiap kad notifikasi mempunyai <strong>kotak pilihan (checkbox)</strong> di sebelah kiri. Menanda kotak <em>tidak</em> menandakan notifikasi sebagai dibaca — ia hanya memilihnya untuk dipadam.</p>
+
+  <div class="callout danger">
+    <span class="callout-icon">🗑️</span>
+    <div><strong>Pemadaman adalah kekal.</strong> Sebelum memadam, sistem akan memaparkan pengesahan <em>"Padam N notifikasi?"</em>. Notifikasi yang telah dipadam <strong>tidak boleh dipulihkan</strong>.</div>
+  </div>
+
+  <div class="callout info">
+    <span class="callout-icon">🔔</span>
+    <div>Jika kebenaran notifikasi pelayar diberikan, notifikasi baharu juga akan muncul sebagai <strong>pemberitahuan desktop/telefon</strong> walaupun anda tidak berada di halaman Inbox.</div>
+  </div>
+
   <hr class="divider">
   <p style="text-align:center;color:#94a3b8;font-size:0.82rem;margin-top:1.5rem;">
-    <em>Manual Rasmi Sistem KSB Leave Apply — Versi 3.0 — Jun 2026</em><br>
+    <em>Manual Rasmi Sistem KSB Leave Apply — Versi 3.1 — Julai 2026</em><br>
     Untuk pertanyaan lanjut, hubungi HR/Admin KSB<br>
     🌐 https://apply-leave-89ebb.web.app
   </p>
