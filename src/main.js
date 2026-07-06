@@ -1690,13 +1690,11 @@ window.staffNeedsP2 = function(s) {
 // (HOD / Penyelia). Sumber tunggal kebenaran untuk SEMUA bahagian (borang, padanan
 // pelulus, senarai pending, kelulusan HR, paparan config):
 //   (a) HOD Balok memohon cuti SENDIRI — semua jenis cuti (tak perlu HOD lain lulus).
-//   (b) Kakitangan Admin Balok (admin_balok) untuk MC / EL / ML / ML_PL sahaja.
-const P1_SKIP_TYPES_ADMIN_BALOK = ['MC', 'EL', 'ML', 'ML_PL'];
+// (Kakitangan Admin Balok kini ikut laluan asal HOD Balok → HR/Admin untuk SEMUA
+//  jenis cuti — pengecualian terus-ke-HR untuk MC/EL/ML/ML_PL telah ditarik balik.)
 window.shouldSkipP1 = function(applicant, leaveType) {
   if (!applicant) return false;
   if (applicant.role === 'hod_balok') return true;                                  // (a)
-  if (window.getStaffGroup(applicant) === 'admin_balok'
-      && P1_SKIP_TYPES_ADMIN_BALOK.includes(leaveType)) return true;                // (b)
   return false;
 };
 
@@ -6669,7 +6667,7 @@ function renderView() {
                             <div>
                                 <div style="font-size:0.82rem;font-weight:700;color:var(--text);">Kelulusan Akhir HR/Admin</div>
                                 <div style="font-size:0.78rem;color:#059669;font-weight:600;margin-top:0.1rem;">HR / Admin — KSB HQ</div>
-                                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.1rem;">${user.role === 'hod_balok' ? 'Permohonan HOD Balok dihantar terus ke HR — tanpa kelulusan HOD lain.' : 'Cuti MC / EL / Bersalin / Paterniti staf admin Balok dihantar terus ke HR — tanpa peringkat HOD.'}</div>
+                                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.1rem;">Permohonan HOD Balok dihantar terus ke HR — tanpa kelulusan HOD lain.</div>
                             </div>
                         </div>
                     </div>
@@ -9617,7 +9615,6 @@ function renderView() {
             <div style="margin-top:0.9rem;border-radius:10px;border:1px solid rgba(5,150,105,0.25);background:rgba(5,150,105,0.05);padding:0.75rem 0.9rem;">
               <div style="font-size:0.68rem;font-weight:800;letter-spacing:0.6px;text-transform:uppercase;color:#059669;margin-bottom:0.35rem;">Pengecualian — Terus ke HR (Skip HOD)</div>
               <ul style="margin:0;padding-left:1.1rem;font-size:0.72rem;color:var(--text-muted);line-height:1.5;">
-                <li><strong>Kakitangan Admin Balok</strong> — cuti <strong>MC, EL, Cuti Bersalin (ML), Cuti Paterniti (ML_PL)</strong> dihantar terus ke HR tanpa kelulusan HOD Balok. (Cuti lain seperti AL kekal lalu HOD.)</li>
                 <li><strong>HOD Balok</strong> yang memohon cuti sendiri — <strong>semua jenis cuti</strong> terus ke HR, tanpa kelulusan HOD lain.</li>
               </ul>
               <div style="font-size:0.66rem;color:var(--text-muted);margin-top:0.4rem;">Peraturan ini terpakai automatik di seluruh sistem (borang, senarai pending, kelulusan HR) dan tidak boleh ditogol di jadual di atas.</div>
