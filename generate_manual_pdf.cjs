@@ -59,28 +59,18 @@ async function waitForApp(page) {
     await page.select('#login-branch', 'Management / HQ');
     await delay(500);
 
-    // Type IC in search box
-    const searchBox = await page.$('#staff-search-input');
-    if (searchBox) {
-      await searchBox.click();
-      await searchBox.type('super admin', { delay: 80 });
-      await delay(800);
-      // Try clicking first option
-      const firstOpt = await page.$('.staff-option');
-      if (firstOpt) await firstOpt.click();
-      else {
-        await page.evaluate(() => {
-          window.selectLoginStaff('super-admin', 'Super Admin');
-        });
-      }
-    }
+    // Pilih staf super admin TERUS melalui fungsi app — elak klik pada
+    // .staff-option (guna onmousedown + preventDefault; dropdown boleh tutup
+    // bila puppeteer cuba klik). Doc id super admin = "Super Admin".
+    await page.evaluate(() => window.selectLoginStaff('Super Admin', 'Super Admin'));
 
-    await delay(400);
-    // Enter password
+    await delay(500);
+    // Enter password. Auth password = medan `password` doc Super Admin (lihat
+    // provision-auth.js: pwd = s.password || ic) → "superpassword".
     const pwdInput = await page.$('input[type="password"]');
     if (pwdInput) {
       await pwdInput.click({ clickCount: 3 });
-      await pwdInput.type('ksb-super-2026', { delay: 60 });
+      await pwdInput.type('superpassword', { delay: 60 });
     }
 
     // Submit
