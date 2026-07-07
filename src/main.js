@@ -404,118 +404,14 @@ window.saveWaNotifRbac = async function(zone) {
 // ============================================================
 // PENGINGAT KELULUSAN TERTANGGUH (7 hari)
 // ============================================================
-let reminderCheckInterval = null;
-
-function buildReminderMsg(record, ageDays, peringkat) {
-  const stage = peringkat === 1
-    ? 'Sokongan Peringkat 1 *(HOD / PIC HOD / Supervisor)*'
-    : 'Kelulusan Akhir Peringkat 2 *(HR / Admin)*';
-  const leaveTypeName = record.type || '';
-  return (
-    `⏰ *PERINGATAN — KELULUSAN CUTI TERTANGGUH*\n\n` +
-    `Permohonan berikut masih menunggu ${stage} selama *${ageDays} hari*:\n\n` +
-    `👤 Pemohon : *${record.name}*\n` +
-    `🏢 Cawangan : ${record.branch || '—'}\n` +
-    `📋 Jenis Cuti : ${leaveTypeName}\n` +
-    `📅 Tarikh : ${record.startDate} → ${record.endDate}\n` +
-    `⏱ Tempoh : ${record.days} hari\n\n` +
-    `Sila log masuk dan ambil tindakan segera:\n` +
-    `🌐 https://apply-leave-89ebb.web.app\n\n` +
-    `_— KSB Leave System (Peringatan Automatik)_`
-  );
-}
-
-window.checkOverduePendingReminders = async function() {
-  if (!WHATSAPP_ENABLED()) return;
-  if (!leaveRecords.length || !staffList.length) return;
-
-  const now = Date.now();
-  const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
-  const ONE_DAY    = 24 * 60 * 60 * 1000;
-
-  const overdue = leaveRecords.filter(r => {
-    if (r.status !== 'PENDING' && r.status !== 'TL APPROVED' && r.status !== 'HOD APPROVED') return false;
-    const age = now - (r.id || 0);
-    if (age < SEVEN_DAYS) return false;
-    const lastSent = r.lastReminderSent || 0;
-    return (now - lastSent) >= ONE_DAY;
-  });
-
-  if (!overdue.length) return;
-  console.log(`[REMINDER] ${overdue.length} permohonan tertangguh melebihi 7 hari.`);
-
-  for (const record of overdue) {
-    const ageDays = Math.floor((now - record.id) / (1000 * 60 * 60 * 24));
-    const sent = new Set();
-
-    try {
-      if (record.status === 'PENDING') {
-        // ── Peringkat 1: cari pelulus berkaitan ──────────────────
-        if (record.hodIC) {
-          // Pelulus spesifik dipilih semasa permohonan
-          const approver = staffList.find(s => s.ic === record.hodIC && !s.inactive);
-          if (approver && approver.phone && !sent.has(approver.ic)) {
-            await window.sendWhatsApp(approver.phone, buildReminderMsg(record, ageDays, 1));
-            sent.add(approver.ic);
-          }
-        } else {
-          // Guna routing config untuk cari pelulus
-          const applicant = staffList.find(s => s.ic === record.ic);
-          if (applicant) {
-            const p1List = window.getRoutingP1Approvers ? window.getRoutingP1Approvers(applicant, record.type) : [];
-            for (const approver of p1List) {
-              if (approver.phone && !sent.has(approver.ic)) {
-                await window.sendWhatsApp(approver.phone, buildReminderMsg(record, ageDays, 1));
-                sent.add(approver.ic);
-              }
-            }
-          }
-        }
-      } else if (record.status === 'TL APPROVED') {
-        // ── Peringkat 1: hantar kepada Supervisor Balok ──────────
-        const supList = staffList.filter(s =>
-          !s.inactive && s.phone && s.role === 'supervisor' && (s.branch || '').includes('Balok')
-        );
-        for (const sup of supList) {
-          if (!sent.has(sup.ic)) {
-            await window.sendWhatsApp(sup.phone, buildReminderMsg(record, ageDays, 1));
-            sent.add(sup.ic);
-          }
-        }
-      } else if (record.status === 'HOD APPROVED') {
-        // ── Peringkat 2: hantar kepada semua HR / Admin ──────────
-        const p2List = staffList.filter(s =>
-          !s.inactive && s.phone && ['hr', 'admin', 'super_admin'].includes(s.role)
-        );
-        for (const admin of p2List) {
-          if (!sent.has(admin.ic)) {
-            await window.sendWhatsApp(admin.phone, buildReminderMsg(record, ageDays, 2));
-            sent.add(admin.ic);
-          }
-        }
-      }
-
-      // Kemaskini masa peringatan terakhir supaya tidak spam setiap hari
-      if (sent.size > 0 && record.docId) {
-        await updateDoc(doc(db, 'leaves', record.docId), { lastReminderSent: now });
-      }
-    } catch(err) {
-      console.warn('[REMINDER] Gagal hantar peringatan untuk rekod', record.id, err);
-    }
-  }
-};
-
-function startReminderScheduler() {
-  // Semak pertama kali selepas 15 saat (bagi masa data load)
-  setTimeout(() => window.checkOverduePendingReminders(), 15000);
-  // Kemudian semak setiap 2 jam
-  if (reminderCheckInterval) clearInterval(reminderCheckInterval);
-  reminderCheckInterval = setInterval(() => window.checkOverduePendingReminders(), 2 * 60 * 60 * 1000);
-}
-
-function stopReminderScheduler() {
-  if (reminderCheckInterval) { clearInterval(reminderCheckInterval); reminderCheckInterval = null; }
-}
+// ── Peringatan cuti tertangguh (overdue reminders) ──────────────────────────
+// Kini dikendalikan di SERVER, bukan di browser. Vercel Cron (otp-backend/
+// api/check-reminders.js) hantar peringatan WhatsApp harian (9 pagi MYT) untuk
+// permohonan tertangguh >= 3 hari — tak lagi bergantung pada sesi browser yang
+// dibuka. Fungsi startReminderScheduler/checkOverduePendingReminders lama telah
+// dibuang. Lihat docs/superpowers/specs/2026-07-07-server-side-leave-reminders-design.md
+function startReminderScheduler() { /* moved to server cron */ }
+function stopReminderScheduler()  { /* moved to server cron */ }
 
 // State
 let user = null;
