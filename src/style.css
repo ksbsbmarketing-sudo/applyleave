@@ -1389,3 +1389,77 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   }
   html, body { background: white !important; }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Retro Yahoo Messenger reskin — SCOPED to .messenger-layout only.
+   Every rule is prefixed with .messenger-layout so the rest of the
+   leave app keeps its corporate look. Matches ksbsb-chats-group.
+   ───────────────────────────────────────────────────────────── */
+.messenger-layout {
+  --ym-purple: #6b3fa0;
+  --ym-purple-dark: #4a2870;
+  --ym-yellow: #ffd21e;
+  font-family: Tahoma, "MS Sans Serif", Geneva, sans-serif;
+  border: 2px solid var(--ym-purple-dark);
+}
+/* Panel + chat title bars → purple gradient (window chrome) */
+.messenger-layout .msg-rooms-header,
+.messenger-layout .msg-chat-header {
+  background: linear-gradient(180deg, var(--ym-purple), var(--ym-purple-dark));
+  color: #fff;
+  border-bottom: 2px solid var(--ym-purple-dark);
+}
+.messenger-layout .msg-rooms-header h2 { color: #fff; }
+.messenger-layout .msg-rooms-header svg { stroke: #fff; }
+.messenger-layout .msg-chat-title { color: #fff; }
+.messenger-layout .msg-chat-subtitle { color: rgba(255,255,255,0.85); }
+.messenger-layout .msg-back-btn { color: #fff; }
+/* Chat area → inset "window" panel */
+.messenger-layout .msg-chat-area {
+  background: #ece9d8;
+  border: 2px inset #d4d0c8;
+  margin: 6px;
+  border-radius: 0;
+}
+/* Beveled buttons */
+.messenger-layout .msg-send-btn,
+.messenger-layout .msg-buzz-btn {
+  border-radius: 4px;
+  border: 2px outset #f5f4ef;
+  box-shadow: none;
+}
+.messenger-layout .msg-send-btn:active,
+.messenger-layout .msg-buzz-btn:active { border-style: inset; }
+/* BUZZ button — yellow, bold */
+.messenger-layout .msg-buzz-btn {
+  background: linear-gradient(180deg, #ffe97a, var(--ym-yellow));
+  color: var(--ym-purple-dark);
+  font-weight: 800;
+  font-family: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+.messenger-layout .msg-buzz-btn:hover { filter: brightness(1.06); }
+/* BUZZ system line */
+.messenger-layout .msg-buzz-system {
+  text-align: center;
+  color: #b06a00;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 0.78rem;
+  margin: 6px auto;
+  padding: 3px 10px;
+}
+/* Shake animation (applied to .msg-chat-panel on incoming/outgoing buzz) */
+@keyframes buzzshake {
+  0%,100% { transform: translate(0,0); }
+  10% { transform: translate(-6px,-4px) rotate(-1deg); }
+  30% { transform: translate(6px,4px) rotate(1deg); }
+  50% { transform: translate(-5px,3px); }
+  70% { transform: translate(5px,-3px); }
+  90% { transform: translate(-3px,2px); }
+}
+.messenger-layout .msg-chat-panel.buzz-shake { animation: buzzshake 0.7s ease; }

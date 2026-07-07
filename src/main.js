@@ -602,6 +602,39 @@ let myStatus = (typeof localStorage !== 'undefined' && localStorage.getItem('ksb
 let myStatusMsg = (typeof localStorage !== 'undefined' && localStorage.getItem('ksb_msg_mood')) || '';
 let messengerRoomsInitialLoad = true;
 let msgNewMsgUnsub = null;
+// BUZZ (DM only): effects fire for buzzes newer than when the room opened, once each.
+let buzzListenStart = 0;
+let processedBuzzIds = new Set();
+let lastBuzzSentAt = 0; // client rate-limit timestamp
+
+// Synthesize the classic Yahoo buzz tone via Web Audio (no audio file needed).
+function playBuzz() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(110, ctx.currentTime);
+    o.frequency.linearRampToValueAtTime(70, ctx.currentTime + 0.3);
+    g.gain.setValueAtTime(0.22, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.5);
+  } catch (e) { /* audio unavailable — ignore */ }
+}
+
+// Shake the open chat window and play the buzz sound.
+function triggerBuzzEffect() {
+  playBuzz();
+  const el = document.querySelector('.msg-chat-panel');
+  if (!el) return;
+  el.classList.remove('buzz-shake');
+  void el.offsetWidth; // reflow so the animation restarts
+  el.classList.add('buzz-shake');
+  setTimeout(() => el.classList.remove('buzz-shake'), 800);
+}
 const leaveCategories = [
     { id: 'AL', name: 'Annual Leave (AL)', entitlement: 14, icon: 'icon-al', color: '#3b82f6', description: 'Cuti Tahunan mengikut pro-rata bulan bekerja.' },
     { id: 'MC', name: 'Medical Leave (MC)', entitlement: 14, icon: 'icon-mc', color: '#10b981', description: 'Cuti Sakit dengan Sijil Sakit (MC) yang sah.' },
@@ -4394,16 +4427,25 @@ window.openRoom = function(roomId, roomName, type) {
     }
   });
 
+  // Reset BUZZ tracking for this room; only buzzes arriving after now fire effects.
+  buzzListenStart = Date.now();
+  processedBuzzIds = new Set();
+
   const q = query(collection(db, 'messenger_messages'), where('roomId', '==', roomId));
   messengerMsgUnsub = onSnapshot(q, (snap) => {
     messengerMessages = snap.docs.map(d => d.data()).sort((a, b) => a.timestamp - b.timestamp);
     localStorage.setItem(`msg_seen_${user.ic}_${roomId}`, Date.now().toString());
     messengerUnreadRooms.delete(roomId);
+    // Detect freshly-arrived buzzes (not history) and fire shake + sound once each.
+    const freshBuzz = messengerMessages.some(m =>
+      m.type === 'buzz' && m.timestamp > buzzListenStart && !processedBuzzIds.has(m.id));
+    messengerMessages.forEach(m => { if (m.type === 'buzz') processedBuzzIds.add(m.id); });
     if (view === 'messenger') {
       render();
       requestAnimationFrame(() => {
         const area = document.getElementById('msg-chat-area');
         if (area) area.scrollTop = area.scrollHeight;
+        if (freshBuzz) triggerBuzzEffect();
       });
     }
   });
@@ -4502,6 +4544,28 @@ window.sendMessage = async function(e) {
   messengerSending = false;
 };
 
+window.sendBuzz = async function() {
+  if (!messengerRoomId || messengerRoomType !== 'dm') return;
+  const now = Date.now();
+  if (now - lastBuzzSentAt < 2000) return; // rate limit: 1 buzz / 2s
+  lastBuzzSentAt = now;
+  try {
+    const msgId = now.toString() + '_' + Math.random().toString(36).substr(2, 6);
+    await setDoc(doc(db, 'messenger_messages', msgId), {
+      roomId: messengerRoomId, id: msgId, type: 'buzz',
+      senderIC: user.ic, senderName: user.name, senderBranch: user.branch || '',
+      text: '', timestamp: now
+    });
+    await setDoc(doc(db, 'messenger_rooms', messengerRoomId), {
+      id: messengerRoomId, name: messengerRoomName, type: messengerRoomType,
+      lastMessage: '🐝 BUZZ!', lastTimestamp: now,
+      lastSenderName: user.name, lastSenderIC: user.ic
+    }, { merge: true });
+  } catch (err) {
+    console.error('Send buzz failed:', err);
+  }
+};
+
 window.deleteMessage = async function(msgId) {
   if (!confirm('Padam mesej ini?')) return;
   try { await deleteDoc(doc(db, 'messenger_messages', msgId)); }
@@ -4550,6 +4614,10 @@ function escapeHtml(str) {
 
 function renderMessageBubble(msg) {
   const isOwn = msg.senderIC === user.ic;
+  if (msg.type === 'buzz') {
+    const line = isOwn ? '[System]: You just sent a BUZZ!' : '[System]: You received a BUZZ!';
+    return `<div class="msg-buzz-system">🐝 ${line}</div>`;
+  }
   const isImage = msg.fileType && msg.fileType.startsWith('image/');
   return `
     <div class="msg-bubble-row ${isOwn ? 'own' : 'other'}">
@@ -4856,6 +4924,9 @@ function renderMessengerView() {
           <input type="text" id="msg-text-input" class="msg-text-field"
             placeholder="Tulis mesej..." autocomplete="off"
             ${messengerSending ? 'disabled' : ''}>
+          ${messengerRoomType === 'dm' ? `
+          <button type="button" class="msg-buzz-btn" title="Hantar BUZZ!" onclick="window.sendBuzz()">BUZZ</button>
+          ` : ''}
           <button type="submit" class="msg-send-btn" ${messengerSending ? 'disabled' : ''}>
             ${messengerSending ?
               `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:msgSpin 0.8s linear infinite;"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>` :
