@@ -1396,18 +1396,18 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
    leave app keeps its corporate look. Matches ksbsb-chats-group.
    ───────────────────────────────────────────────────────────── */
 .messenger-layout {
-  --ym-purple: #6b3fa0;
-  --ym-purple-dark: #4a2870;
+  --ym-maroon: #9b2c2c;
+  --ym-maroon-dark: #841824;
   --ym-yellow: #ffd21e;
   font-family: Tahoma, "MS Sans Serif", Geneva, sans-serif;
-  border: 2px solid var(--ym-purple-dark);
+  border: 2px solid var(--ym-maroon-dark);
 }
 /* Panel + chat title bars → purple gradient (window chrome) */
 .messenger-layout .msg-rooms-header,
 .messenger-layout .msg-chat-header {
-  background: linear-gradient(180deg, var(--ym-purple), var(--ym-purple-dark));
+  background: linear-gradient(180deg, var(--ym-maroon), var(--ym-maroon-dark));
   color: #fff;
-  border-bottom: 2px solid var(--ym-purple-dark);
+  border-bottom: 2px solid var(--ym-maroon-dark);
 }
 .messenger-layout .msg-rooms-header h2 { color: #fff; }
 .messenger-layout .msg-rooms-header svg { stroke: #fff; }
@@ -1433,7 +1433,7 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
 /* BUZZ button — yellow, bold */
 .messenger-layout .msg-buzz-btn {
   background: linear-gradient(180deg, #ffe97a, var(--ym-yellow));
-  color: var(--ym-purple-dark);
+  color: var(--ym-maroon-dark);
   font-weight: 800;
   font-family: inherit;
   font-size: 0.72rem;
@@ -1463,3 +1463,21 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   90% { transform: translate(-3px,2px); }
 }
 .messenger-layout .msg-chat-panel.buzz-shake { animation: buzzshake 0.7s ease; }
+
+/* Profile photo avatars — fill any round avatar container (global: also toasts) */
+.msg-avatar-img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
+/* Camera badge on the "My status" avatar (upload hint) */
+.messenger-layout .msg-mystatus-avatar { position: relative; }
+.messenger-layout .msg-avatar-cam {
+  position: absolute; bottom: -2px; right: -2px;
+  width: 17px; height: 17px;
+  font-size: 0.62rem;
+  background: #fff; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}

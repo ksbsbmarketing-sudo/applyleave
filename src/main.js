@@ -4566,6 +4566,42 @@ window.sendBuzz = async function() {
   }
 };
 
+// Upload a profile photo to Cloudinary and save its URL on the staff doc so it
+// shows across the messenger (buddy list, chat, bubbles). Used by both the
+// Messenger avatar click and the Settings profile form.
+window.uploadProfilePhoto = async function(input) {
+  if (!input || !input.files || !input.files[0]) return;
+  const file = input.files[0];
+  if (!file.type.startsWith('image/')) { alert('Sila pilih fail gambar.'); input.value = ''; return; }
+  if (file.size > 5 * 1024 * 1024) { alert('Saiz gambar terlalu besar. Had maksimum: 5MB'); input.value = ''; return; }
+  if (!user || !user.ic) { alert('Ralat: Sesi tidak sah.'); return; }
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    fd.append('folder', 'profile_photos');
+    const resp = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+      { method: 'POST', body: fd }
+    );
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.secure_url) {
+      throw new Error((data.error && data.error.message) || ('Cloudinary HTTP ' + resp.status));
+    }
+    const photoUrl = data.secure_url;
+    await updateDoc(doc(db, 'staff', user.ic), { photoUrl });
+    user.photoUrl = photoUrl;
+    const s = staffList.find(x => x.ic === user.ic);
+    if (s) s.photoUrl = photoUrl;
+    render();
+  } catch (err) {
+    console.error('Profile photo upload failed:', err);
+    alert('Gagal memuat naik gambar profil. Sila cuba lagi.');
+  } finally {
+    input.value = '';
+  }
+};
+
 window.deleteMessage = async function(msgId) {
   if (!confirm('Padam mesej ini?')) return;
   try { await deleteDoc(doc(db, 'messenger_messages', msgId)); }
@@ -4612,6 +4648,21 @@ function escapeHtml(str) {
   return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Look up a staff member's uploaded profile photo URL by IC (from staffList).
+function getStaffPhoto(ic) {
+  if (!ic) return '';
+  const s = staffList.find(x => x.ic === ic);
+  return (s && s.photoUrl) || '';
+}
+
+// Avatar contents: uploaded photo if present, else the name's first initial.
+function avatarInner(name, photoUrl) {
+  if (photoUrl) {
+    return `<img src="${photoUrl}" alt="${escapeHtml(name || '')}" class="msg-avatar-img" loading="lazy">`;
+  }
+  return escapeHtml(((name || '?')[0] || '?'));
+}
+
 function renderMessageBubble(msg) {
   const isOwn = msg.senderIC === user.ic;
   if (msg.type === 'buzz') {
@@ -4621,7 +4672,7 @@ function renderMessageBubble(msg) {
   const isImage = msg.fileType && msg.fileType.startsWith('image/');
   return `
     <div class="msg-bubble-row ${isOwn ? 'own' : 'other'}">
-      ${!isOwn ? `<div class="msg-avatar">${(msg.senderName || '?')[0]}</div>` : ''}
+      ${!isOwn ? `<div class="msg-avatar">${avatarInner(msg.senderName, getStaffPhoto(msg.senderIC))}</div>` : ''}
       <div class="msg-bubble-wrap">
         ${!isOwn && messengerRoomType !== 'dm' ? `<div class="msg-sender-name">${msg.senderName}${msg.senderBranch ? ` · <span style="color:var(--text-muted);font-size:0.7rem;">${msg.senderBranch}</span>` : ''}</div>` : ''}
         <div class="msg-bubble ${isOwn ? 'own' : 'other'}">
@@ -4641,7 +4692,7 @@ function renderMessageBubble(msg) {
           ${isOwn ? `<button class="msg-delete-btn" onclick="window.deleteMessage('${msg.id}')" title="Padam">×</button>` : ''}
         </div>
       </div>
-      ${isOwn ? `<div class="msg-avatar own">${(user.name || '?')[0]}</div>` : ''}
+      ${isOwn ? `<div class="msg-avatar own">${avatarInner(user.name, user.photoUrl)}</div>` : ''}
     </div>`;
 }
 
@@ -4758,10 +4809,14 @@ function renderMessengerView() {
 
         <!-- My status (Yahoo Messenger style) -->
         <div class="msg-mystatus">
-          <div class="msg-mystatus-avatar">
-            ${(user.name || '?')[0]}
+          <div class="msg-mystatus-avatar" title="Tukar gambar profil" style="cursor:pointer;"
+               onclick="document.getElementById('msg-avatar-upload').click()">
+            ${avatarInner(user.name, user.photoUrl)}
             <span class="msg-status-dot" style="background:${myMeta.color};"></span>
+            <span class="msg-avatar-cam">📷</span>
           </div>
+          <input type="file" id="msg-avatar-upload" accept="image/*" style="display:none;"
+                 onchange="window.uploadProfilePhoto(this)">
           <div class="msg-mystatus-info">
             <div class="msg-mystatus-name">${user.name}</div>
             <select class="msg-mystatus-select" title="Tukar status" style="color:${myMeta.color};background-color:${myMeta.color}1a;" onchange="window.setMyStatus(this.value)">
@@ -4840,7 +4895,7 @@ function renderMessengerView() {
             return `
             <div class="msg-room-item ${isActive ? 'active' : ''} ${isOnline ? '' : 'msg-room-offline'}" data-staff-name="${(s.name||'').toLowerCase()}" onclick="window.openDM('${s.ic}','${s.name.replace(/'/g,"\\'")}')">
               <div style="position:relative;flex-shrink:0;">
-                <div class="msg-room-avatar">${(s.name||'?')[0]}</div>
+                <div class="msg-room-avatar">${avatarInner(s.name, s.photoUrl)}</div>
                 ${isOnline ? `<span class="msg-online-dot" style="background:${sm.color};box-shadow:0 0 0 1px ${sm.color}55;"></span>` : ''}
               </div>
               <div class="msg-room-info">
@@ -4863,8 +4918,15 @@ function renderMessengerView() {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
           </button>
           <div style="position:relative;flex-shrink:0;">
-            <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--secondary));display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700;color:white;">
-              ${getRoomHeaderIcon(messengerRoomType, messengerRoomName)}
+            <div style="width:38px;height:38px;border-radius:50%;overflow:hidden;background:linear-gradient(135deg,var(--primary),var(--secondary));display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700;color:white;">
+              ${(function() {
+                if (messengerRoomType === 'dm') {
+                  const otherIc = messengerRoomId.replace('dm_','').split('__').find(ic => ic !== user.ic);
+                  const photo = getStaffPhoto(otherIc);
+                  if (photo) return `<img src="${photo}" alt="${escapeHtml(messengerRoomName || '')}" class="msg-avatar-img" loading="lazy">`;
+                }
+                return getRoomHeaderIcon(messengerRoomType, messengerRoomName);
+              })()}
             </div>
             ${(function() {
               if (messengerRoomType !== 'dm') return '';
@@ -10515,7 +10577,21 @@ function renderSelfProfileModal() {
          </div>
 
          <form id="edit-self-profile" style="padding: 2.5rem;" onsubmit="window.saveSelfProfile(event)">
-            
+
+            <div style="display:flex; flex-direction:column; align-items:center; margin-bottom: 1.75rem;">
+               <div onclick="document.getElementById('settings-avatar-upload').click()" title="Tukar gambar profil"
+                    style="width:96px; height:96px; border-radius:50%; overflow:hidden; cursor:pointer; position:relative;
+                           background:linear-gradient(135deg,#9b2c2c,#841824); display:flex; align-items:center; justify-content:center;
+                           color:#fff; font-size:2.2rem; font-weight:800; box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+                  ${user.photoUrl
+                    ? `<img src="${user.photoUrl}" alt="${escapeHtml(user.name || '')}" style="width:100%;height:100%;object-fit:cover;">`
+                    : escapeHtml(((user.name || '?')[0] || '?'))}
+                  <span style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.45); color:#fff; font-size:0.7rem; text-align:center; padding:2px 0;">📷 Tukar</span>
+               </div>
+               <input type="file" id="settings-avatar-upload" accept="image/*" style="display:none;" onchange="window.uploadProfilePhoto(this)">
+               <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.5rem;">Tekan gambar untuk muat naik (maks 5MB)</div>
+            </div>
+
             <div style="margin-bottom: 1.5rem;">
                <label style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 0.5rem;">Alamat</label>
                <input id="self-address" type="text" value="${(user.address || '').replace(/"/g,'&quot;')}" placeholder="Masukkan alamat anda..." style="width: 100%; padding: 1rem; border-radius: 12px; background: rgba(0,0,0,0.03); border: 1px inset rgba(255,255,255,0.5); outline: none; box-shadow: inset 2px 2px 5px rgba(0,0,0,0.05), inset -2px -2px 5px white; color: #374151; box-sizing: border-box;">
