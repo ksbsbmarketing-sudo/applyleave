@@ -104,6 +104,21 @@ GitHub → Settings → Secrets and variables → Actions.
   dalam app sudah memadai selepas deploy. Rujuk nota `pwa-cache-gotcha`.
 - Firebase Hosting kekal berasingan — deploy Firebase masih manual buat masa ini.
 
+## Nota Pelaksanaan Sebenar (kemas kini 2026-07-08 — SIAP & LIVE)
+
+Beberapa perkara berbeza daripada draf awal, disahkan semasa deploy:
+
+- **`npm ci` → `npm install`**: lock file dijana di Windows, tak sync dengan
+  pakej Linux-only (`@emnapi/*`) di CI. Guna `npm install --no-audit --no-fund`.
+- **Akaun cPanel utama TAK boleh FTP**: walaupun `ksbsbcom` boleh login web
+  cPanel (port 2083), server FTP menolaknya (530). Perlu **FTP account khas**.
+  Dicipta: `deploy@ksbsb.com.my`, berakar terus di docroot subdomain.
+- **`FTP_SERVER_DIR = /`** (bukan `/public_html/...`): sebab akaun FTP khas tu
+  sudah berakar di folder `cuti-staff.ksbsb.com.my`.
+- **`FTP_SERVER = ksbsb.com.my`** (host sama dengan cPanel; `ftp.` juga berfungsi).
+- Nilai secret sebenar diset via `gh secret set` (bukan UI), sebab percubaan
+  manual pengguna tersimpan di tempat salah.
+
 ## Kriteria Kejayaan
 
 1. Push perubahan kecil ke `main` → dalam ~2 minit, perubahan muncul di
