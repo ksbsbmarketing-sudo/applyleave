@@ -8096,54 +8096,55 @@ function renderView() {
               </div>` : ''}
             </div>
             ${hrReportTab === 'all'
-              ? `<button onclick="window.generateLeaveReport()" class="neu-btn" style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);color:var(--primary);font-weight:600;display:flex;align-items:center;gap:0.5rem;padding:0.6rem 1.2rem;font-size:0.8rem;">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                  Generate PDF
+              ? `<button onclick="window.generateLeaveReport()" title="Muat turun PDF — Semua Rekod" class="neu-btn" style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);color:var(--primary);font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                  PDF
                 </button>`
               : hrReportTab === 'approved'
-              ? `<button onclick="window.generateApprovedReport()" class="neu-btn" style="background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);color:#059669;font-weight:600;display:flex;align-items:center;gap:0.5rem;padding:0.6rem 1.2rem;font-size:0.8rem;">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                  Cetak Laporan
+              ? `<button onclick="window.generateApprovedReport()" title="Muat turun PDF — Cuti Diluluskan" class="neu-btn" style="background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);color:#059669;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                  PDF
                 </button>`
               : hrReportTab === 'balance'
-              ? `<button onclick="window.generateBalanceReport(window._balanceRows||[],'${balanceReportBranch}','${balanceReportType}','${balanceReportYear}')" class="neu-btn" style="background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.25);color:#7c3aed;font-weight:600;display:flex;align-items:center;gap:0.5rem;padding:0.6rem 1.2rem;font-size:0.8rem;">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                  Cetak Baki Cuti
+              ? `<button onclick="window.generateBalanceReport(window._balanceRows||[],'${balanceReportBranch}','${balanceReportType}','${balanceReportYear}')" title="Muat turun PDF — Baki Cuti" class="neu-btn" style="background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.25);color:#7c3aed;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                  PDF
                 </button>`
               : hrReportTab === 'jenis'
-              ? `<button onclick="window.generateJenisCutiReport()" class="neu-btn" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);color:#d97706;font-weight:600;display:flex;align-items:center;gap:0.5rem;padding:0.6rem 1.2rem;font-size:0.8rem;">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                  Cetak Ringkasan
+              ? `<button onclick="window.generateJenisCutiReport()" title="Muat turun PDF — Ringkasan Jenis" class="neu-btn" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);color:#d97706;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                  PDF
                 </button>`
-              : (userPerms.report_attendance ? `<button onclick="window.generateAttendanceReport()" class="neu-btn" style="background:rgba(30,41,59,0.1);border:1px solid rgba(30,41,59,0.3);color:var(--text);font-weight:600;display:flex;align-items:center;gap:0.5rem;padding:0.6rem 1.2rem;font-size:0.8rem;">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                  Cetak Rekod
+              : (userPerms.report_attendance ? `<button onclick="window.generateAttendanceReport()" title="Muat turun PDF — Rekod Kedatangan" class="neu-btn" style="background:rgba(30,41,59,0.1);border:1px solid rgba(30,41,59,0.3);color:var(--text);font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                  PDF
                 </button>` : '')
             }
           </div>
 
           <!-- Sub-tabs -->
-          <div style="display:flex;gap:0.5rem;margin-bottom:1.5rem;background:rgba(163,177,198,0.1);padding:0.3rem;border-radius:12px;width:fit-content;flex-wrap:wrap;">
-            <button onclick="window.setHrReportTab('all')" style="padding:0.5rem 1.1rem;border-radius:9px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;
+          <div style="display:flex;gap:0.35rem;margin-bottom:1.5rem;background:rgba(163,177,198,0.1);padding:0.35rem;border-radius:14px;max-width:100%;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;">
+            <button onclick="window.setHrReportTab('all')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;display:flex;align-items:center;gap:0.4rem;white-space:nowrap;
               ${hrReportTab==='all' ? 'background:#fff;color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,0.1);' : 'background:transparent;color:var(--text-muted);'}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
               Semua Rekod
             </button>
-            <button onclick="window.setHrReportTab('approved')" style="padding:0.5rem 1.1rem;border-radius:9px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;display:flex;align-items:center;gap:0.4rem;
+            <button onclick="window.setHrReportTab('approved')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;display:flex;align-items:center;gap:0.4rem;
               ${hrReportTab==='approved' ? 'background:#059669;color:#fff;box-shadow:0 2px 8px rgba(5,150,105,0.3);' : 'background:transparent;color:var(--text-muted);'}">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
               Cuti Diluluskan
             </button>
-            <button onclick="window.setHrReportTab('balance')" style="padding:0.5rem 1.1rem;border-radius:9px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;display:flex;align-items:center;gap:0.4rem;
+            <button onclick="window.setHrReportTab('balance')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;display:flex;align-items:center;gap:0.4rem;
               ${hrReportTab==='balance' ? 'background:#7c3aed;color:#fff;box-shadow:0 2px 8px rgba(124,58,237,0.3);' : 'background:transparent;color:var(--text-muted);'}">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
               Baki Cuti Bulanan
             </button>
-            <button onclick="window.setHrReportTab('jenis')" style="padding:0.5rem 1.1rem;border-radius:9px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;display:flex;align-items:center;gap:0.4rem;
+            <button onclick="window.setHrReportTab('jenis')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;display:flex;align-items:center;gap:0.4rem;
               ${hrReportTab==='jenis' ? 'background:#d97706;color:#fff;box-shadow:0 2px 8px rgba(217,119,6,0.3);' : 'background:transparent;color:var(--text-muted);'}">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
               Ringkasan Jenis
             </button>
-            ${userPerms.report_attendance ? `<button onclick="window.setHrReportTab('attendance')" style="padding:0.5rem 1.1rem;border-radius:9px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;display:flex;align-items:center;gap:0.4rem;
+            ${userPerms.report_attendance ? `<button onclick="window.setHrReportTab('attendance')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;display:flex;align-items:center;gap:0.4rem;
               ${hrReportTab==='attendance' ? 'background:#1e293b;color:#fff;box-shadow:0 2px 8px rgba(30,41,59,0.3);' : 'background:transparent;color:var(--text-muted);'}">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               Rekod Kedatangan
