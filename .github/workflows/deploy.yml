@@ -21,7 +21,9 @@ jobs:
           cache: npm
 
       - name: Pasang dependencies
-        run: npm ci
+        # npm install (bukan npm ci) — package-lock.json dijana di Windows,
+        # jadi ia tak sync dengan pakej Linux-only (cth @emnapi) di CI.
+        run: npm install --no-audit --no-fund
 
       - name: Build (hasilkan dist/)
         run: npm run build
