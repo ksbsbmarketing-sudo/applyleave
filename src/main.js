@@ -8096,26 +8096,26 @@ function renderView() {
               </div>` : ''}
             </div>
             ${hrReportTab === 'all'
-              ? `<button onclick="window.generateLeaveReport()" title="Muat turun PDF — Semua Rekod" class="neu-btn" style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);color:var(--primary);font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;">
+              ? `<button onclick="window.generateLeaveReport()" title="Muat turun PDF — Semua Rekod" class="neu-btn" style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);color:var(--primary);font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                   PDF
                 </button>`
               : hrReportTab === 'approved'
-              ? `<button onclick="window.generateApprovedReport()" title="Muat turun PDF — Cuti Diluluskan" class="neu-btn" style="background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);color:#059669;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;">
+              ? `<button onclick="window.generateApprovedReport()" title="Muat turun PDF — Cuti Diluluskan" class="neu-btn" style="background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);color:#059669;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                   PDF
                 </button>`
               : hrReportTab === 'balance'
-              ? `<button onclick="window.generateBalanceReport(window._balanceRows||[],'${balanceReportBranch}','${balanceReportType}','${balanceReportYear}')" title="Muat turun PDF — Baki Cuti" class="neu-btn" style="background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.25);color:#7c3aed;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;">
+              ? `<button onclick="window.generateBalanceReport(window._balanceRows||[],'${balanceReportBranch}','${balanceReportType}','${balanceReportYear}')" title="Muat turun PDF — Baki Cuti" class="neu-btn" style="background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.25);color:#7c3aed;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                   PDF
                 </button>`
               : hrReportTab === 'jenis'
-              ? `<button onclick="window.generateJenisCutiReport()" title="Muat turun PDF — Ringkasan Jenis" class="neu-btn" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);color:#d97706;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;">
+              ? `<button onclick="window.generateJenisCutiReport()" title="Muat turun PDF — Ringkasan Jenis" class="neu-btn" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);color:#d97706;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                   PDF
                 </button>`
-              : (userPerms.report_attendance ? `<button onclick="window.generateAttendanceReport()" title="Muat turun PDF — Rekod Kedatangan" class="neu-btn" style="background:rgba(30,41,59,0.1);border:1px solid rgba(30,41,59,0.3);color:var(--text);font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;">
+              : (userPerms.report_attendance ? `<button onclick="window.generateAttendanceReport()" title="Muat turun PDF — Rekod Kedatangan" class="neu-btn" style="background:rgba(30,41,59,0.1);border:1px solid rgba(30,41,59,0.3);color:var(--text);font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                   PDF
                 </button>` : '')
