@@ -822,6 +822,24 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   .auth-card  { padding: 2rem 1.5rem; }
 }
 
+/* Analisa & Personal dashboards set grid-template-columns INLINE (repeat(4/3,1fr),
+   2fr 1fr), which beats class-based media queries — so on phones they never collapse
+   and the page scrolls left/right. Force-collapse the inline grids here (inline styles
+   are overridden only by !important) so these dashboards scroll vertically only. */
+@media (max-width: 720px) {
+  .analytics-dashboard,
+  .personal-dashboard { overflow-x: hidden; max-width: 100%; }
+
+  .analytics-dashboard [style*="repeat(4"],
+  .personal-dashboard  [style*="repeat(4"] { grid-template-columns: repeat(2, 1fr) !important; }
+
+  .analytics-dashboard [style*="repeat(3"],
+  .personal-dashboard  [style*="repeat(3"] { grid-template-columns: 1fr !important; }
+
+  .analytics-dashboard [style*="2fr 1fr"],
+  .personal-dashboard  [style*="2fr 1fr"] { grid-template-columns: 1fr !important; }
+}
+
 /* ── Messenger ──────────────────────────────────────── */
 .messenger-layout {
   display: grid;
