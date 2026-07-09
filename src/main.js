@@ -485,6 +485,7 @@ let selectedLeaveType = 'AL';
 let analyticsFilterMonth = 0; // 0 = All Months, 1-12 = specific month
 let analyticsCatFilter = 'SEMUA'; // 'SEMUA', 'Doktor', 'Admin Staff', 'Operation Staff'
 let analyticsBranchFilter = 'SEMUA'; // 'SEMUA' or branch name
+let analyticsRankModal = null; // null, or leave type 'AL'/'MC'/'EL_EMG' for full-list ranking modal
 let branchDashboardMonth = 0; // 0 = all months, 1-12 = specific month for HOD/PIC branch view
 let selectedLoginBranch = '';
 let selectedLoginStaffIC = '';
@@ -961,6 +962,37 @@ window.setAnalyticsCat = function(cat) {
   analyticsCatFilter = cat;
   render();
 };
+
+window.openRankModal = function(type) {
+  analyticsRankModal = type;
+  render();
+};
+
+window.closeRankModal = function() {
+  analyticsRankModal = null;
+  render();
+};
+
+// Shared source of truth for the "Ranking Penggunaan Cuti" cards + full-list modal.
+// Aggregates APPROVED-only records of a given leave type per person (sum days,
+// count applications), honouring the active category filter. Returns rows sorted
+// by total days descending: [{ ic, name, branch, days, count }].
+function rankLeaveUsers(records, type, catFilter) {
+  const approved = records.filter(r => r.type === type && r.status === 'APPROVED');
+  const catMatched = catFilter === 'SEMUA' ? approved
+    : approved.filter(r => {
+        const s = staffList.find(x => x.name === r.name || x.ic === r.ic);
+        return s && s.category === catFilter;
+      });
+  const byPerson = {};
+  catMatched.forEach(r => {
+    const key = r.ic || r.name;
+    if (!byPerson[key]) byPerson[key] = { ic: r.ic, name: r.name, branch: r.branch || '', days: 0, count: 0 };
+    byPerson[key].days += parseFloat(r.days || 1);
+    byPerson[key].count += 1;
+  });
+  return Object.values(byPerson).sort((a, b) => b.days - a.days);
+}
 
 window.setAnalyticsBranch = function(val) {
   analyticsBranchFilter = val;
@@ -3997,6 +4029,7 @@ window.logout = function() {
   analyticsFilterMonth = 0;
   analyticsCatFilter = 'SEMUA';
   analyticsBranchFilter = 'SEMUA';
+  analyticsRankModal = null;
   branchDashboardMonth = 0;
   messengerRoomId = null;
   messengerMessages = [];
@@ -5709,17 +5742,16 @@ function renderAnalyticsDashboard(lockedBranch = null) {
           {type:'MC',    label:'Medical Leave',   short:'MC',  grad:'linear-gradient(135deg,#059669,#10b981)', glow:'rgba(16,185,129,0.3)',  icon:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'},
           {type:'EL_EMG',label:'Emergency Leave', short:'EL',  grad:'linear-gradient(135deg,#dc2626,#f97316)', glow:'rgba(239,68,68,0.3)',   icon:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'},
         ].map(cat => {
-          const catRecords = filteredRecords.filter(r => r.type === cat.type);
-          const catFiltered = analyticsCatFilter === 'SEMUA' ? catRecords
-            : catRecords.filter(r => { const s = staffList.find(x => x.name === r.name || x.ic === r.ic); return s && s.category === analyticsCatFilter; });
-          const top3 = [...catFiltered].sort((a,b) => (b.days||0) - (a.days||0)).slice(0,3);
+          const ranked = rankLeaveUsers(filteredRecords, cat.type, analyticsCatFilter);
+          const top3 = ranked.slice(0, 3);
+          const approvedRecords = ranked.reduce((s, r) => s + r.count, 0);
           const medals = [
             { emoji:'🥇', bg:'linear-gradient(135deg,#fbbf24,#f59e0b)', shadow:'rgba(251,191,36,0.4)' },
             { emoji:'🥈', bg:'linear-gradient(135deg,#cbd5e1,#94a3b8)', shadow:'rgba(148,163,184,0.4)' },
             { emoji:'🥉', bg:'linear-gradient(135deg,#c2956c,#b45309)', shadow:'rgba(180,83,9,0.4)' },
           ];
           return `
-          <div class="glass-card" style="padding:0;overflow:hidden;">
+          <div class="glass-card" onclick="window.openRankModal('${cat.type}')" style="padding:0;overflow:hidden;cursor:pointer;" title="Klik untuk senarai penuh">
             <div style="padding:1rem 1.2rem;background:${cat.grad};display:flex;align-items:center;gap:0.75rem;box-shadow:0 4px 15px ${cat.glow};">
               <div style="width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">${cat.icon}</svg>
@@ -5729,7 +5761,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
                 <div style="font-size:0.65rem;color:rgba(255,255,255,0.75);font-weight:600;">TOP 3 ${analyticsCatFilter !== 'SEMUA' ? '· ' + analyticsCatFilter.toUpperCase() : ''}</div>
               </div>
               <div style="margin-left:auto;background:rgba(255,255,255,0.2);border-radius:8px;padding:0.25rem 0.6rem;">
-                <span style="font-size:0.9rem;font-weight:800;color:#fff;">${catFiltered.length}</span>
+                <span style="font-size:0.9rem;font-weight:800;color:#fff;">${approvedRecords}</span>
                 <span style="font-size:0.6rem;color:rgba(255,255,255,0.75);display:block;text-align:center;">rekod</span>
               </div>
             </div>
@@ -5749,12 +5781,13 @@ function renderAnalyticsDashboard(lockedBranch = null) {
                       </div>
                     </div>
                     <div style="text-align:right;">
-                      <div style="font-size:1rem;font-weight:800;background:${cat.grad};-webkit-background-clip:text;-webkit-text-fill-color:transparent;">${r.days || 1}</div>
+                      <div style="font-size:1rem;font-weight:800;background:${cat.grad};-webkit-background-clip:text;-webkit-text-fill-color:transparent;">${r.days}</div>
                       <div style="font-size:0.6rem;color:var(--text-muted);font-weight:600;">HARI</div>
                     </div>
                   </div>
                 `).join('')
               }
+              <div style="text-align:center;margin-top:0.15rem;font-size:0.7rem;font-weight:700;color:var(--primary);letter-spacing:0.2px;">Lihat semua →</div>
             </div>
           </div>`;
         }).join('')}
@@ -5794,6 +5827,53 @@ function renderAnalyticsDashboard(lockedBranch = null) {
           }).join('')}
         </div>
       </section>
+
+      ${analyticsRankModal ? (() => {
+        const meta = {
+          'AL':     { label:'Annual Leave',    grad:'linear-gradient(135deg,#3b82f6,#6366f1)', glow:'rgba(59,130,246,0.3)' },
+          'MC':     { label:'Medical Leave',   grad:'linear-gradient(135deg,#059669,#10b981)', glow:'rgba(16,185,129,0.3)' },
+          'EL_EMG': { label:'Emergency Leave', grad:'linear-gradient(135deg,#dc2626,#f97316)', glow:'rgba(239,68,68,0.3)' },
+        }[analyticsRankModal] || { label:'Cuti', grad:'linear-gradient(135deg,#3b82f6,#6366f1)', glow:'rgba(59,130,246,0.3)' };
+        const rows = rankLeaveUsers(filteredRecords, analyticsRankModal, analyticsCatFilter);
+        const medals = ['🥇','🥈','🥉'];
+        return `
+        <div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;" onclick="if(event.target===this)window.closeRankModal()">
+          <div class="glass-card fade-in" style="width:100%;max-width:520px;border-radius:1.25rem;position:relative;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;">
+            <div style="padding:1.1rem 1.3rem;background:${meta.grad};box-shadow:0 4px 15px ${meta.glow};display:flex;align-items:center;gap:0.75rem;">
+              <div>
+                <div style="font-size:0.95rem;font-weight:800;color:#fff;letter-spacing:0.3px;">${meta.label} — Senarai Penuh</div>
+                <div style="font-size:0.66rem;color:rgba(255,255,255,0.8);font-weight:600;">Cuti diluluskan sahaja${analyticsCatFilter !== 'SEMUA' ? ' · ' + analyticsCatFilter.toUpperCase() : ''} · ${rows.length} staf</div>
+              </div>
+              <button onclick="window.closeRankModal()" style="margin-left:auto;background:rgba(255,255,255,0.2);border:none;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;flex-shrink:0;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <div style="padding:1rem;overflow-y:auto;display:flex;flex-direction:column;gap:0.5rem;">
+              ${rows.length === 0
+                ? `<div style="text-align:center;padding:2rem 1rem;color:var(--text-muted);">
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.25;margin-bottom:0.5rem;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    <div style="font-size:0.8rem;font-weight:600;">Tiada rekod diluluskan</div>
+                  </div>`
+                : rows.map((r, i) => `
+                  <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(163,177,198,0.07);padding:0.6rem 0.8rem;border-radius:10px;border:1px solid rgba(163,177,198,0.12);">
+                    <div style="display:flex;align-items:center;gap:0.7rem;min-width:0;">
+                      <div style="width:28px;height:28px;border-radius:8px;background:${i < 3 ? 'transparent' : 'rgba(163,177,198,0.18)'};display:flex;align-items:center;justify-content:center;font-size:${i < 3 ? '1.05rem' : '0.72rem'};font-weight:800;color:var(--text-muted);flex-shrink:0;">${i < 3 ? medals[i] : (i + 1)}</div>
+                      <div style="min-width:0;">
+                        <div style="font-size:0.82rem;font-weight:700;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.name}</div>
+                        <div style="font-size:0.65rem;color:var(--text-muted);">${r.branch || ''} · ${r.count} permohonan</div>
+                      </div>
+                    </div>
+                    <div style="text-align:right;flex-shrink:0;padding-left:0.6rem;">
+                      <div style="font-size:1rem;font-weight:800;background:${meta.grad};-webkit-background-clip:text;-webkit-text-fill-color:transparent;">${r.days}</div>
+                      <div style="font-size:0.6rem;color:var(--text-muted);font-weight:600;">HARI</div>
+                    </div>
+                  </div>
+                `).join('')
+              }
+            </div>
+          </div>
+        </div>`;
+      })() : ''}
     </div>
   `;
 }
