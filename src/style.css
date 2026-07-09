@@ -822,22 +822,26 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   .auth-card  { padding: 2rem 1.5rem; }
 }
 
-/* Analisa & Personal dashboards set grid-template-columns INLINE (repeat(4/3,1fr),
-   2fr 1fr), which beats class-based media queries — so on phones they never collapse
-   and the page scrolls left/right. Force-collapse the inline grids here (inline styles
-   are overridden only by !important) so these dashboards scroll vertically only. */
+/* Many views (dashboards, tetapan, laporan HR, polisi…) set grid-template-columns
+   INLINE (repeat(4/3/12,1fr), 2fr 1fr, 1fr 1fr…). Inline styles beat class-based media
+   queries, so on phones these grids never collapse and the page scrolls left/right.
+   Every view renders inside <main class="content-area">, so force-collapse the inline
+   grids here (inline is overridden only by !important) — the whole app then scrolls
+   vertically only on phones. Wide tables keep their own overflow-x:auto wrappers, so
+   they still scroll internally. */
 @media (max-width: 720px) {
-  .analytics-dashboard,
-  .personal-dashboard { overflow-x: hidden; max-width: 100%; }
+  .content-area { overflow-x: hidden; }
 
-  .analytics-dashboard [style*="repeat(4"],
-  .personal-dashboard  [style*="repeat(4"] { grid-template-columns: repeat(2, 1fr) !important; }
+  .content-area [style*="repeat(4"] { grid-template-columns: repeat(2, 1fr) !important; }
+  .content-area [style*="repeat(3"] { grid-template-columns: 1fr !important; }
+  .content-area [style*="repeat(12"] { grid-template-columns: repeat(6, 1fr) !important; }
+  .content-area [style*="repeat(6"]  { grid-template-columns: repeat(3, 1fr) !important; }
+  .content-area [style*="2fr 1fr"],
+  .content-area [style*="1fr 2fr"],
+  .content-area [style*="1fr 1fr"] { grid-template-columns: 1fr !important; }
 
-  .analytics-dashboard [style*="repeat(3"],
-  .personal-dashboard  [style*="repeat(3"] { grid-template-columns: 1fr !important; }
-
-  .analytics-dashboard [style*="2fr 1fr"],
-  .personal-dashboard  [style*="2fr 1fr"] { grid-template-columns: 1fr !important; }
+  /* Modals must never exceed the phone width (e.g. self-profile modal min-width:500px). */
+  .modal-content { min-width: 0 !important; max-width: 100% !important; padding: 1.5rem !important; }
 }
 
 /* ── Messenger ──────────────────────────────────────── */
