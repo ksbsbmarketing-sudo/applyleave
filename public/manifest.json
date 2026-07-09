@@ -2,6 +2,7 @@
   "name": "KLINIK SYED BADARUDDIN SDN. BHD - SISTEM PERMOHONAN CUTI DAN REKOD PEKERJA",
   "short_name": "KSB Portal",
   "description": "Sistem Permohonan Cuti dan Rekod Pekerja — KLINIK SYED BADARUDDIN SDN. BHD.",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
