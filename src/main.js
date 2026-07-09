@@ -648,6 +648,13 @@ const leaveCategories = [
     { id: 'CME', name: 'Latihan CME', entitlement: 5, icon: 'icon-cme', color: '#8b5cf6', description: 'Cuti Pendidikan Perubatan Berterusan (Doktor sahaja).' }
 ];
 
+// Full display names for leave-type codes (analytics legend, donut tooltip, etc.)
+// Derived from leaveCategories so it stays in sync; legacy codes added manually.
+const LEAVE_TYPE_NAMES = Object.fromEntries(leaveCategories.map(c => [c.id, c.name]));
+LEAVE_TYPE_NAMES.PL = 'Cuti Paterniti (PL)';
+LEAVE_TYPE_NAMES.CF = 'Cuti Bawa Ke Hadapan (CF)';
+function leaveTypeName(code) { return LEAVE_TYPE_NAMES[code] || code; }
+
 // ============================================================
 // BOT BANTUAN — FAQ Pintar (rule-based, tiada backend)
 // ============================================================
@@ -3415,7 +3422,7 @@ function initCharts() {
     _chartTypes = new Chart(tc, {
       type: 'doughnut',
       data: {
-        labels: entries.map(([id]) => id),
+        labels: entries.map(([id]) => leaveTypeName(id)),
         datasets: [{
           data: entries.map(([, c]) => c),
           backgroundColor: entries.map((_, i) => palette[i % palette.length]),
@@ -5702,7 +5709,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.25rem;">
                   <div style="display:flex;align-items:center;gap:0.45rem;">
                     <span style="width:9px;height:9px;border-radius:3px;background:${c};flex-shrink:0;display:inline-block;"></span>
-                    <span style="font-size:0.73rem;font-weight:600;">${id}</span>
+                    <span style="font-size:0.73rem;font-weight:600;">${leaveTypeName(id)}</span>
                   </div>
                   <div style="display:flex;align-items:center;gap:0.5rem;">
                     <span style="font-size:0.73rem;font-weight:800;">${count}</span>
@@ -6012,7 +6019,7 @@ function renderBranchDashboard() {
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.25rem;">
                       <div style="display:flex;align-items:center;gap:0.45rem;">
                         <span style="width:9px;height:9px;border-radius:3px;background:${c};flex-shrink:0;display:inline-block;"></span>
-                        <span style="font-size:0.73rem;font-weight:600;">${id}</span>
+                        <span style="font-size:0.73rem;font-weight:600;">${leaveTypeName(id)}</span>
                       </div>
                       <div style="display:flex;align-items:center;gap:0.5rem;">
                         <span style="font-size:0.73rem;font-weight:800;">${count}</span>
