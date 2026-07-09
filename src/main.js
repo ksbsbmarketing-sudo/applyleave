@@ -657,6 +657,17 @@ LEAVE_TYPE_NAMES.PL = 'Cuti Paterniti (PL)';
 LEAVE_TYPE_NAMES.CF = 'Cuti Bawa Ke Hadapan (CF)';
 function leaveTypeName(code) { return LEAVE_TYPE_NAMES[code] || code; }
 
+// Year options for report/analytics dropdowns: every year present in `records`
+// (by Tarikh Mohon, r.id) UNION the current year, sorted newest-first. Always
+// including the current year keeps a new calendar year selectable — and keeps the
+// default (current-year) selection valid — even before any record exists for it.
+function reportYearOptions(records) {
+  return [...new Set([
+    new Date().getFullYear().toString(),
+    ...records.map(r => r.id ? new Date(r.id).getFullYear().toString() : '').filter(Boolean),
+  ])].sort().reverse();
+}
+
 // ============================================================
 // BOT BANTUAN — FAQ Pintar (rule-based, tiada backend)
 // ============================================================
@@ -5574,10 +5585,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
   const effectiveBranchFilter = lockedBranch || analyticsBranchFilter;
 
   // Years present in the data (for the year dropdown); always include the current year.
-  const analyticsYears = [...new Set([
-    new Date().getFullYear().toString(),
-    ...leaveRecords.map(r => r.id ? new Date(r.id).getFullYear().toString() : '').filter(Boolean),
-  ])].sort().reverse();
+  const analyticsYears = reportYearOptions(leaveRecords);
 
   // Apply year + month + branch filters
   const filteredRecords = leaveRecords.filter(r => {
@@ -8190,7 +8198,7 @@ function renderView() {
 
           // Approved report data
           const approvedBase = scopedRecords.filter(r => r.status === 'APPROVED');
-          const availableYears = [...new Set(approvedBase.map(r => r.id ? new Date(r.id).getFullYear().toString() : '').filter(Boolean))].sort().reverse();
+          const availableYears = reportYearOptions(approvedBase);
           const availableBranches = [...new Set(approvedBase.map(r => r.branch).filter(Boolean))].sort();
           const availableTypes = [...new Set(approvedBase.map(r => r.type).filter(Boolean))].sort();
 
@@ -8431,7 +8439,7 @@ function renderView() {
           `}
 
           ${hrReportTab === 'jenis' ? (() => {
-            const availYearsJ = [...new Set(scopedRecords.map(r=>r.id ? new Date(r.id).getFullYear().toString() : '').filter(Boolean))].sort().reverse();
+            const availYearsJ = reportYearOptions(scopedRecords);
             const availBranchesJ = [...new Set(scopedRecords.map(r=>r.branch).filter(Boolean))].sort();
 
             const jeniFiltered = scopedRecords.filter(r => {
@@ -8556,7 +8564,7 @@ function renderView() {
             const MONTHS = ['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ogo','Sep','Okt','Nov','Dis'];
             const allLeaveTypes = leaveCategories.map(c => c.id);
             const availBranchesForBalance = [...new Set(scopedRecords.map(r=>r.branch).filter(Boolean))].sort();
-            const availYearsForBalance = [...new Set(leaveRecords.map(r=>r.id ? new Date(r.id).getFullYear().toString() : '').filter(Boolean))].sort().reverse();
+            const availYearsForBalance = reportYearOptions(leaveRecords);
 
             // Get staff pool: staff in selected branch (or all), include inactive if they have records
             let staffPool = staffList.filter(s => {
@@ -8752,7 +8760,7 @@ function renderView() {
 
           ${hrReportTab === 'attendance' && userPerms.report_attendance ? (() => {
             const MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
-            const availYearsA = [...new Set(leaveRecords.map(r=>r.id ? new Date(r.id).getFullYear().toString() : '').filter(Boolean))].sort().reverse();
+            const availYearsA = reportYearOptions(leaveRecords);
             const scopedBranchesA = [...new Set(staffList.filter(s=>!s.inactive).map(s=>s.branch).filter(Boolean))].sort().filter(b => {
               if (reportBranch) return b === reportBranch;
               const bObj = branches.find(br => br.name === b);
