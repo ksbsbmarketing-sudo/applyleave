@@ -1,6 +1,7 @@
 import './style.css'
 import { countLeaveDays } from './leaveDays.js';
 import { recordBalances } from './leaveBalance.js';
+import { computeYearEndRollover, buildStaffRolloverPatch, CF_CAP } from './yearEnd.js';
 import { loadSectionState, toggleSection, saveSectionState, isOpen as isMsgSectionOpen } from './msgSections.js';
 import { applyEmoticons } from './emoticons.js';
 import { PRESENCE_STATUSES, DEFAULT_STATUS, getStatusMeta, resolveStatus, isVisibleToOthers, normalizeMood } from './presenceStatus.js';
@@ -465,6 +466,9 @@ let approvedReportBranch = 'SEMUA';
 let approvedReportType = 'SEMUA';
 let approvedReportYear = new Date().getFullYear().toString();
 let approvedReportMonth = 'SEMUA'; // 'SEMUA' or '1'..'12'; filters approved report by leave start month (Tarikh Cuti)
+let leaveYearConfig = { lastClosed: 0 }; // config/leaveYear: last year already closed via Tutup Tahun
+let yearEndPreview = null;   // computed rollover plan { year, rows, totals } while the preview modal is open
+let yearEndProcessing = false; // true while applying the rollover (disables the confirm button)
 let balanceReportBranch = 'SEMUA';
 let balanceReportType = 'AL';
 let balanceReportYear = new Date().getFullYear().toString();
@@ -2556,6 +2560,35 @@ window.setApprovedReportBranch = function(val) { approvedReportBranch = val; ren
 window.setApprovedReportType = function(val) { approvedReportType = val; render(); };
 window.setApprovedReportYear = function(val) { approvedReportYear = val; render(); };
 window.setApprovedReportMonth = function(val) { approvedReportMonth = val; render(); };
+
+// ---- Tutup Tahun (annual leave-year rollover) ----
+window.openYearEndPreview = function(year) {
+  const activeStaff = staffList.filter(s => !s.inactive);
+  yearEndPreview = computeYearEndRollover({ staffList: activeStaff, getStats: window.getLeaveStats, year });
+  yearEndProcessing = false;
+  render();
+};
+window.closeYearEndModal = function() { yearEndPreview = null; yearEndProcessing = false; render(); };
+window.confirmYearEnd = async function() {
+  if (!yearEndPreview || yearEndProcessing) return;
+  const plan = yearEndPreview;
+  yearEndProcessing = true; render();
+  try {
+    // Apply each staff's rollover patch, then record the close marker.
+    for (const row of plan.rows) {
+      await updateDoc(doc(db, 'staff', row.ic), buildStaffRolloverPatch(row, plan.year));
+    }
+    await setDoc(doc(db, 'config', 'leaveYear'),
+      { lastClosed: plan.year, closedAt: Date.now(), closedBy: user?.name || user?.ic || '' },
+      { merge: true });
+    yearEndPreview = null; yearEndProcessing = false; render();
+    alert(`Tutup Tahun ${plan.year} selesai. ${plan.rows.length} staf dikemaskini · CF ${plan.year + 1} = ${plan.totals.totalCF} hari · ${plan.totals.totalForfeited} hari hangus.`);
+  } catch (e) {
+    console.error('Tutup Tahun gagal:', e);
+    yearEndProcessing = false; render();
+    alert('Ralat semasa Tutup Tahun: ' + (e?.message || e) + '\nSebahagian staf mungkin sudah dikemaskini — semak sebelum cuba semula.');
+  }
+};
 window.setBalanceReportBranch = function(val) { balanceReportBranch = val; render(); };
 window.setBalanceViewBranch = function(val) { balanceViewBranch = val; render(); };
 window.setBalanceViewSearch = function(val) { balanceViewSearch = val; render(); };
@@ -3021,6 +3054,13 @@ async function initData() {
     }
     render();
   }, (e) => console.warn('Routing config sync failed:', e));
+
+  // Year-end close marker (which leave year was last rolled over). Live-synced so the
+  // "Tutup Tahun" button reflects the latest state across sessions.
+  onSnapshot(doc(db, 'config', 'leaveYear'), (snap) => {
+    leaveYearConfig = snap.exists() ? { lastClosed: parseInt(snap.data().lastClosed || 0, 10) } : { lastClosed: 0 };
+    render();
+  }, (e) => console.warn('Leave-year config sync failed:', e));
 
   // Load public holidays config
   try {
@@ -3981,10 +4021,26 @@ window.getEarnedAL = function(staffObj) {
   return window.getEntitlementAL(staffObj) + parseFloat(staffObj.ent_CF || 0);
 };
 
-window.getLeaveStats = function(staff, type) {
+// Single source of truth for the "current leave year" (calendar year).
+window.getCurrentLeaveYear = function() { return new Date().getFullYear(); };
+
+// The leave year a record is consumed in = the year the leave STARTS (startDate),
+// falling back to the application year (r.id) when startDate is missing.
+function leaveYearOf(r) {
+  if (r.startDate) { const d = new Date(r.startDate); if (!isNaN(d.getTime())) return d.getFullYear(); }
+  if (r.id) return new Date(r.id).getFullYear();
+  return null;
+}
+
+window.getLeaveStats = function(staff, type, year) {
   if (!staff) return { used: 0, ent: 0, bal: 0 };
 
-  const records = leaveRecords.filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === type);
+  // "Guna Dalam Sistem" is counted per leave year. Defaults to the current year, so
+  // 2026 numbers are unchanged today (every existing record is 2026); balances refresh
+  // automatically each new calendar year (carry-forward handled by Tutup Tahun).
+  const leaveYear = (year !== undefined && year !== null) ? parseInt(year, 10) : window.getCurrentLeaveYear();
+  const records = leaveRecords.filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === type
+    && leaveYearOf(r) === leaveYear);
   const recordsUsed = records.reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
 
   let ent = 0;
@@ -4068,6 +4124,8 @@ window.logout = function() {
   dashboardTab = null;
   analyticsFilterMonth = 0;
   analyticsFilterYear = new Date().getFullYear().toString();
+  yearEndPreview = null;
+  yearEndProcessing = false;
   analyticsCatFilter = 'SEMUA';
   analyticsBranchFilter = 'SEMUA';
   analyticsRankModal = null;
@@ -8620,7 +8678,7 @@ function renderView() {
               const monthlyUsed = usageByIc[s.ic] || Array(12).fill(0);
               // Guna getLeaveStats untuk entitlement + used total (sama dengan dashboard)
               const staffFull = staffList.find(x => x.ic === s.ic) || s;
-              const stats = window.getLeaveStats(staffFull, balanceReportType);
+              const stats = window.getLeaveStats(staffFull, balanceReportType, balanceReportYear === 'SEMUA' ? undefined : balanceReportYear);
               return {
                 ic: s.ic,
                 name: s.name,
@@ -8645,7 +8703,66 @@ function renderView() {
             const grandEntitlement = balanceRows.reduce((s,r)=>s+r.entitlement,0);
             const monthlyGrandTotal = Array(12).fill(0).map((_,i)=>balanceRows.reduce((s,r)=>s+(r.monthlyUsed[i]||0),0));
 
+            const _cy = window.getCurrentLeaveYear();
+            const _lastClosed = leaveYearConfig.lastClosed || 0;
+            const _targetYear = (_lastClosed || (_cy - 1)) + 1;
+            const _canCloseYear = userPerms.manage_staff && _targetYear <= _cy;
+
             return `
+            ${userPerms.manage_staff ? `
+            <!-- Tutup Tahun (annual leave-year reset) -->
+            <div class="glass-card" style="padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;border:1px solid rgba(124,58,237,0.25);background:linear-gradient(135deg,rgba(124,58,237,0.06),rgba(99,102,241,0.03));">
+              <div style="display:flex;align-items:center;gap:0.6rem;">
+                <div style="width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#7c3aed,#6366f1);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="21 3 21 9 15 9"/></svg>
+                </div>
+                <div>
+                  <div style="font-size:0.85rem;font-weight:800;">Tutup Tahun / Reset Baki Tahunan</div>
+                  <div style="font-size:0.68rem;color:var(--text-muted);">Bawa ke hadapan AL (maks ${CF_CAP} hari) &amp; reset baseline untuk tahun baru.${_lastClosed?` Terakhir ditutup: <b>${_lastClosed}</b>.`:''}</div>
+                </div>
+              </div>
+              <div style="margin-left:auto;">
+                ${_canCloseYear
+                  ? `<button onclick="window.openYearEndPreview(${_targetYear})" style="padding:0.5rem 1.1rem;border:none;border-radius:9px;background:linear-gradient(135deg,#7c3aed,#6366f1);color:#fff;font-weight:700;font-size:0.8rem;cursor:pointer;">Tutup Tahun ${_targetYear} →</button>`
+                  : `<span style="font-size:0.75rem;font-weight:700;color:#059669;">✓ Tahun ${_lastClosed||_cy} sudah ditutup</span>`}
+              </div>
+            </div>` : ''}
+
+            ${yearEndPreview ? `
+            <div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;" onclick="if(event.target===this)window.closeYearEndModal()">
+              <div class="glass-card fade-in" style="width:100%;max-width:640px;border-radius:1.25rem;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;">
+                <div style="padding:1.1rem 1.3rem;background:linear-gradient(135deg,#7c3aed,#6366f1);color:#fff;display:flex;align-items:center;gap:0.75rem;">
+                  <div>
+                    <div style="font-size:0.95rem;font-weight:800;">Tutup Tahun ${yearEndPreview.year} — Pratonton</div>
+                    <div style="font-size:0.66rem;color:rgba(255,255,255,0.85);">${yearEndPreview.totals.staff} staf · CF ${yearEndPreview.year+1} = ${yearEndPreview.totals.totalCF} hari · ${yearEndPreview.totals.totalForfeited} hari hangus</div>
+                  </div>
+                  <button onclick="window.closeYearEndModal()" style="margin-left:auto;background:rgba(255,255,255,0.2);border:none;border-radius:50%;width:32px;height:32px;color:#fff;cursor:pointer;font-size:1rem;flex-shrink:0;">✕</button>
+                </div>
+                <div style="overflow-y:auto;">
+                  <table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
+                    <thead><tr style="text-transform:uppercase;font-size:0.6rem;color:var(--text-muted);border-bottom:1px solid rgba(163,177,198,0.25);position:sticky;top:0;background:var(--card-bg);">
+                      <th style="padding:0.6rem 1rem;text-align:left;">Staf</th><th style="padding:0.6rem;text-align:center;">Baki AL</th><th style="padding:0.6rem;text-align:center;">Bawa (CF)</th><th style="padding:0.6rem 1rem;text-align:center;">Hangus</th>
+                    </tr></thead>
+                    <tbody>
+                      ${yearEndPreview.rows.length === 0
+                        ? `<tr><td colspan="4" style="padding:2rem;text-align:center;color:var(--text-muted);">Tiada staf aktif</td></tr>`
+                        : yearEndPreview.rows.map(r=>`<tr style="border-bottom:1px solid rgba(163,177,198,0.1);">
+                        <td style="padding:0.55rem 1rem;"><div style="font-weight:700;">${r.name}</div><div style="font-size:0.6rem;color:var(--text-muted);">${r.branch}</div></td>
+                        <td style="padding:0.55rem;text-align:center;font-weight:700;">${r.closingAL}</td>
+                        <td style="padding:0.55rem;text-align:center;font-weight:800;color:#059669;">${r.cfNext}</td>
+                        <td style="padding:0.55rem 1rem;text-align:center;color:${r.forfeited>0?'#dc2626':'var(--text-muted)'};font-weight:${r.forfeited>0?'700':'400'};">${r.forfeited>0?r.forfeited:'—'}</td>
+                      </tr>`).join('')}
+                    </tbody>
+                  </table>
+                </div>
+                <div style="padding:1rem 1.3rem;border-top:1px solid rgba(163,177,198,0.2);display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+                  <div style="font-size:0.66rem;color:#b45309;flex:1;min-width:200px;line-height:1.4;">⚠️ Tindakan tidak boleh dibatalkan. Baki AL dibawa maks ${CF_CAP} hari sebagai CF ${yearEndPreview.year+1}; baseline (guna sebelum sistem / pelarasan) direset 0. Sebaiknya buat pada hujung tahun.</div>
+                  <button onclick="window.closeYearEndModal()" style="padding:0.5rem 1rem;border:1px solid rgba(163,177,198,0.4);border-radius:8px;background:transparent;font-weight:700;font-size:0.78rem;cursor:pointer;color:var(--text-muted);">Batal</button>
+                  <button onclick="window.confirmYearEnd()" ${yearEndProcessing?'disabled':''} style="padding:0.5rem 1.2rem;border:none;border-radius:8px;background:${yearEndProcessing?'#9ca3af':'#059669'};color:#fff;font-weight:800;font-size:0.78rem;cursor:${yearEndProcessing?'wait':'pointer'};">${yearEndProcessing?'Memproses…':`Sahkan Tutup ${yearEndPreview.year}`}</button>
+                </div>
+              </div>
+            </div>` : ''}
+
             <!-- Balance Filter bar -->
             <div class="glass-card" style="padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;">
               <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.5px;">Tapis:</div>

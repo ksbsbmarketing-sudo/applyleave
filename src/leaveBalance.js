@@ -20,12 +20,17 @@ export function recordBalances({ record, ent, alAdj = 0, records = [] }) {
   const base = num(ent);
   const applied = num(record.days);
 
+  // Only sum prior leaves from the SAME leave year as the record being printed, so a
+  // new calendar year starts fresh (matches the year-scoped getLeaveStats). For a
+  // 2026 record with only 2026 history this is unchanged.
+  const recordYear = leaveYearOf(record);
   const priorUsed = num(alAdj) + records
     .filter(r =>
       r.ic === record.ic &&
       r.type === record.type &&
       r.status === 'APPROVED' &&
       r.id !== record.id &&
+      (recordYear === null || leaveYearOf(r) === recordYear) &&
       isBefore(r, record))
     .reduce((acc, r) => acc + num(r.days), 0);
 
@@ -46,4 +51,12 @@ function isBefore(a, b) {
 function num(v) {
   const n = parseFloat(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+// Leave year a record belongs to = the year the leave STARTS (startDate), falling
+// back to the application year (r.id). Kept in sync with main.js leaveYearOf().
+function leaveYearOf(r) {
+  if (r && r.startDate) { const d = new Date(r.startDate); if (!isNaN(d.getTime())) return d.getFullYear(); }
+  if (r && r.id) return new Date(r.id).getFullYear();
+  return null;
 }
