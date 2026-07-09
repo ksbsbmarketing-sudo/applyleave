@@ -483,6 +483,7 @@ let dashboardTab = null; // 'personal' or 'analytics'
 let showProfileSettings = false;
 let selectedLeaveType = 'AL';
 let analyticsFilterMonth = 0; // 0 = All Months, 1-12 = specific month
+let analyticsFilterYear = new Date().getFullYear().toString(); // 'SEMUA' or a year e.g. '2026'; default current year to align with HR Reports
 let analyticsCatFilter = 'SEMUA'; // 'SEMUA', 'Doktor', 'Admin Staff', 'Operation Staff'
 let analyticsBranchFilter = 'SEMUA'; // 'SEMUA' or branch name
 let analyticsRankModal = null; // null, or leave type 'AL'/'MC'/'EL_EMG' for full-list ranking modal
@@ -962,6 +963,11 @@ window.setSelectedLeaveType = function(type) {
 
 window.setAnalyticsMonth = function(val) {
   analyticsFilterMonth = parseInt(val);
+  render();
+};
+
+window.setAnalyticsYear = function(val) {
+  analyticsFilterYear = val;
   render();
 };
 
@@ -3365,7 +3371,7 @@ function initCharts() {
             padding: 12,
             cornerRadius: 10,
             callbacks: {
-              title: (items) => data.monthsList[items[0].dataIndex] + ' ' + new Date().getFullYear(),
+              title: (items) => data.monthsList[items[0].dataIndex] + (data.yearLabel ? ' ' + data.yearLabel : ''),
               label: (item) => '  ' + item.raw + ' Permohonan',
             }
           }
@@ -4034,6 +4040,7 @@ window.logout = function() {
   mobileMenuOpen = false;
   dashboardTab = null;
   analyticsFilterMonth = 0;
+  analyticsFilterYear = new Date().getFullYear().toString();
   analyticsCatFilter = 'SEMUA';
   analyticsBranchFilter = 'SEMUA';
   analyticsRankModal = null;
@@ -5550,8 +5557,18 @@ function renderAnalyticsDashboard(lockedBranch = null) {
   // lockedBranch: when set (branch_analisa mode), filters are locked to that branch
   const effectiveBranchFilter = lockedBranch || analyticsBranchFilter;
 
-  // Apply month + branch filters
+  // Years present in the data (for the year dropdown); always include the current year.
+  const analyticsYears = [...new Set([
+    new Date().getFullYear().toString(),
+    ...leaveRecords.map(r => r.id ? new Date(r.id).getFullYear().toString() : '').filter(Boolean),
+  ])].sort().reverse();
+
+  // Apply year + month + branch filters
   const filteredRecords = leaveRecords.filter(r => {
+    if (analyticsFilterYear !== 'SEMUA') {
+      if (!r.id) return false;
+      if (new Date(r.id).getFullYear().toString() !== analyticsFilterYear) return false;
+    }
     if (analyticsFilterMonth !== 0) {
       if (!r.id) return false;
       if (new Date(r.id).getMonth() + 1 !== analyticsFilterMonth) return false;
@@ -5576,12 +5593,16 @@ function renderAnalyticsDashboard(lockedBranch = null) {
   const monthCounts = monthsList.map((m, i) => leaveRecords.filter(r => {
       if (!r.id) return false;
       if (lockedBranch && r.branch !== lockedBranch) return false;
+      if (analyticsFilterYear !== 'SEMUA' && new Date(r.id).getFullYear().toString() !== analyticsFilterYear) return false;
       return new Date(r.id).getMonth() === i;
   }).length);
   const maxMonthCount = Math.max(...monthCounts, 1);
 
+  // Label for the selected period year (used across the dashboard + chart)
+  const yearLabel = analyticsFilterYear === 'SEMUA' ? 'Semua Tahun' : analyticsFilterYear;
+
   // Store for Chart.js
-  window._analyticsData = { monthCounts, monthsList, types, totalReqs, sortedBranches, filteredRecords };
+  window._analyticsData = { monthCounts, monthsList, types, totalReqs, sortedBranches, filteredRecords, yearLabel };
 
   // Color palettes reused in HTML (must match initCharts barPalette)
   const _barColors = ['#3b82f6','#6366f1','#8b5cf6','#a855f7','#ec4899','#ef4444','#f97316','#f59e0b','#eab308','#84cc16','#22c55e','#14b8a6'];
@@ -5616,9 +5637,13 @@ function renderAnalyticsDashboard(lockedBranch = null) {
                 ${branches.map(b => `<option value="${b.name}" ${analyticsBranchFilter === b.name ? 'selected' : ''}>${b.name}</option>`).join('')}
               </select>`
           }
+          <select class="neu-inset" style="padding:0.45rem 0.9rem;font-size:0.85rem;width:auto;color-scheme:light;font-weight:600;" onchange="window.setAnalyticsYear(this.value)">
+            <option value="SEMUA" ${analyticsFilterYear === 'SEMUA' ? 'selected' : ''}>Semua Tahun</option>
+            ${analyticsYears.map(y => `<option value="${y}" ${analyticsFilterYear === y ? 'selected' : ''}>${y}</option>`).join('')}
+          </select>
           <select id="month-filter" class="neu-inset" style="padding:0.45rem 0.9rem;font-size:0.85rem;width:auto;color-scheme:light;font-weight:600;" onchange="window.setAnalyticsMonth(this.value)">
             <option value="0" ${analyticsFilterMonth === 0 ? 'selected' : ''}>Semua Bulan</option>
-            ${monthsList.map((m,i) => `<option value="${i+1}" ${analyticsFilterMonth === i+1 ? 'selected' : ''}>${m} ${new Date().getFullYear()}</option>`).join('')}
+            ${monthsList.map((m,i) => `<option value="${i+1}" ${analyticsFilterMonth === i+1 ? 'selected' : ''}>${m}${analyticsFilterYear !== 'SEMUA' ? ' ' + analyticsFilterYear : ''}</option>`).join('')}
           </select>
         </div>
       </header>
@@ -5633,7 +5658,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
           <div style="font-size:2.8rem;font-weight:800;color:#fff;line-height:1;margin-bottom:0.4rem;">${totalReqs}</div>
           <div style="font-size:0.75rem;color:rgba(255,255,255,0.65);display:flex;align-items:center;gap:0.4rem;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            Tahun ${new Date().getFullYear()}
+            Tahun ${yearLabel}
           </div>
         </div>
         <!-- Approved -->
@@ -5696,7 +5721,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
         <!-- Donut Chart -->
         <div class="glass-card" style="padding:1.5rem;">
           <h3 style="font-size:0.95rem;font-weight:700;margin:0 0 0.2rem;">Jenis Cuti</h3>
-          <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:1rem;">Pecahan ${analyticsFilterMonth === 0 ? new Date().getFullYear() : monthsList[analyticsFilterMonth-1]}</div>
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:1rem;">Pecahan ${analyticsFilterMonth === 0 ? yearLabel : monthsList[analyticsFilterMonth-1] + (analyticsFilterYear !== 'SEMUA' ? ' ' + analyticsFilterYear : '')}</div>
           <div style="position:relative;height:160px;margin-bottom:1.1rem;">
             <canvas id="chart-types"></canvas>
           </div>
@@ -5808,7 +5833,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
           </div>
           <div>
             <h3 style="font-size:0.9rem;font-weight:700;margin:0;">Permohonan Mengikut Cawangan</h3>
-            <p style="font-size:0.72rem;color:var(--text-muted);margin:0;">${analyticsBranchFilter === 'SEMUA' ? `${new Date().getFullYear()} — diisih dari tertinggi` : analyticsBranchFilter + ' — rekod dalam cawangan ini'}</p>
+            <p style="font-size:0.72rem;color:var(--text-muted);margin:0;">${analyticsBranchFilter === 'SEMUA' ? `${yearLabel} — diisih dari tertinggi` : analyticsBranchFilter + ' — rekod dalam cawangan ini'}</p>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:0.85rem;">
