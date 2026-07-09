@@ -464,6 +464,7 @@ let hrReportTab = 'all'; // 'all' | 'approved' | 'balance' | 'jenis'
 let approvedReportBranch = 'SEMUA';
 let approvedReportType = 'SEMUA';
 let approvedReportYear = new Date().getFullYear().toString();
+let approvedReportMonth = 'SEMUA'; // 'SEMUA' or '1'..'12'; filters approved report by leave start month (Tarikh Cuti)
 let balanceReportBranch = 'SEMUA';
 let balanceReportType = 'AL';
 let balanceReportYear = new Date().getFullYear().toString();
@@ -2543,6 +2544,7 @@ window.setHrReportTab = function(tab) { hrReportTab = tab; render(); };
 window.setApprovedReportBranch = function(val) { approvedReportBranch = val; render(); };
 window.setApprovedReportType = function(val) { approvedReportType = val; render(); };
 window.setApprovedReportYear = function(val) { approvedReportYear = val; render(); };
+window.setApprovedReportMonth = function(val) { approvedReportMonth = val; render(); };
 window.setBalanceReportBranch = function(val) { balanceReportBranch = val; render(); };
 window.setBalanceViewBranch = function(val) { balanceViewBranch = val; render(); };
 window.setBalanceViewSearch = function(val) { balanceViewSearch = val; render(); };
@@ -2606,18 +2608,32 @@ window.generateBalanceReport = function(rows, branchName, leaveType, year) {
   document.getElementById('print-container').remove();
 };
 
-window.generateApprovedReport = function() {
-  const recs = leaveRecords.filter(r => {
-    if (r.status !== 'APPROVED') return false;
-    if (approvedReportBranch !== 'SEMUA' && r.branch !== approvedReportBranch) return false;
-    if (approvedReportType !== 'SEMUA' && r.type !== approvedReportType) return false;
-    if (approvedReportYear !== 'SEMUA' && new Date(r.id).getFullYear().toString() !== approvedReportYear) return false;
+// Shared branch/type/month/year predicate for the "Cuti Diluluskan" report (screen + PDF).
+// Month is based on Tarikh Cuti (startDate); when a month is chosen the year is also read
+// from startDate so "Julai 2026" means leave starting in July 2026. With "Semua Bulan" the
+// year keeps the existing Tarikh Mohon (r.id) basis. Does NOT check status/scope — callers do.
+function matchesApprovedReportFilters(r) {
+  if (approvedReportBranch !== 'SEMUA' && r.branch !== approvedReportBranch) return false;
+  if (approvedReportType !== 'SEMUA' && r.type !== approvedReportType) return false;
+  if (approvedReportMonth !== 'SEMUA') {
+    const d = new Date(r.startDate);
+    if (isNaN(d.getTime())) return false;
+    if (d.getMonth() + 1 !== Number(approvedReportMonth)) return false;
+    if (approvedReportYear !== 'SEMUA' && d.getFullYear().toString() !== approvedReportYear) return false;
     return true;
-  });
+  }
+  if (approvedReportYear !== 'SEMUA' && (!r.id || new Date(r.id).getFullYear().toString() !== approvedReportYear)) return false;
+  return true;
+}
+
+window.generateApprovedReport = function() {
+  const _MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
+  const monthLabel = approvedReportMonth === 'SEMUA' ? 'Semua Bulan' : _MONTHS_MS[Number(approvedReportMonth) - 1];
+  const recs = leaveRecords.filter(r => r.status === 'APPROVED' && matchesApprovedReportFilters(r));
   const totalDays = recs.reduce((s, r) => s + parseFloat(r.days || 0), 0);
   const printHTML = `
   <div id="print-container" style="font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff;">
-    ${window.printHeaderHTML({ isReport: true, branch: approvedReportBranch, title: 'LAPORAN CUTI DILULUSKAN', meta: [{ label: 'Jenis', value: approvedReportType === 'SEMUA' ? 'Semua' : approvedReportType }, { label: 'Tahun', value: approvedReportYear }, { label: 'Jana', value: new Date().toLocaleDateString('ms-MY',{day:'2-digit',month:'long',year:'numeric'}) }] })}
+    ${window.printHeaderHTML({ isReport: true, branch: approvedReportBranch, title: 'LAPORAN CUTI DILULUSKAN', meta: [{ label: 'Jenis', value: approvedReportType === 'SEMUA' ? 'Semua' : approvedReportType }, { label: 'Bulan', value: monthLabel }, { label: 'Tahun', value: approvedReportYear }, { label: 'Jana', value: new Date().toLocaleDateString('ms-MY',{day:'2-digit',month:'long',year:'numeric'}) }] })}
     <div style="display:flex;gap:16px;margin-bottom:24px;">
       <div style="flex:1;padding:12px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#059669;">Jumlah Rekod</div>
@@ -2660,7 +2676,7 @@ window.generateApprovedReport = function() {
       </tbody>
     </table>
     <div style="margin-top:20px;font-size:10px;color:#718096;border-top:1px solid #e2e8f0;padding-top:10px;">
-      * Laporan ini dijana secara automatik oleh KSB Leave Apply System pada ${new Date().toLocaleString('ms-MY')}. Rekod yang dipaparkan adalah berstatus APPROVED sahaja.
+      * Laporan ini dijana secara automatik oleh KSB Leave Apply System pada ${new Date().toLocaleString('ms-MY')}. Rekod yang dipaparkan adalah berstatus APPROVED sahaja.${approvedReportMonth !== 'SEMUA' ? ' Tapisan bulan mengikut Tarikh Cuti (tarikh mula cuti).' : ''}
     </div>
     <button onclick="window.print()" style="margin-top:16px;padding:8px 20px;background:#059669;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;">PRINT / SIMPAN PDF</button>
   </div>`;
@@ -8178,12 +8194,7 @@ function renderView() {
           const availableBranches = [...new Set(approvedBase.map(r => r.branch).filter(Boolean))].sort();
           const availableTypes = [...new Set(approvedBase.map(r => r.type).filter(Boolean))].sort();
 
-          const approvedFiltered = approvedBase.filter(r => {
-            if (approvedReportBranch !== 'SEMUA' && r.branch !== approvedReportBranch) return false;
-            if (approvedReportType !== 'SEMUA' && r.type !== approvedReportType) return false;
-            if (approvedReportYear !== 'SEMUA' && (!r.id || new Date(r.id).getFullYear().toString() !== approvedReportYear)) return false;
-            return true;
-          });
+          const approvedFiltered = approvedBase.filter(matchesApprovedReportFilters);
           const approvedTotalDays = approvedFiltered.reduce((s,r) => s + parseFloat(r.days||0), 0);
           const approvedStaffCount = [...new Set(approvedFiltered.map(r=>r.ic))].length;
 
@@ -8318,6 +8329,10 @@ function renderView() {
               <option value="SEMUA" ${approvedReportYear==='SEMUA'?'selected':''}>Semua Tahun</option>
               ${availableYears.map(y=>`<option value="${y}" ${approvedReportYear===y?'selected':''}>${y}</option>`).join('')}
             </select>
+            <select class="neu-inset" style="padding:0.4rem 0.75rem;font-size:0.82rem;color-scheme:light;border-radius:8px;cursor:pointer;" onchange="window.setApprovedReportMonth(this.value)">
+              <option value="SEMUA" ${approvedReportMonth==='SEMUA'?'selected':''}>Semua Bulan</option>
+              ${['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'].map((m,i)=>`<option value="${i+1}" ${approvedReportMonth===String(i+1)?'selected':''}>${m}</option>`).join('')}
+            </select>
             <select class="neu-inset" style="padding:0.4rem 0.75rem;font-size:0.82rem;color-scheme:light;border-radius:8px;cursor:pointer;" onchange="window.setApprovedReportBranch(this.value)">
               <option value="SEMUA" ${approvedReportBranch==='SEMUA'?'selected':''}>Semua Cawangan</option>
               ${availableBranches.map(b=>`<option value="${b}" ${approvedReportBranch===b?'selected':''}>${b}</option>`).join('')}
@@ -8326,7 +8341,7 @@ function renderView() {
               <option value="SEMUA" ${approvedReportType==='SEMUA'?'selected':''}>Semua Jenis</option>
               ${availableTypes.map(t=>`<option value="${t}" ${approvedReportType===t?'selected':''}>${t}</option>`).join('')}
             </select>
-            <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);font-weight:600;">${approvedFiltered.length} rekod dijumpai</div>
+            <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);font-weight:600;">${approvedFiltered.length} rekod dijumpai${approvedReportMonth !== 'SEMUA' ? ' · bulan ikut Tarikh Cuti' : ''}</div>
           </div>
 
           <!-- Stats cards -->
