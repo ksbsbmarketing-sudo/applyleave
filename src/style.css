@@ -1490,6 +1490,36 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   padding: 2.5rem 1.5rem;
 }
 
+/* "Sedang Aktif" strip — horizontal avatars of everyone online now */
+.msg-active-now {
+  display: flex; gap: 0.65rem; overflow-x: auto;
+  padding: 0.6rem 0.85rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: none;
+}
+.msg-active-now::-webkit-scrollbar { display: none; }
+.msg-active-item {
+  border: none; background: none; cursor: pointer; padding: 0;
+  font-family: inherit; flex-shrink: 0; width: 54px;
+  display: flex; flex-direction: column; align-items: center; gap: 0.28rem;
+}
+.msg-active-avatar {
+  position: relative; width: 46px; height: 46px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; color: #fff; font-size: 1rem;
+  background: linear-gradient(135deg, var(--secondary), var(--primary));
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px #22c55e;
+}
+.msg-active-dot {
+  position: absolute; bottom: -1px; right: -1px;
+  width: 13px; height: 13px; border-radius: 50%;
+  border: 2px solid var(--surface); background: #22c55e;
+}
+.msg-active-name {
+  font-size: 0.68rem; color: var(--text-muted); font-weight: 600;
+  max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
 /* BUZZ button — modern pill (feature kept, restyled from retro yellow) */
 .messenger-layout .msg-buzz-btn {
   border-radius: 20px; border: none;

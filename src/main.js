@@ -5006,6 +5006,24 @@ function renderMessengerView() {
   const kumpulanListHtml = groupRooms.map(renderRoomItem).join('');
   const totalUnread = messengerUnreadRooms.size;
 
+  // "Sedang Aktif" strip: everyone online right now (Messenger/Instagram-style
+  // horizontal avatars), so you can see & DM online staff even if you have never
+  // chatted with them. Shown at the top of the Chat tab only.
+  const onlineOthers = Object.values(onlineUsers).filter(u => u.ic !== user.ic && u.role !== 'super_admin');
+  const activeNowHtml = onlineOthers.length ? `
+    <div class="msg-active-now">
+      ${onlineOthers.map(u => {
+        const st = staffList.find(x => x.ic === u.ic) || {};
+        const cm = resolveStatus(u);
+        const firstName = (u.name || '?').split(' ')[0];
+        const title = `${(u.name || '').replace(/"/g,'&quot;')} — ${cm.label}${u.statusMsg ? ': ' + u.statusMsg.replace(/"/g,'&quot;') : ''}`;
+        return `<button class="msg-active-item" title="${title}" onclick="window.openDM('${u.ic}','${(u.name||'').replace(/'/g,"\\'")}')">
+          <span class="msg-active-avatar">${avatarInner(u.name, st.photoUrl)}<span class="msg-active-dot" style="background:${cm.color};"></span></span>
+          <span class="msg-active-name">${firstName}</span>
+        </button>`;
+      }).join('')}
+    </div>` : '';
+
   // Compact "me" bar (avatar + status + mood) — replaces the old status card.
   const meBar = `
     <div class="msg-me-bar">
@@ -5065,6 +5083,7 @@ function renderMessengerView() {
       ${searchBar}
 
       <div class="msg-rooms-scroll">
+        ${(!messengerNewChatOpen && messengerTab === 'chat') ? activeNowHtml : ''}
         <div id="msg-list-body">
           ${messengerNewChatOpen
             ? dmDirectory.map(renderDMRow).join('')
