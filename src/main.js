@@ -594,6 +594,8 @@ let messengerMessages = [];
 let messengerMsgUnsub = null;
 let messengerFileObj = null;
 let messengerView = 'rooms'; // 'rooms' | 'chat'
+let messengerTab = 'chat';   // left-panel tab: 'chat' (recent DMs+groups) | 'kumpulan' (all group rooms)
+let messengerNewChatOpen = false; // "+" staff-picker overlay for starting a new DM
 let messengerSending = false;
 let messengerRoomLastMsg = {};
 let messengerRoomsUnsub = null;
@@ -4740,13 +4742,23 @@ window.deleteMessage = async function(msgId) {
   catch(err) { alert('Gagal memadam mesej.'); }
 };
 
+// Live-filter whichever list is currently shown (Chat, Kumpulan, or the "+"
+// new-chat picker) by name — no re-render, so search box keeps focus.
 window.filterMsgStaff = function(q) {
   const query = (q || '').toLowerCase().trim();
-  document.querySelectorAll('#msg-staff-list .msg-room-item').forEach(item => {
-    const name = item.dataset.staffName || '';
+  document.querySelectorAll('#msg-list-body .msg-room-item').forEach(item => {
+    const name = item.dataset.search || item.dataset.staffName || '';
     item.style.display = (!query || name.includes(query)) ? '' : 'none';
   });
 };
+
+window.setMessengerTab = function(tab) {
+  messengerTab = tab;
+  messengerNewChatOpen = false;
+  render();
+};
+window.openNewChat = function() { messengerNewChatOpen = true; render(); };
+window.closeNewChat = function() { messengerNewChatOpen = false; render(); };
 
 function formatMsgTime(ts) {
   if (!ts) return '';
@@ -4848,7 +4860,7 @@ function renderRoomItem(room) {
   const isActive = messengerRoomId === room.id;
   const preview = last.lastMessage ? `${last.lastSenderName || ''}: ${last.lastMessage}` : room.subtitle;
   return `
-  <div class="msg-room-item ${isActive ? 'active' : ''}" onclick="window.openRoom('${room.id}','${room.name.replace(/'/g,"\\'")}','${room.type}')">
+  <div class="msg-room-item ${isActive ? 'active' : ''}" data-search="${(room.name||'').toLowerCase()}" onclick="window.openRoom('${room.id}','${room.name.replace(/'/g,"\\'")}','${room.type}')">
     <div class="msg-room-icon-circle" style="${room.iconBg || 'background:linear-gradient(135deg,var(--primary),var(--secondary));'}">${room.icon}</div>
     <div class="msg-room-info">
       <div class="msg-room-name">${room.name}${isUnread ? '<span class="msg-unread-dot"></span>' : ''}</div>
@@ -4927,7 +4939,7 @@ function renderMessengerView() {
       ? `<span style="color:${sm.color};font-weight:600;">${sm.dot} ${pres.statusMsg ? pres.statusMsg : sm.label}</span>`
       : (last.lastMessage || shortRoleLabel(s.role));
     return `
-    <div class="msg-room-item ${isActive ? 'active' : ''} ${isOnline ? '' : 'msg-room-offline'}" data-staff-name="${(s.name||'').toLowerCase()}" onclick="window.openDM('${s.ic}','${s.name.replace(/'/g,"\\'")}')">
+    <div class="msg-room-item ${isActive ? 'active' : ''} ${isOnline ? '' : 'msg-room-offline'}" data-search="${(s.name||'').toLowerCase()}" data-staff-name="${(s.name||'').toLowerCase()}" onclick="window.openDM('${s.ic}','${s.name.replace(/'/g,"\\'")}')">
       <div style="position:relative;flex-shrink:0;">
         <div class="msg-room-avatar">${avatarInner(s.name, s.photoUrl)}</div>
         ${isOnline ? `<span class="msg-online-dot" style="background:${sm.color};box-shadow:0 0 0 1px ${sm.color}55;"></span>` : ''}
@@ -4940,21 +4952,14 @@ function renderMessengerView() {
     </div>`;
   };
 
-  const dmTs = s => (messengerRoomLastMsg[getDMRoomId(user.ic, s.ic)] || {}).lastTimestamp || 0;
   const dmUnread = s => messengerUnreadRooms.has(getDMRoomId(user.ic, s.ic));
 
-  // "Perbualan Terkini": only people an actual DM exists with, unread first then
-  // most-recent — so a new message always surfaces at the very top (WhatsApp-style).
-  const recentConvos = otherStaff
-    .filter(s => dmTs(s) > 0)
-    .sort((a, b) => (dmUnread(b) - dmUnread(a)) || (dmTs(b) - dmTs(a)));
-  const recentUnreadCount = recentConvos.filter(dmUnread).length;
-
-  // Full directory: unread pulled to the top, everyone else stays alphabetical.
+  // Full staff directory for the "+" new-chat picker: unread first, else A→Z.
   const dmDirectory = otherStaff
     .slice()
     .sort((a, b) => (dmUnread(b) - dmUnread(a)) || (a.name || '').localeCompare(b.name || ''));
 
+  const allKsbRoom = { id: 'all_ksb', name: 'Semua Staf KSB', type: 'group', icon: '🏥', iconBg: 'background:linear-gradient(135deg,var(--primary),var(--secondary));', subtitle: 'Semua kakitangan KSB' };
   const branchRooms = branches.map(b => ({
     id: safeBranchId(b.name),
     name: b.name,
@@ -4963,7 +4968,6 @@ function renderMessengerView() {
     iconBg: 'background:linear-gradient(135deg,#0891b2,#0e7490);',
     subtitle: b.state || 'Cawangan'
   }));
-
   const roleRooms = [
     { id: 'role_doktor',          name: 'Semua Doktor',      type: 'role', icon: '👨‍⚕️', iconBg: 'background:linear-gradient(135deg,#059669,#047857);', subtitle: 'Kumpulan Doktor KSB' },
     { id: 'role_admin_staff',     name: 'Staff Admin',       type: 'role', icon: '💼',   iconBg: 'background:linear-gradient(135deg,#7c3aed,#6d28d9);', subtitle: 'Kumpulan Staff Admin' },
@@ -4972,99 +4976,100 @@ function renderMessengerView() {
     { id: 'role_hod',             name: 'HOD & PIC HOD',     type: 'role', icon: '🏅',   iconBg: 'background:linear-gradient(135deg,#4361ee,#3451d1);', subtitle: 'Head of Department' },
     { id: 'role_supervisor',      name: 'Supervisor',        type: 'role', icon: '👔',   iconBg: 'background:linear-gradient(135deg,#0891b2,#0e7490);', subtitle: 'Kumpulan Supervisor' },
   ];
+  const groupRooms = [allKsbRoom, ...branchRooms, ...roleRooms];
+  const groupMetaById = {};
+  groupRooms.forEach(r => { groupMetaById[r.id] = r; });
+
+  // "Chat" tab = every room with activity (DMs + group rooms), unread first then
+  // most-recent, so a new message always surfaces at the very top (WhatsApp-style).
+  const chatItems = Object.values(messengerRoomLastMsg)
+    .filter(d => d.lastTimestamp > 0)
+    .map(d => {
+      if (String(d.id).startsWith('dm_')) {
+        const otherIc = d.id.replace('dm_', '').split('__').find(ic => ic !== user.ic);
+        const s = staffList.find(st => st.ic === otherIc && !st.inactive && st.role !== 'super_admin');
+        return s ? { type: 'dm', s, d } : null;
+      }
+      const g = groupMetaById[d.id];
+      return g ? { type: 'group', g, d } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      const ua = messengerUnreadRooms.has(a.d.id) ? 1 : 0;
+      const ub = messengerUnreadRooms.has(b.d.id) ? 1 : 0;
+      return (ub - ua) || (b.d.lastTimestamp - a.d.lastTimestamp);
+    });
+
+  const chatListHtml = chatItems.length
+    ? chatItems.map(it => it.type === 'dm' ? renderDMRow(it.s) : renderRoomItem(it.g)).join('')
+    : `<div class="msg-empty">Belum ada perbualan.<br>Tekan <b>+</b> untuk mula mesej baharu.</div>`;
+  const kumpulanListHtml = groupRooms.map(renderRoomItem).join('');
+  const totalUnread = messengerUnreadRooms.size;
+
+  // Compact "me" bar (avatar + status + mood) — replaces the old status card.
+  const meBar = `
+    <div class="msg-me-bar">
+      <div class="msg-mystatus-avatar" title="Tukar gambar profil" style="cursor:pointer;"
+           onclick="document.getElementById('msg-avatar-upload').click()">
+        ${avatarInner(user.name, user.photoUrl)}
+        <span class="msg-status-dot" style="background:${myMeta.color};"></span>
+        <span class="msg-avatar-cam">📷</span>
+      </div>
+      <input type="file" id="msg-avatar-upload" accept="image/*" style="display:none;" onchange="window.uploadProfilePhoto(this)">
+      <div class="msg-mystatus-info">
+        <div class="msg-mystatus-name">${user.name}</div>
+        <div class="msg-me-statusline">
+          <select class="msg-mystatus-select" title="Tukar status" style="color:${myMeta.color};background-color:${myMeta.color}1a;" onchange="window.setMyStatus(this.value)">
+            ${PRESENCE_STATUSES.map(s => `<option value="${s.id}" ${s.id === myStatus ? 'selected' : ''}>${s.dot} ${s.label}</option>`).join('')}
+          </select>
+          <input class="msg-mystatus-mood" type="text" maxlength="60"
+            value="${(myStatusMsg || '').replace(/"/g,'&quot;')}"
+            placeholder="✎ Set mesej status…"
+            onchange="window.setMyMood(this.value)"
+            onkeydown="if(event.key==='Enter')this.blur();">
+        </div>
+      </div>
+    </div>`;
+
+  const searchBar = `
+    <div class="msg-search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input type="text" placeholder="Cari…" id="msg-staff-search" oninput="window.filterMsgStaff(this.value)" autocomplete="off">
+    </div>`;
 
   return `
   <div class="messenger-layout">
     <!-- Rooms panel -->
     <div class="msg-rooms-panel ${messengerView === 'chat' ? 'msg-hide-mobile' : ''}">
-      <div class="msg-rooms-header">
-        <h2 style="font-size:1.2rem;display:flex;align-items:center;gap:0.5rem;margin:0 0 0.6rem 0;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-          Messenger
-        </h2>
+      ${meBar}
 
-        <!-- My status (Yahoo Messenger style) -->
-        <div class="msg-mystatus">
-          <div class="msg-mystatus-avatar" title="Tukar gambar profil" style="cursor:pointer;"
-               onclick="document.getElementById('msg-avatar-upload').click()">
-            ${avatarInner(user.name, user.photoUrl)}
-            <span class="msg-status-dot" style="background:${myMeta.color};"></span>
-            <span class="msg-avatar-cam">📷</span>
-          </div>
-          <input type="file" id="msg-avatar-upload" accept="image/*" style="display:none;"
-                 onchange="window.uploadProfilePhoto(this)">
-          <div class="msg-mystatus-info">
-            <div class="msg-mystatus-name">${user.name}</div>
-            <select class="msg-mystatus-select" title="Tukar status" style="color:${myMeta.color};background-color:${myMeta.color}1a;" onchange="window.setMyStatus(this.value)">
-              ${PRESENCE_STATUSES.map(s => `<option value="${s.id}" ${s.id === myStatus ? 'selected' : ''}>${s.dot} ${s.label}</option>`).join('')}
-            </select>
-            <input class="msg-mystatus-mood" type="text" maxlength="60"
-              value="${(myStatusMsg || '').replace(/"/g,'&quot;')}"
-              placeholder="✎ Set mesej status…"
-              onchange="window.setMyMood(this.value)"
-              onkeydown="if(event.key==='Enter')this.blur();">
-          </div>
+      ${messengerNewChatOpen ? `
+        <div class="msg-tabs-bar">
+          <button class="msg-icon-btn" title="Kembali" onclick="window.closeNewChat()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <span class="msg-newchat-title">Mesej Baharu</span>
         </div>
+      ` : `
+        <div class="msg-tabs-bar">
+          <div class="msg-tabs">
+            <button class="msg-tab ${messengerTab === 'chat' ? 'active' : ''}" onclick="window.setMessengerTab('chat')">Chat${totalUnread ? `<span class="msg-tab-badge">${totalUnread}</span>` : ''}</button>
+            <button class="msg-tab ${messengerTab === 'kumpulan' ? 'active' : ''}" onclick="window.setMessengerTab('kumpulan')">Kumpulan</button>
+          </div>
+          <button class="msg-icon-btn msg-newchat-btn" title="Mesej baharu" onclick="window.openNewChat()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+        </div>
+      `}
 
-        ${(function() {
-          const onlineOthers = Object.values(onlineUsers).filter(u => u.ic !== user.ic && u.role !== 'super_admin');
-          if (onlineOthers.length === 0) return '';
-          const onlineOpen = isMsgSectionOpen(msgSections, 'online');
-          return `<div class="msg-online-chips-bar">
-            <button type="button" class="msg-section-toggle msg-section-toggle-online" aria-expanded="${onlineOpen}" onclick="window.toggleMsgSection('online')">
-              <svg class="msg-section-chev${onlineOpen ? ' open' : ''}" id="msg-section-chev-online" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="3"><polyline points="6 9 12 15 18 9"></polyline></svg>
-              <span class="msg-online-pulse"></span>
-              <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#16a34a;">Sedang Aktif</span>
-              <span style="font-size:0.65rem;color:#16a34a;background:rgba(34,197,94,0.1);padding:0.05rem 0.4rem;border-radius:10px;font-weight:700;">${onlineOthers.length}</span>
-            </button>
-            <div class="msg-online-chips-scroll" id="msg-section-body-online" style="${onlineOpen ? '' : 'display:none;'}">
-              ${onlineOthers.map(u => {
-                const firstName = (u.name || '?').split(' ')[0];
-                const cm = resolveStatus(u);
-                return `<button class="msg-online-chip" onclick="window.openDM('${u.ic}','${(u.name||'').replace(/'/g,"\\'")}');event.stopPropagation();" title="${(u.name||'').replace(/"/g,'&quot;')} — ${cm.label}${u.statusMsg ? ': ' + u.statusMsg.replace(/"/g,'&quot;') : ''}"><span style="width:7px;height:7px;border-radius:50%;background:${cm.color};flex-shrink:0;display:inline-block;"></span>${firstName}</button>`;
-              }).join('')}
-            </div>
-          </div>`;
-        })()}
-      </div>
+      ${searchBar}
 
       <div class="msg-rooms-scroll">
-        <!-- Global -->
-        <div class="msg-section-static"><span class="msg-section-chev-spacer"></span><span class="msg-section-toggle-label">Umum</span></div>
-        ${renderRoomItem({ id: 'all_ksb', name: 'Semua Staf KSB', type: 'group', icon: '🏥', iconBg: 'background:linear-gradient(135deg,var(--primary),var(--secondary));', subtitle: 'Semua kakitangan KSB' })}
-
-        <!-- By Branch -->
-        ${msgSectionHeader('branch', 'Mengikut Cawangan', branchRooms.length, { bg: 'rgba(67,97,238,0.12)', fg: 'var(--primary)' })}
-        <div id="msg-section-body-branch" style="${isMsgSectionOpen(msgSections, 'branch') ? '' : 'display:none;'}">
-          ${branchRooms.map(renderRoomItem).join('')}
+        <div id="msg-list-body">
+          ${messengerNewChatOpen
+            ? dmDirectory.map(renderDMRow).join('')
+            : (messengerTab === 'chat' ? chatListHtml : kumpulanListHtml)}
         </div>
-
-        <!-- By Role -->
-        ${msgSectionHeader('role', 'Mengikut Peranan', roleRooms.length, { bg: 'rgba(124,58,237,0.12)', fg: 'var(--secondary)' })}
-        <div id="msg-section-body-role" style="${isMsgSectionOpen(msgSections, 'role') ? '' : 'display:none;'}">
-          ${roleRooms.map(renderRoomItem).join('')}
-        </div>
-
-        <!-- Recent conversations (WhatsApp-style: unread first, most-recent next) -->
-        ${recentConvos.length ? `
-        ${msgSectionHeader('recent', 'Perbualan Terkini', recentUnreadCount || undefined, { bg: 'rgba(239,68,68,0.12)', fg: '#ef4444' })}
-        <div id="msg-section-body-recent" style="${isMsgSectionOpen(msgSections, 'recent') ? '' : 'display:none;'}">
-          ${recentConvos.map(renderDMRow).join('')}
-        </div>` : ''}
-
-        <!-- Direct Messages -->
-        ${msgSectionHeader('dm', 'Mesej Terus')}
-        <div id="msg-section-body-dm" style="${isMsgSectionOpen(msgSections, 'dm') ? '' : 'display:none;'}">
-        <div style="position:relative;margin:0 0.75rem 0.5rem;">
-          <input type="text" placeholder="Cari staf..." id="msg-staff-search"
-            oninput="window.filterMsgStaff(this.value)"
-            style="width:100%;padding:0.6rem 0.75rem 0.6rem 2.1rem;border-radius:10px;border:none;background:rgba(163,177,198,0.15);box-shadow:var(--shadow-inset-sm);font-size:0.85rem;color:var(--text);outline:none;font-family:inherit;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="position:absolute;left:0.55rem;top:50%;transform:translateY(-50%);pointer-events:none;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        </div>
-        <div id="msg-staff-list">
-          ${dmDirectory.map(renderDMRow).join('')}
-        </div>
-        </div><!-- /msg-section-body-dm -->
       </div>
     </div>
 
