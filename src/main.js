@@ -4911,6 +4911,50 @@ function renderMessengerView() {
   const otherStaff = staffList.filter(s => s.ic !== user.ic && !s.inactive && s.role !== 'super_admin')
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
+  // One DM contact row (Yahoo-Messenger buddy style). Shared by the WhatsApp-style
+  // "Perbualan Terkini" section and the full "Mesej Terus" directory below so the
+  // markup never drifts between the two.
+  const renderDMRow = (s) => {
+    const dmId = getDMRoomId(user.ic, s.ic);
+    const last = messengerRoomLastMsg[dmId] || {};
+    const isUnread = messengerUnreadRooms.has(dmId);
+    const isActive = messengerRoomId === dmId;
+    const pres = onlineUsers[s.ic];
+    const isOnline = !!pres;
+    const sm = isOnline ? resolveStatus(pres) : null;
+    // online → status label / mood; offline → last msg preview or short role.
+    const statusLine = isOnline
+      ? `<span style="color:${sm.color};font-weight:600;">${sm.dot} ${pres.statusMsg ? pres.statusMsg : sm.label}</span>`
+      : (last.lastMessage || shortRoleLabel(s.role));
+    return `
+    <div class="msg-room-item ${isActive ? 'active' : ''} ${isOnline ? '' : 'msg-room-offline'}" data-staff-name="${(s.name||'').toLowerCase()}" onclick="window.openDM('${s.ic}','${s.name.replace(/'/g,"\\'")}')">
+      <div style="position:relative;flex-shrink:0;">
+        <div class="msg-room-avatar">${avatarInner(s.name, s.photoUrl)}</div>
+        ${isOnline ? `<span class="msg-online-dot" style="background:${sm.color};box-shadow:0 0 0 1px ${sm.color}55;"></span>` : ''}
+      </div>
+      <div class="msg-room-info">
+        <div class="msg-room-name">${s.name}${isUnread ? '<span class="msg-unread-dot"></span>' : ''}</div>
+        <div class="msg-room-last">${statusLine}</div>
+      </div>
+      ${last.lastTimestamp ? `<div class="msg-room-time">${formatMsgTime(last.lastTimestamp)}</div>` : ''}
+    </div>`;
+  };
+
+  const dmTs = s => (messengerRoomLastMsg[getDMRoomId(user.ic, s.ic)] || {}).lastTimestamp || 0;
+  const dmUnread = s => messengerUnreadRooms.has(getDMRoomId(user.ic, s.ic));
+
+  // "Perbualan Terkini": only people an actual DM exists with, unread first then
+  // most-recent — so a new message always surfaces at the very top (WhatsApp-style).
+  const recentConvos = otherStaff
+    .filter(s => dmTs(s) > 0)
+    .sort((a, b) => (dmUnread(b) - dmUnread(a)) || (dmTs(b) - dmTs(a)));
+  const recentUnreadCount = recentConvos.filter(dmUnread).length;
+
+  // Full directory: unread pulled to the top, everyone else stays alphabetical.
+  const dmDirectory = otherStaff
+    .slice()
+    .sort((a, b) => (dmUnread(b) - dmUnread(a)) || (a.name || '').localeCompare(b.name || ''));
+
   const branchRooms = branches.map(b => ({
     id: safeBranchId(b.name),
     name: b.name,
@@ -5001,6 +5045,13 @@ function renderMessengerView() {
           ${roleRooms.map(renderRoomItem).join('')}
         </div>
 
+        <!-- Recent conversations (WhatsApp-style: unread first, most-recent next) -->
+        ${recentConvos.length ? `
+        ${msgSectionHeader('recent', 'Perbualan Terkini', recentUnreadCount || undefined, { bg: 'rgba(239,68,68,0.12)', fg: '#ef4444' })}
+        <div id="msg-section-body-recent" style="${isMsgSectionOpen(msgSections, 'recent') ? '' : 'display:none;'}">
+          ${recentConvos.map(renderDMRow).join('')}
+        </div>` : ''}
+
         <!-- Direct Messages -->
         ${msgSectionHeader('dm', 'Mesej Terus')}
         <div id="msg-section-body-dm" style="${isMsgSectionOpen(msgSections, 'dm') ? '' : 'display:none;'}">
@@ -5011,32 +5062,7 @@ function renderMessengerView() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="position:absolute;left:0.55rem;top:50%;transform:translateY(-50%);pointer-events:none;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         </div>
         <div id="msg-staff-list">
-          ${otherStaff.map(s => {
-            const dmId = getDMRoomId(user.ic, s.ic);
-            const last = messengerRoomLastMsg[dmId] || {};
-            const isUnread = messengerUnreadRooms.has(dmId);
-            const isActive = messengerRoomId === dmId;
-            const pres = onlineUsers[s.ic];
-            const isOnline = !!pres;
-            const sm = isOnline ? resolveStatus(pres) : null;
-            // Buddy-list status line (YM): online → status label / mood; offline → last msg or short role.
-            // Branch is intentionally NOT shown here (it repeats for everyone in the same clinic).
-            const statusLine = isOnline
-              ? `<span style="color:${sm.color};font-weight:600;">${sm.dot} ${pres.statusMsg ? pres.statusMsg : sm.label}</span>`
-              : (last.lastMessage || shortRoleLabel(s.role));
-            return `
-            <div class="msg-room-item ${isActive ? 'active' : ''} ${isOnline ? '' : 'msg-room-offline'}" data-staff-name="${(s.name||'').toLowerCase()}" onclick="window.openDM('${s.ic}','${s.name.replace(/'/g,"\\'")}')">
-              <div style="position:relative;flex-shrink:0;">
-                <div class="msg-room-avatar">${avatarInner(s.name, s.photoUrl)}</div>
-                ${isOnline ? `<span class="msg-online-dot" style="background:${sm.color};box-shadow:0 0 0 1px ${sm.color}55;"></span>` : ''}
-              </div>
-              <div class="msg-room-info">
-                <div class="msg-room-name">${s.name}${isUnread ? '<span class="msg-unread-dot"></span>' : ''}</div>
-                <div class="msg-room-last">${statusLine}</div>
-              </div>
-              ${last.lastTimestamp ? `<div class="msg-room-time">${formatMsgTime(last.lastTimestamp)}</div>` : ''}
-            </div>`;
-          }).join('')}
+          ${dmDirectory.map(renderDMRow).join('')}
         </div>
         </div><!-- /msg-section-body-dm -->
       </div>

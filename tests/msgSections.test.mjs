@@ -11,9 +11,9 @@ const memStore = (init = null) => {
   return { getItem: () => v, setItem: (_k, val) => { v = val; }, _raw: () => v };
 };
 
-test('empty storage falls back to defaults (Sedang Aktif + Mesej Terus open)', () => {
+test('empty storage falls back to defaults (Sedang Aktif + Perbualan Terkini + Mesej Terus open)', () => {
   const s = loadSectionState(memStore());
-  assert.deepStrictEqual(s, { online: true, branch: false, role: false, dm: true });
+  assert.deepStrictEqual(s, { online: true, recent: true, branch: false, role: false, dm: true });
 });
 
 test('null storage is safe and uses defaults', () => {

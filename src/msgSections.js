@@ -5,12 +5,13 @@
 // true  = section expanded (open)
 // false = section collapsed (hidden)
 
-export const MSG_SECTION_KEYS = ['online', 'branch', 'role', 'dm'];
+export const MSG_SECTION_KEYS = ['online', 'recent', 'branch', 'role', 'dm'];
 
-// Default on first load: "Sedang Aktif" + "Mesej Terus" open; the long
-// Cawangan/Peranan lists collapsed so the panel stays tidy.
+// Default on first load: "Sedang Aktif" + "Perbualan Terkini" + "Mesej Terus"
+// open; the long Cawangan/Peranan lists collapsed so the panel stays tidy.
 export const MSG_SECTION_DEFAULTS = Object.freeze({
   online: true,
+  recent: true,
   branch: false,
   role: false,
   dm: true,
