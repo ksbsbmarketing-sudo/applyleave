@@ -28,7 +28,7 @@ service cloud.firestore {
       allow update: if manageStaff()
         || ( myIC() == ic
              && request.resource.data.diff(resource.data).affectedKeys()
-                  .hasOnly(['phone', 'email', 'address']) );
+                  .hasOnly(['phone', 'email', 'address', 'photoUrl']) );
     }
 
     match /leaves/{id} {

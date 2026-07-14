@@ -92,9 +92,10 @@ test("anonymous can read directory but not staff", async () => {
   await assertFails(getDoc(doc(db, "staff", "S1")));
 });
 
-test("staff can update only phone/email/address of own profile", async () => {
+test("staff can update only phone/email/address/photoUrl of own profile", async () => {
   const db = ctxDb(staffAuth("S1"));
   await assertSucceeds(updateDoc(doc(db, "staff", "S1"), { phone: "60111111111" }));
+  await assertSucceeds(updateDoc(doc(db, "staff", "S1"), { photoUrl: "https://res.cloudinary.com/x/image/upload/p.jpg" }));
   await assertFails(updateDoc(doc(db, "staff", "S1"), { role: "super_admin" }));
 });
 
