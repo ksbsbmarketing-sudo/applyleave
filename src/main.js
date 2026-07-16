@@ -1,6 +1,6 @@
 import './style.css'
 import { countLeaveDays } from './leaveDays.js';
-import { recordBalances } from './leaveBalance.js';
+import { recordBalances, computeElOverflow } from './leaveBalance.js';
 import { computeYearEndRollover, buildStaffRolloverPatch, CF_CAP } from './yearEnd.js';
 import { loadSectionState, toggleSection, saveSectionState, isOpen as isMsgSectionOpen } from './msgSections.js';
 import { applyEmoticons } from './emoticons.js';
@@ -4081,6 +4081,17 @@ window.getLeaveStats = function(staff, type, year) {
   }
   const usedSys = autoSystemUsage ? recordsUsed : usedSysAdj;
 
+  // EL overflow: once the 3-day EL bucket is exhausted, the excess EL days are
+  // deducted from Annual Leave (Option B). Only AL absorbs the spillover; the
+  // recursive EL call never re-enters this branch (type === 'EL'), so it terminates.
+  let elOverflow = 0;
+  if (type === 'AL') {
+    const el = window.getLeaveStats(staff, 'EL', leaveYear);
+    elOverflow = computeElOverflow({
+      entEL: el.ent, usedPre: el.usedPre, usedSys: el.used, pelarasan: el.pelarasan
+    });
+  }
+
   return {
     used: usedSys,
     usedFromRecords: recordsUsed,
@@ -4089,7 +4100,8 @@ window.getLeaveStats = function(staff, type, year) {
     pelarasan: pelarasan,
     adj: pelarasan,
     ent: ent,
-    bal: Math.max(0, ent - usedPre - usedSys - pelarasan)
+    elOverflow: elOverflow,
+    bal: Math.max(0, ent - usedPre - usedSys - pelarasan - elOverflow)
   };
 };
 
