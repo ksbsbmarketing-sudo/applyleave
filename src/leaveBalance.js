@@ -48,6 +48,14 @@ export function computeElOverflow({ entEL, usedPre = 0, usedSys = 0, pelarasan =
   return Math.max(0, total - num(entEL));
 }
 
+// CME (Continuing Medical Education) is doctors-only, default 5 days/year. An explicit
+// ent_CME (including 0) is an HR override and always wins; otherwise doctors get 5 and
+// everyone else 0. Consumed by getLeaveStats('CME') and the HR modal.
+export function computeCMEEntitlement({ category, ent_CME } = {}) {
+  if (ent_CME !== undefined && ent_CME !== null) return num(ent_CME);
+  return category === 'Doctor' ? 5 : 0;
+}
+
 // Chronological order: leave start date first, then application id (Date.now())
 // as a stable tiebreak when two leaves share a start date.
 function isBefore(a, b) {
