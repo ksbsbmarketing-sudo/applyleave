@@ -10810,6 +10810,32 @@ function renderModal() {
 
           ${_leaveBreakdownHTML('mc', 'MC', 'MC — Cuti Sakit', window.getEntitlementMC(staff), '#10b981')}
           ${_leaveBreakdownHTML('el', 'EL', 'EL — Cuti Ehsan', 3, '#f59e0b')}
+          ${(() => {
+            const _cmeEnt = window.getEntitlementCME(staff);
+            if (_cmeEnt <= 0) return ''; // doctors only
+            const _cmeSys = _modalSysUsed('CME');
+            const _cmeBal = Math.max(0, _cmeEnt - _cmeSys);
+            const _lbl = 'font-size:0.75rem;margin-bottom:0.5rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;';
+            return `
+      <div style="margin-top:1.75rem;padding-top:1.5rem;border-top:1px solid rgba(163,177,198,0.15);">
+        <div style="font-size:0.7rem;text-transform:uppercase;color:#8b5cf6;font-weight:700;letter-spacing:1px;margin-bottom:1rem;">CME — Cuti Pendidikan Perubatan (Doktor)</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;">
+          <div style="display:flex;flex-direction:column;">
+            <label style="${_lbl}color:var(--text-muted);">Peruntukan Setahun</label>
+            <input type="number" id="ent-CME" class="neu-inset" min="0" step="0.5" value="${_cmeEnt}" oninput="window._recalcLeaveBalance('cme')" style="border-left:3px solid #8b5cf6;">
+          </div>
+          <div style="display:flex;flex-direction:column;">
+            <label style="${_lbl}color:#ef4444;">Guna Dalam Sistem</label>
+            <input type="number" id="cme-sys-used-display" class="neu-inset" disabled value="${_cmeSys.toFixed(1)}" data-used="${_cmeSys}" style="border-left:3px solid #ef4444;color:#ef4444;font-weight:700;opacity:1;cursor:default;">
+            <span style="font-size:0.68rem;color:var(--text-muted);margin-top:0.35rem;">Auto dari rekod CME diluluskan (tahun ini)</span>
+          </div>
+          <div style="display:flex;flex-direction:column;">
+            <label style="${_lbl}color:#10b981;">Baki CME</label>
+            <input type="number" id="cme-balance-display" class="neu-inset" disabled value="${_cmeBal.toFixed(1)}" style="border-left:3px solid #10b981;font-weight:800;color:#10b981;opacity:1;cursor:default;">
+          </div>
+        </div>
+      </div>`;
+          })()}
 
           <!-- Grid cuti lain (AL/MC/EL ada breakdown sendiri di atas) -->
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem 2rem; border-top: 1px solid rgba(163,177,198,0.15); padding-top: 1.5rem;">
@@ -10832,10 +10858,6 @@ function renderModal() {
             <div style="display: flex; flex-direction: column;">
                <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">UL &mdash; Tanpa Gaji</label>
                <input type="number" id="ent-UP" class="neu-inset" value="${staff.ent_UP !== undefined ? staff.ent_UP : 0}">
-            </div>
-            <div style="display: flex; flex-direction: column;">
-               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">CME &mdash; Cuti Pendidikan Perubatan</label>
-               <input type="number" id="ent-CME" class="neu-inset" value="${staff.ent_CME !== undefined ? staff.ent_CME : 0}">
             </div>
           </div>
 
