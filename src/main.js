@@ -2751,6 +2751,102 @@ window.generateApprovedReport = function() {
   document.getElementById('print-container').remove();
 };
 
+window.printAllLeaveReport = function() {
+  const MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
+  const year = window.getCurrentLeaveYear();
+  const reportBranch = window.getUserReportBranch(user);
+  const reportDaerah = window.getUserReportDaerah(user);
+  const userStateScope = window.getUserStateScope(user);
+  const activeBranch = attendanceReportBranch;
+
+  // Active staff within the current user's report scope (same predicate as the attendance/CME report).
+  const pool = staffList.filter(s => {
+    if (s.inactive) return false;
+    if (reportBranch && s.branch !== reportBranch) return false;
+    if (activeBranch && activeBranch !== 'SEMUA' && s.branch !== activeBranch) return false;
+    const bObj = branches.find(b => b.name === s.branch);
+    if (!bObj && userStateScope !== 'all') return false;
+    if (bObj && userStateScope !== 'all' && bObj.state !== userStateScope) return false;
+    if (bObj && reportDaerah && bObj.daerah !== reportDaerah) return false;
+    return true;
+  });
+
+  const fmtDate = d => {
+    if (!d) return '-';
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return d;
+    return `${dt.getDate()} ${MONTHS_MS[dt.getMonth()]} ${dt.getFullYear()}`;
+  };
+  const fmtRange = r => (r.startDate && r.endDate && r.startDate !== r.endDate)
+    ? `${fmtDate(r.startDate)} – ${fmtDate(r.endDate)}` : fmtDate(r.startDate || r.endDate);
+
+  const TYPES = ['AL','MC','EL','EL_EMG','HL','ML','ML_PL','CME','UP'];
+  const typeColor = { AL:'#3b82f6', MC:'#10b981', EL:'#f59e0b', EL_EMG:'#ef4444', HL:'#06b6d4', ML:'#ec4899', ML_PL:'#6366f1', CME:'#8b5cf6', UP:'#64748b' };
+
+  let grandTotal = 0, sectionCount = 0;
+  const sections = TYPES.map(type => {
+    const perStaff = pool.map(s => {
+      const recs = leaveRecords
+        .filter(r => r.ic === s.ic && r.type === type && r.status === 'APPROVED' && leaveYearOf(r) === year)
+        .sort((a,b) => (a.startDate||'').localeCompare(b.startDate||''));
+      return { s, recs };
+    }).filter(x => x.recs.length > 0)
+      .sort((a,b) => (a.s.branch||'').localeCompare(b.s.branch||'') || a.s.name.localeCompare(b.s.name));
+
+    if (!perStaff.length) return '';
+    sectionCount++;
+    const accent = typeColor[type] || '#334155';
+    const blocks = perStaff.map(({ s, recs }) => {
+      const st = window.getLeaveStats(s, type);
+      const used = recs.reduce((acc,r) => acc + parseFloat(r.days||0), 0);
+      grandTotal += used;
+      const summary = st.ent > 0
+        ? `Kelayakan: ${Math.round(st.ent)} &nbsp;|&nbsp; Guna: ${parseFloat(st.used.toFixed(1))} &nbsp;|&nbsp; Baki: ${parseFloat(st.bal.toFixed(1))}`
+        : `Guna: ${parseFloat(used.toFixed(1))}`;
+      const rows = recs.map(r => `<div style="padding:3px 0 3px 18px;font-size:11px;color:#334155;">• ${fmtRange(r)} &nbsp;(${parseFloat(r.days||0)} hari)&nbsp; ${r.reason ? '— ' + r.reason : ''}</div>`).join('');
+      return `
+        <div style="margin-bottom:10px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 12px;background:${accent}12;border-bottom:1px solid #e2e8f0;">
+            <div style="font-size:12px;font-weight:700;color:${accent};">${s.name} <span style="font-weight:500;color:#64748b;">— ${s.branch || '-'}</span></div>
+            <div style="font-size:11px;font-weight:700;color:#334155;">${summary}</div>
+          </div>
+          <div style="padding:6px 12px;">${rows}</div>
+        </div>`;
+    }).join('');
+    return `
+      <div style="margin-bottom:22px;">
+        <div style="padding:8px 12px;background:${accent};color:#fff;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:1px;border-radius:4px;margin-bottom:10px;">${LEAVE_TYPE_NAMES[type] || type}</div>
+        ${blocks}
+      </div>`;
+  }).join('');
+
+  const pw = window.open('', '_blank');
+  pw.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>Laporan Cuti Kakitangan — ${year}</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box;}
+      body{font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff;}
+      .print-btn{margin:16px 0;text-align:right;}
+      .print-btn button{padding:8px 20px;background:#334155;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;}
+      @media print{.print-btn{display:none;} body{padding:16px;}}
+    </style>
+  </head><body>
+    <div class="print-btn"><button onclick="window.print()">🖨️ PRINT / SIMPAN PDF</button></div>
+    ${window.printHeaderHTML({ isReport: true, branch: activeBranch, title: 'LAPORAN CUTI KAKITANGAN', meta: [{ label: 'Tahun', value: String(year) }, { label: 'Bilangan', value: pool.length + ' kakitangan' }] })}
+    ${sectionCount ? sections : '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px;">Tiada rekod cuti diluluskan bagi tahun ini dalam skop ini.</div>'}
+    <div style="margin-top:14px;padding-top:10px;border-top:2px solid #cbd5e1;font-size:11px;font-weight:700;color:#334155;display:flex;gap:24px;">
+      <span>Jumlah kakitangan (skop): ${pool.length}</span>
+      <span>Seksyen jenis cuti: ${sectionCount}</span>
+      <span>Jumlah hari cuti diluluskan: ${parseFloat(grandTotal.toFixed(1))} hari</span>
+    </div>
+    <div style="margin-top:14px;font-size:9px;color:#718096;border-top:1px solid #e2e8f0;padding-top:8px;">
+      Laporan dijana oleh KSB Leave Apply System pada ${new Date().toLocaleString('ms-MY')}. Rekod berstatus APPROVED, tahun ${year}.
+    </div>
+  </body></html>`);
+  pw.document.close();
+};
+
 window.printCMEReport = function() {
   const MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
   const year = window.getCurrentLeaveYear();
@@ -8557,6 +8653,10 @@ function renderView() {
                 <button onclick="window.printCMEReport()" title="Cetak Laporan CME — Doktor" class="neu-btn" style="background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.25);color:#7c3aed;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 2H9a2 2 0 0 0-2 2v2"></path><rect x="3" y="8" width="13" height="13" rx="2"></rect></svg>
                   CME
+                </button>
+                <button onclick="window.printAllLeaveReport()" title="Cetak Laporan Semua Cuti (ikut jenis)" class="neu-btn" style="background:rgba(51,65,85,0.1);border:1px solid rgba(51,65,85,0.3);color:#334155;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>
+                  Semua Cuti
                 </button>` : '')
             }
           </div>
