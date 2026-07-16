@@ -8694,7 +8694,7 @@ function renderView() {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                   PDF
                 </button>`
-              : (userPerms.report_attendance ? `<button onclick="window.generateAttendanceReport()" title="Muat turun PDF — Rekod Kedatangan" class="neu-btn" style="background:rgba(30,41,59,0.1);border:1px solid rgba(30,41,59,0.3);color:var(--text);font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
+              : (userPerms.report_attendance ? `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.5rem;"><div style="display:flex;gap:0.5rem;flex-wrap:wrap;justify-content:flex-end;"><button onclick="window.generateAttendanceReport()" title="Muat turun PDF — Rekod Kedatangan" class="neu-btn" style="background:rgba(30,41,59,0.1);border:1px solid rgba(30,41,59,0.3);color:var(--text);font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                   PDF
                 </button>
@@ -8706,7 +8706,12 @@ function renderView() {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>
                   Semua Cuti
                 </button>
-                ${['AL','MC','EL','EL_EMG','HL','ML','ML_PL','UP'].map(t => `<button onclick="window.printLeaveTypeReport('${t}')" title="Cetak Laporan ${t}" class="neu-btn" style="background:rgba(51,65,85,0.06);border:1px solid rgba(51,65,85,0.18);color:#334155;font-weight:700;padding:0.45rem 0.7rem;font-size:0.72rem;flex:none;white-space:nowrap;">${t}</button>`).join('')}` : '')
+                </div>
+                <div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;justify-content:flex-end;padding:0.3rem 0.55rem;background:rgba(163,177,198,0.08);border:1px solid rgba(163,177,198,0.18);border-radius:10px;">
+                  <span style="font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-muted);white-space:nowrap;">Cetak Ikut Jenis</span>
+                  ${['AL','MC','EL','EL_EMG','HL','ML','ML_PL','UP'].map(t => { const c={AL:'#3b82f6',MC:'#10b981',EL:'#f59e0b',EL_EMG:'#ef4444',HL:'#06b6d4',ML:'#ec4899',ML_PL:'#6366f1',UP:'#64748b'}[t]; return `<button onclick="window.printLeaveTypeReport('${t}')" title="Cetak Laporan ${t}" class="neu-btn" style="background:${c}14;border:1px solid ${c}55;color:${c};font-weight:700;padding:0.3rem 0.6rem;font-size:0.68rem;flex:none;white-space:nowrap;border-radius:7px;">${t}</button>`; }).join('')}
+                </div>
+              </div>` : '')
             }
           </div>
 
