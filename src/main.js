@@ -2020,7 +2020,9 @@ window.printLeave = function(id) {
       record,
       ent: stats.ent,
       // Potongan bukan-rekod: Guna Sebelum + Pelarasan HR (+ Guna Sistem manual bila mod manual).
-      alAdj: (stats.usedPre || 0) + (stats.pelarasan || 0) + (autoSystemUsage ? 0 : (stats.usedSysAdj || 0)),
+      // elOverflow is 0 for every type except AL, so this is a no-op on other forms;
+      // on AL it shifts the printed baseline down so BAKI CUTI matches the dashboard.
+      alAdj: (stats.usedPre || 0) + (stats.pelarasan || 0) + (stats.elOverflow || 0) + (autoSystemUsage ? 0 : (stats.usedSysAdj || 0)),
       // Mod manual → jangan kira rekod diluluskan (selari dengan getLeaveStats).
       records: autoSystemUsage ? leaveRecords : [],
     });
