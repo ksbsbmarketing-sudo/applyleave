@@ -1,6 +1,6 @@
 import './style.css'
 import { countLeaveDays } from './leaveDays.js';
-import { recordBalances, computeElOverflow } from './leaveBalance.js';
+import { recordBalances, computeElOverflow, computeCMEEntitlement } from './leaveBalance.js';
 import { computeYearEndRollover, buildStaffRolloverPatch, CF_CAP } from './yearEnd.js';
 import { loadSectionState, toggleSection, saveSectionState, isOpen as isMsgSectionOpen } from './msgSections.js';
 import { applyEmoticons } from './emoticons.js';
@@ -4008,6 +4008,13 @@ window.getEntitlementMC = function(staffObj) {
   return years >= 5 ? 22 : years >= 2 ? 18 : 14;
 };
 
+// CME entitlement (doctors-only, default 5). ent_CME is an optional HR override.
+// Mirrors getEntitlementMC. Delegates the rule to the pure computeCMEEntitlement helper.
+window.getEntitlementCME = function(staffObj) {
+  if (!staffObj) return 0;
+  return computeCMEEntitlement({ category: staffObj.category, ent_CME: staffObj.ent_CME });
+};
+
 window.getMonthsWorkedThisYear = function(startDate) {
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -4070,6 +4077,8 @@ window.getLeaveStats = function(staff, type, year) {
     ent = window.getEarnedAL(staff); // Jumlah = ent_AL + CF
   } else if (type === 'MC') {
     ent = window.getEntitlementMC(staff); // peruntukan MC ikut tahun khidmat (14/18/22)
+  } else if (type === 'CME') {
+    ent = window.getEntitlementCME(staff); // doctors 5, non-doctors 0, ent_CME overrides
   } else {
     // ML_PL entitlement is saved as ent_PL by the HR form (legacy key)
     const entKey = type === 'ML_PL' ? 'ent_PL' : `ent_${type}`;
