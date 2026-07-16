@@ -2787,6 +2787,7 @@ window.generateAttendanceReport = function() {
     const alEnt = alSt.ent, alRem = alSt.bal;
     const mcSt = window.getLeaveStats(s, 'MC');
     const mcEnt = mcSt.ent, mcRem = mcSt.bal;
+    const cmeSt = isDoctor ? window.getLeaveStats(s, 'CME') : null;
     const al = ml['AL']||0, mc = ml['MC']||0;
     const el = (ml['EL']||0)+(ml['EL_EMG']||0), up = ml['UP']||0;
     const last = isDoctor ? (ml['CME']||0) : ((ml['HL']||0)+(ml['ML']||0)+(ml['ML_PL']||0));
@@ -2800,6 +2801,7 @@ window.generateAttendanceReport = function() {
       <td style="padding:5px 6px;text-align:center;font-size:11px;font-weight:${last>0?700:400};color:${last>0?'#7c3aed':'#cbd5e1'};">${fmt(last)}</td>
       <td style="padding:5px 8px;text-align:center;font-size:10px;font-weight:700;color:#1d4ed8;border-left:1px solid #e2e8f0;">${fmtBal(alRem,alEnt)}</td>
       <td style="padding:5px 8px;text-align:center;font-size:10px;font-weight:700;color:#065f46;">${fmtBal(mcRem,mcEnt)}</td>
+      ${isDoctor ? `<td style="padding:5px 8px;text-align:center;font-size:10px;font-weight:700;color:#6d28d9;">${fmtBal(cmeSt.bal,cmeSt.ent)}</td>` : ''}
     </tr>`;
   }).join('');
 
@@ -2822,6 +2824,7 @@ window.generateAttendanceReport = function() {
             <th style="padding:7px 6px;text-align:center;font-size:10px;color:${lastColor};">${lastHdr}</th>
             <th style="padding:7px 8px;text-align:center;font-size:10px;color:#1d4ed8;border-left:1px solid #e2e8f0;">Baki Cuti</th>
             <th style="padding:7px 8px;text-align:center;font-size:10px;color:#065f46;">Baki MC</th>
+            ${isDoctor ? `<th style="padding:7px 8px;text-align:center;font-size:10px;color:#6d28d9;">Baki CME</th>` : ''}
           </tr>
         </thead>
         <tbody>${renderRows(arr, isDoctor)}</tbody>
@@ -2833,7 +2836,7 @@ window.generateAttendanceReport = function() {
             <td style="padding:7px 6px;text-align:center;font-size:11px;color:#d97706;">${arr.reduce((s,x)=>s+((getMonthLeave(x.ic)['EL']||0)+(getMonthLeave(x.ic)['EL_EMG']||0)),0).toFixed(1).replace('.0','')}</td>
             <td style="padding:7px 6px;text-align:center;">${arr.reduce((s,x)=>s+(getMonthLeave(x.ic)['UP']||0),0)||'-'}</td>
             <td style="padding:7px 6px;text-align:center;">${isDoctor ? (arr.reduce((s,x)=>s+(getMonthLeave(x.ic)['CME']||0),0)||'-') : (arr.reduce((s,x)=>s+((getMonthLeave(x.ic)['HL']||0)+(getMonthLeave(x.ic)['ML']||0)+(getMonthLeave(x.ic)['ML_PL']||0)),0)||'-')}</td>
-            <td colspan="2"></td>
+            <td colspan="${isDoctor ? 3 : 2}"></td>
           </tr>
         </tfoot>
       </table>
@@ -9038,6 +9041,7 @@ function renderView() {
               const alEnt = alSt.ent, alRem = alSt.bal;
               const mcSt = window.getLeaveStats(s, 'MC');
               const mcEnt = mcSt.ent, mcRem = mcSt.bal;
+              const cmeSt = isDoctor ? window.getLeaveStats(s, 'CME') : null;
               const al = ml['AL']||0, mc = ml['MC']||0;
               const el = (ml['EL']||0)+(ml['EL_EMG']||0), up = ml['UP']||0;
               const last = isDoctor ? (ml['CME']||0) : ((ml['HL']||0)+(ml['ML']||0)+(ml['ML_PL']||0));
@@ -9053,6 +9057,7 @@ function renderView() {
                 <td style="padding:0.55rem 0.5rem;text-align:center;">${fmtV(last)}</td>
                 <td style="padding:0.55rem 0.75rem;text-align:center;border-left:1px solid rgba(163,177,198,0.15);font-size:0.75rem;color:#3b82f6;">${fmtBal(alRem,alEnt)}</td>
                 <td style="padding:0.55rem 0.75rem;text-align:center;font-size:0.75rem;color:#10b981;">${fmtBal(mcRem,mcEnt)}</td>
+                ${isDoctor ? `<td style="padding:0.55rem 0.75rem;text-align:center;font-size:0.75rem;color:#8b5cf6;">${fmtBal(cmeSt.bal,cmeSt.ent)}</td>` : ''}
               </tr>`;
             };
 
@@ -9086,6 +9091,7 @@ function renderView() {
                           <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:${lastColor};min-width:42px;" title="${isDoctor?'CME':'Hospitalization/Bersalin/Lain-lain'}">${lastLabel}</th>
                           <th style="padding:0.55rem 0.75rem;text-align:center;font-size:0.6rem;font-weight:700;color:#3b82f6;border-left:1px solid rgba(163,177,198,0.2);min-width:72px;">Baki Cuti</th>
                           <th style="padding:0.55rem 0.75rem;text-align:center;font-size:0.6rem;font-weight:700;color:#10b981;min-width:62px;">Baki MC</th>
+                          ${isDoctor ? `<th style="padding:0.55rem 0.75rem;text-align:center;font-size:0.6rem;font-weight:700;color:#8b5cf6;min-width:72px;">Baki CME</th>` : ''}
                         </tr>
                       </thead>
                       <tbody>
@@ -9099,7 +9105,7 @@ function renderView() {
                           <td style="padding:0.65rem 0.5rem;text-align:center;font-weight:800;font-size:0.8rem;color:#f59e0b;">${totEL>0?totEL.toFixed(1).replace('.0',''):'—'}</td>
                           <td style="padding:0.65rem 0.5rem;text-align:center;font-weight:800;font-size:0.8rem;color:#94a3b8;">${totUP>0?totUP:'—'}</td>
                           <td style="padding:0.65rem 0.5rem;text-align:center;font-weight:800;font-size:0.8rem;color:${lastColor};">${totLast>0?totLast:'—'}</td>
-                          <td colspan="2"></td>
+                          <td colspan="${isDoctor ? 3 : 2}"></td>
                         </tr>
                       </tfoot>
                     </table>
