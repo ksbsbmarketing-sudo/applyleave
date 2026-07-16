@@ -10898,8 +10898,8 @@ function renderModal() {
           ${_leaveBreakdownHTML('mc', 'MC', 'MC — Cuti Sakit', window.getEntitlementMC(staff), '#10b981')}
           ${_leaveBreakdownHTML('el', 'EL', 'EL — Cuti Ehsan', 3, '#f59e0b')}
           ${(() => {
+            if (staff.category !== 'Doctor') return ''; // doctors only
             const _cmeEnt = window.getEntitlementCME(staff);
-            if (_cmeEnt <= 0) return ''; // doctors only
             const _cmeSys = _modalSysUsed('CME');
             const _cmeBal = Math.max(0, _cmeEnt - _cmeSys);
             const _lbl = 'font-size:0.75rem;margin-bottom:0.5rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;';
