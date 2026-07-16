@@ -2755,6 +2755,11 @@ window.generateApprovedReport = function() {
 const REPORT_MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
 const LEAVE_TYPE_COLOR = { AL:'#3b82f6', MC:'#10b981', EL:'#f59e0b', EL_EMG:'#ef4444', HL:'#06b6d4', ML:'#ec4899', ML_PL:'#6366f1', CME:'#8b5cf6', UP:'#64748b' };
 const ALL_LEAVE_TYPES = ['AL','MC','EL','EL_EMG','HL','ML','ML_PL','CME','UP'];
+// Report-only display labels. Overrides the technical LEAVE_TYPE_NAMES for the two
+// emergency types so printed reports read EHSAN / KECEMASAN (dashboard/analytics unchanged).
+function leaveReportLabel(type) {
+  return ({ EL: 'Cuti Ehsan', EL_EMG: 'Cuti Kecemasan' })[type] || LEAVE_TYPE_NAMES[type] || type;
+}
 
 // Active staff within the current user's report scope (same predicate as the attendance/CME report).
 function getReportStaffPool() {
@@ -2822,7 +2827,7 @@ function renderLeaveSections(types, pool, year) {
     }).join('');
     return `
       <div style="margin-bottom:22px;">
-        <div style="padding:8px 12px;background:${accent};color:#fff;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:1px;border-radius:4px;margin-bottom:10px;">${LEAVE_TYPE_NAMES[type] || type}</div>
+        <div style="padding:8px 12px;background:${accent};color:#fff;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:1px;border-radius:4px;margin-bottom:10px;">${leaveReportLabel(type)}</div>
         ${blocks}
       </div>`;
   }).join('');
@@ -2867,7 +2872,7 @@ window.printLeaveTypeReport = function(type) {
   const activeBranch = attendanceReportBranch;
   const pool = getReportStaffPool();
   const { html: sections, sectionCount, grandTotal, staffCount } = renderLeaveSections([type], pool, year);
-  const typeName = LEAVE_TYPE_NAMES[type] || type;
+  const typeName = leaveReportLabel(type);
 
   const pw = window.open('', '_blank');
   pw.document.write(`<!DOCTYPE html><html><head>
