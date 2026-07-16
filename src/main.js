@@ -8709,7 +8709,7 @@ function renderView() {
                 </div>
                 <div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;justify-content:flex-end;padding:0.3rem 0.55rem;background:rgba(163,177,198,0.08);border:1px solid rgba(163,177,198,0.18);border-radius:10px;">
                   <span style="font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-muted);white-space:nowrap;">Cetak Ikut Jenis</span>
-                  ${['AL','MC','EL','EL_EMG','HL','ML','ML_PL','UP'].map(t => { const c={AL:'#3b82f6',MC:'#10b981',EL:'#f59e0b',EL_EMG:'#ef4444',HL:'#06b6d4',ML:'#ec4899',ML_PL:'#6366f1',UP:'#64748b'}[t]; return `<button onclick="window.printLeaveTypeReport('${t}')" title="Cetak Laporan ${t}" class="neu-btn" style="background:${c}14;border:1px solid ${c}55;color:${c};font-weight:700;padding:0.3rem 0.6rem;font-size:0.68rem;flex:none;white-space:nowrap;border-radius:7px;">${t}</button>`; }).join('')}
+                  ${['AL','MC','EL','EL_EMG','HL','ML','ML_PL','UP'].map(t => { const c={AL:'#3b82f6',MC:'#10b981',EL:'#f59e0b',EL_EMG:'#ef4444',HL:'#06b6d4',ML:'#ec4899',ML_PL:'#6366f1',UP:'#64748b'}[t]; const lbl={EL:'EHSAN',EL_EMG:'KECEMASAN'}[t]||t; return `<button onclick="window.printLeaveTypeReport('${t}')" title="Cetak Laporan ${lbl}" class="neu-btn" style="background:${c}14;border:1px solid ${c}55;color:${c};font-weight:700;padding:0.3rem 0.6rem;font-size:0.68rem;flex:none;white-space:nowrap;border-radius:7px;">${lbl}</button>`; }).join('')}
                 </div>
               </div>` : '')
             }
