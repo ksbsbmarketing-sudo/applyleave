@@ -5312,7 +5312,22 @@ function renderDashboard() {
               alert("Notis: Baki prorate (Earned) anda ialah " + currentBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan dibahagikan kepada " + paidDays + " hari AL dan " + unpaidDays + " hari Unpaid Leave (UL).");
           }
       }
-      
+      if (selectedLeaveType === 'EL') {
+          // EL bucket first; once exhausted the excess is deducted from Annual Leave.
+          const elBal = window.getLeaveStats(user, 'EL').bal;
+          const fromEL = Math.min(diffDays, elBal);
+          const toAL = diffDays - fromEL;
+          if (toAL > 0) {
+              const alBal = window.getLeaveStats(user, 'AL').bal;
+              leaveBreakdown = "\n*EL OVERFLOW*\nEL Bucket Used: " + fromEL + " days\nAnnual Leave (AL) Used: " + toAL + " days\n(EL bucket exhausted → overflow deducted from AL)";
+              let elMsg = "Notis: Baki EL anda tinggal " + elBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan ditolak " + fromEL + " hari dari EL dan " + toAL + " hari dari Cuti Tahunan (AL).";
+              if (toAL > alBal) {
+                  elMsg += "\n\n⚠️ Baki AL juga tidak mencukupi (baki AL: " + alBal.toFixed(2) + " hari).";
+              }
+              alert(elMsg);
+          }
+      }
+
       // Mandatory File Validations
       if (selectedLeaveType === 'MC') {
           const mcUpload = document.getElementById('mc-upload');
