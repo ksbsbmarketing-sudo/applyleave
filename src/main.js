@@ -2751,6 +2751,83 @@ window.generateApprovedReport = function() {
   document.getElementById('print-container').remove();
 };
 
+window.printCMEReport = function() {
+  const MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
+  const year = window.getCurrentLeaveYear();
+  const reportBranch = window.getUserReportBranch(user);
+  const reportDaerah = window.getUserReportDaerah(user);
+  const userStateScope = window.getUserStateScope(user);
+  const activeBranch = attendanceReportBranch;
+
+  // Active doctors within the current user's report scope (same predicate as the attendance report).
+  const doctors = staffList.filter(s => {
+    if (s.category !== 'Doctor' || s.inactive) return false;
+    if (reportBranch && s.branch !== reportBranch) return false;
+    if (activeBranch && activeBranch !== 'SEMUA' && s.branch !== activeBranch) return false;
+    const bObj = branches.find(b => b.name === s.branch);
+    if (!bObj && userStateScope !== 'all') return false;
+    if (bObj && userStateScope !== 'all' && bObj.state !== userStateScope) return false;
+    if (bObj && reportDaerah && bObj.daerah !== reportDaerah) return false;
+    return true;
+  }).sort((a,b) => (a.branch||'').localeCompare(b.branch||'') || a.name.localeCompare(b.name));
+
+  const fmtDate = d => {
+    if (!d) return '-';
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return d;
+    return `${dt.getDate()} ${MONTHS_MS[dt.getMonth()]} ${dt.getFullYear()}`;
+  };
+  const fmtRange = r => (r.startDate && r.endDate && r.startDate !== r.endDate)
+    ? `${fmtDate(r.startDate)} – ${fmtDate(r.endDate)}` : fmtDate(r.startDate || r.endDate);
+
+  let totUsed = 0, totBal = 0;
+  const blocks = doctors.map(s => {
+    const st = window.getLeaveStats(s, 'CME');
+    const ent = window.getEntitlementCME(s);
+    totUsed += st.used; totBal += st.bal;
+    const recs = leaveRecords
+      .filter(r => r.ic === s.ic && r.type === 'CME' && r.status === 'APPROVED' && leaveYearOf(r) === year)
+      .sort((a,b) => (a.startDate||'').localeCompare(b.startDate||''));
+    const rows = recs.length
+      ? recs.map(r => `<div style="padding:3px 0 3px 18px;font-size:11px;color:#334155;">• ${fmtRange(r)} &nbsp;(${parseFloat(r.days||0)} hari)&nbsp; ${r.reason ? '— ' + r.reason : ''}</div>`).join('')
+      : `<div style="padding:3px 0 3px 18px;font-size:11px;color:#94a3b8;font-style:italic;">(tiada cuti CME direkodkan)</div>`;
+    return `
+      <div style="margin-bottom:12px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 12px;background:#f5f3ff;border-bottom:1px solid #e2e8f0;">
+          <div style="font-size:12px;font-weight:700;color:#5b21b6;">${s.name} <span style="font-weight:500;color:#64748b;">— ${s.branch || '-'}</span></div>
+          <div style="font-size:11px;font-weight:700;color:#334155;">Kelayakan: ${Math.round(ent)} &nbsp;|&nbsp; Guna: ${parseFloat(st.used.toFixed(1))} &nbsp;|&nbsp; Baki: ${parseFloat(st.bal.toFixed(1))}</div>
+        </div>
+        <div style="padding:6px 12px;">${rows}</div>
+      </div>`;
+  }).join('');
+
+  const pw = window.open('', '_blank');
+  pw.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>Laporan Cuti CME — Doktor — ${year}</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box;}
+      body{font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff;}
+      .print-btn{margin:16px 0;text-align:right;}
+      .print-btn button{padding:8px 20px;background:#5b21b6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;}
+      @media print{.print-btn{display:none;} body{padding:16px;}}
+    </style>
+  </head><body>
+    <div class="print-btn"><button onclick="window.print()">🖨️ PRINT / SIMPAN PDF</button></div>
+    ${window.printHeaderHTML({ isReport: true, branch: activeBranch, title: 'LAPORAN CUTI CME — DOKTOR', meta: [{ label: 'Tahun', value: String(year) }, { label: 'Bilangan', value: doctors.length + ' doktor' }] })}
+    ${doctors.length ? blocks : '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px;">Tiada doktor dalam skop ini.</div>'}
+    <div style="margin-top:14px;padding-top:10px;border-top:2px solid #cbd5e1;font-size:11px;font-weight:700;color:#334155;display:flex;gap:24px;">
+      <span>Jumlah: ${doctors.length} doktor</span>
+      <span>Jumlah Guna: ${parseFloat(totUsed.toFixed(1))} hari</span>
+      <span>Jumlah Baki: ${parseFloat(totBal.toFixed(1))} hari</span>
+    </div>
+    <div style="margin-top:14px;font-size:9px;color:#718096;border-top:1px solid #e2e8f0;padding-top:8px;">
+      Laporan CME dijana oleh KSB Leave Apply System pada ${new Date().toLocaleString('ms-MY')}. Rekod berstatus APPROVED, tahun ${year}.
+    </div>
+  </body></html>`);
+  pw.document.close();
+};
+
 window.generateAttendanceReport = function() {
   const MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
   const monthLabel = MONTHS_MS[parseInt(attendanceReportMonth)-1] + ' ' + attendanceReportYear;
@@ -8476,6 +8553,10 @@ function renderView() {
               : (userPerms.report_attendance ? `<button onclick="window.generateAttendanceReport()" title="Muat turun PDF — Rekod Kedatangan" class="neu-btn" style="background:rgba(30,41,59,0.1);border:1px solid rgba(30,41,59,0.3);color:var(--text);font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                   PDF
+                </button>
+                <button onclick="window.printCMEReport()" title="Cetak Laporan CME — Doktor" class="neu-btn" style="background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.25);color:#7c3aed;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 2H9a2 2 0 0 0-2 2v2"></path><rect x="3" y="8" width="13" height="13" rx="2"></rect></svg>
+                  CME
                 </button>` : '')
             }
           </div>
