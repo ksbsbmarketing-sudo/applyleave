@@ -2862,6 +2862,39 @@ window.printAllLeaveReport = function() {
   pw.document.close();
 };
 
+window.printLeaveTypeReport = function(type) {
+  const year = window.getCurrentLeaveYear();
+  const activeBranch = attendanceReportBranch;
+  const pool = getReportStaffPool();
+  const { html: sections, sectionCount, grandTotal, staffCount } = renderLeaveSections([type], pool, year);
+  const typeName = LEAVE_TYPE_NAMES[type] || type;
+
+  const pw = window.open('', '_blank');
+  pw.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>Laporan ${typeName} — ${year}</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box;}
+      body{font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff;}
+      .print-btn{margin:16px 0;text-align:right;}
+      .print-btn button{padding:8px 20px;background:#334155;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;}
+      @media print{.print-btn{display:none;} body{padding:16px;}}
+    </style>
+  </head><body>
+    <div class="print-btn"><button onclick="window.print()">🖨️ PRINT / SIMPAN PDF</button></div>
+    ${window.printHeaderHTML({ isReport: true, branch: activeBranch, title: 'LAPORAN ' + typeName.toUpperCase(), meta: [{ label: 'Tahun', value: String(year) }, { label: 'Bilangan', value: staffCount + ' kakitangan' }] })}
+    ${sectionCount ? sections : `<div style="padding:24px;text-align:center;color:#64748b;font-size:12px;">Tiada rekod cuti ${typeName} diluluskan bagi tahun ini dalam skop ini.</div>`}
+    <div style="margin-top:14px;padding-top:10px;border-top:2px solid #cbd5e1;font-size:11px;font-weight:700;color:#334155;display:flex;gap:24px;">
+      <span>Bilangan kakitangan: ${staffCount}</span>
+      <span>Jumlah hari diluluskan: ${parseFloat(grandTotal.toFixed(1))} hari</span>
+    </div>
+    <div style="margin-top:14px;font-size:9px;color:#718096;border-top:1px solid #e2e8f0;padding-top:8px;">
+      Laporan dijana oleh KSB Leave Apply System pada ${new Date().toLocaleString('ms-MY')}. Rekod berstatus APPROVED, tahun ${year}.
+    </div>
+  </body></html>`);
+  pw.document.close();
+};
+
 window.printCMEReport = function() {
   const MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
   const year = window.getCurrentLeaveYear();
@@ -8672,7 +8705,8 @@ function renderView() {
                 <button onclick="window.printAllLeaveReport()" title="Cetak Laporan Semua Cuti (ikut jenis)" class="neu-btn" style="background:rgba(51,65,85,0.1);border:1px solid rgba(51,65,85,0.3);color:#334155;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>
                   Semua Cuti
-                </button>` : '')
+                </button>
+                ${['AL','MC','EL','EL_EMG','HL','ML','ML_PL','UP'].map(t => `<button onclick="window.printLeaveTypeReport('${t}')" title="Cetak Laporan ${t}" class="neu-btn" style="background:rgba(51,65,85,0.06);border:1px solid rgba(51,65,85,0.18);color:#334155;font-weight:700;padding:0.45rem 0.7rem;font-size:0.72rem;flex:none;white-space:nowrap;">${t}</button>`).join('')}` : '')
             }
           </div>
 
