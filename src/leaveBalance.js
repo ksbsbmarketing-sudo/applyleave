@@ -39,6 +39,15 @@ export function recordBalances({ record, ent, alAdj = 0, records = [] }) {
   return { before, after, priorUsed };
 }
 
+// EL overflow into Annual Leave: how many EL days were consumed beyond the EL
+// entitlement (the 3-day bucket). Everything that reduces the EL balance counts —
+// prior-system usage, in-system usage, and HR pelarasan — matching Formula B.
+// Returns days ≥ 0. Consumed by getLeaveStats('AL') to reduce the AL balance.
+export function computeElOverflow({ entEL, usedPre = 0, usedSys = 0, pelarasan = 0 }) {
+  const total = num(usedPre) + num(usedSys) + num(pelarasan);
+  return Math.max(0, total - num(entEL));
+}
+
 // Chronological order: leave start date first, then application id (Date.now())
 // as a stable tiebreak when two leaves share a start date.
 function isBefore(a, b) {
