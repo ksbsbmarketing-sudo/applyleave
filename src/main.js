@@ -5337,8 +5337,8 @@ function renderDashboard() {
           const toAL = diffDays - fromEL;
           if (toAL > 0) {
               const alBal = window.getLeaveStats(user, 'AL').bal;
-              leaveBreakdown = "\n*EL OVERFLOW*\nEL Bucket Used: " + fromEL + " days\nAnnual Leave (AL) Used: " + toAL + " days\n(EL bucket exhausted → overflow deducted from AL)";
-              let elMsg = "Notis: Baki EL anda tinggal " + elBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan ditolak " + fromEL + " hari dari EL dan " + toAL + " hari dari Cuti Tahunan (AL).";
+              leaveBreakdown = "\n*EL OVERFLOW*\nEL Bucket Used: " + fromEL.toFixed(1) + " days\nAnnual Leave (AL) Used: " + toAL.toFixed(1) + " days\n(EL bucket exhausted → overflow deducted from AL)";
+              let elMsg = "Notis: Baki EL anda tinggal " + elBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan ditolak " + fromEL.toFixed(1) + " hari dari EL dan " + toAL.toFixed(1) + " hari dari Cuti Tahunan (AL).";
               if (toAL > alBal) {
                   elMsg += "\n\n⚠️ Baki AL juga tidak mencukupi (baki AL: " + alBal.toFixed(2) + " hari).";
               }
@@ -10584,7 +10584,8 @@ function renderModal() {
 
   // Kiraan AL/MC/EL untuk modal (Formula B: Jumlah − Guna Sebelum − Guna Sistem − Pelarasan)
   const _modalSysUsed = (t) => leaveRecords
-    .filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === t)
+    .filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === t
+      && leaveYearOf(r) === window.getCurrentLeaveYear())
     .reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
 
   // Medan "Guna Dalam Sistem" — bergantung pada autoSystemUsage.
