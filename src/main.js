@@ -1,6 +1,6 @@
 import './style.css'
 import { countLeaveDays } from './leaveDays.js';
-import { recordBalances } from './leaveBalance.js';
+import { recordBalances, computeElOverflow } from './leaveBalance.js';
 import { computeYearEndRollover, buildStaffRolloverPatch, CF_CAP } from './yearEnd.js';
 import { loadSectionState, toggleSection, saveSectionState, isOpen as isMsgSectionOpen } from './msgSections.js';
 import { applyEmoticons } from './emoticons.js';
@@ -1935,8 +1935,26 @@ window._recalcLeaveBalance = function(prefix) {
     const sysManual = parseFloat(document.getElementById(prefix + '-sys-adj-input')?.value || 0);
     const sys = autoSystemUsage ? sysAuto : sysManual;
     const pel = parseFloat(document.getElementById(prefix + '-pelarasan-input')?.value || 0);
+    // AL absorbs EL overflow: read the live EL fields from the same modal so the displayed
+    // AL balance stays consistent with the dashboard (getLeaveStats). Only AL is affected.
+    let elOv = 0;
+    if (prefix === 'al') {
+        const elEnt = parseFloat(document.getElementById('ent-EL')?.value || 0);
+        const elPre = parseFloat(document.getElementById('el-used-pre-input')?.value || 0);
+        const elSysAuto = parseFloat(document.getElementById('el-sys-used-display')?.dataset.used || 0);
+        const elSysManual = parseFloat(document.getElementById('el-sys-adj-input')?.value || 0);
+        const elPel = parseFloat(document.getElementById('el-pelarasan-input')?.value || 0);
+        elOv = computeElOverflow({ entEL: elEnt, usedPre: elPre, usedSys: autoSystemUsage ? elSysAuto : elSysManual, pelarasan: elPel });
+        const noteEl = document.getElementById('al-el-overflow-note');
+        if (noteEl) {
+            noteEl.textContent = elOv > 0 ? `− ${elOv.toFixed(1)} hari ditolak dari limpahan EL` : '';
+            noteEl.style.display = elOv > 0 ? 'block' : 'none';
+        }
+    }
     const balEl = document.getElementById(prefix + '-balance-display');
-    if (balEl) balEl.value = Math.max(0, total - pre - sys - pel).toFixed(1);
+    if (balEl) balEl.value = Math.max(0, total - pre - sys - pel - elOv).toFixed(1);
+    // Editing EL fields must refresh the AL balance, since AL absorbs EL overflow.
+    if (prefix === 'el') window._recalcLeaveBalance('al');
 };
 window._updateAlTotal   = () => window._recalcLeaveBalance('al');
 window._updateAlBalance = () => window._recalcLeaveBalance('al');
@@ -2020,7 +2038,9 @@ window.printLeave = function(id) {
       record,
       ent: stats.ent,
       // Potongan bukan-rekod: Guna Sebelum + Pelarasan HR (+ Guna Sistem manual bila mod manual).
-      alAdj: (stats.usedPre || 0) + (stats.pelarasan || 0) + (autoSystemUsage ? 0 : (stats.usedSysAdj || 0)),
+      // elOverflow is 0 for every type except AL, so this is a no-op on other forms;
+      // on AL it shifts the printed baseline down so BAKI CUTI matches the dashboard.
+      alAdj: (stats.usedPre || 0) + (stats.pelarasan || 0) + (stats.elOverflow || 0) + (autoSystemUsage ? 0 : (stats.usedSysAdj || 0)),
       // Mod manual → jangan kira rekod diluluskan (selari dengan getLeaveStats).
       records: autoSystemUsage ? leaveRecords : [],
     });
@@ -4081,6 +4101,17 @@ window.getLeaveStats = function(staff, type, year) {
   }
   const usedSys = autoSystemUsage ? recordsUsed : usedSysAdj;
 
+  // EL overflow: once the 3-day EL bucket is exhausted, the excess EL days are
+  // deducted from Annual Leave (Option B). Only AL absorbs the spillover; the
+  // recursive EL call never re-enters this branch (type === 'EL'), so it terminates.
+  let elOverflow = 0;
+  if (type === 'AL') {
+    const el = window.getLeaveStats(staff, 'EL', leaveYear);
+    elOverflow = computeElOverflow({
+      entEL: el.ent, usedPre: el.usedPre, usedSys: el.used, pelarasan: el.pelarasan
+    });
+  }
+
   return {
     used: usedSys,
     usedFromRecords: recordsUsed,
@@ -4089,7 +4120,8 @@ window.getLeaveStats = function(staff, type, year) {
     pelarasan: pelarasan,
     adj: pelarasan,
     ent: ent,
-    bal: Math.max(0, ent - usedPre - usedSys - pelarasan)
+    elOverflow: elOverflow,
+    bal: Math.max(0, ent - usedPre - usedSys - pelarasan - elOverflow)
   };
 };
 
@@ -5298,7 +5330,22 @@ function renderDashboard() {
               alert("Notis: Baki prorate (Earned) anda ialah " + currentBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan dibahagikan kepada " + paidDays + " hari AL dan " + unpaidDays + " hari Unpaid Leave (UL).");
           }
       }
-      
+      if (selectedLeaveType === 'EL') {
+          // EL bucket first; once exhausted the excess is deducted from Annual Leave.
+          const elBal = window.getLeaveStats(user, 'EL').bal;
+          const fromEL = Math.min(diffDays, elBal);
+          const toAL = diffDays - fromEL;
+          if (toAL > 0) {
+              const alBal = window.getLeaveStats(user, 'AL').bal;
+              leaveBreakdown = "\n*EL OVERFLOW*\nEL Bucket Used: " + fromEL.toFixed(1) + " days\nAnnual Leave (AL) Used: " + toAL.toFixed(1) + " days\n(EL bucket exhausted → overflow deducted from AL)";
+              let elMsg = "Notis: Baki EL anda tinggal " + elBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan ditolak " + fromEL.toFixed(1) + " hari dari EL dan " + toAL.toFixed(1) + " hari dari Cuti Tahunan (AL).";
+              if (toAL > alBal) {
+                  elMsg += "\n\n⚠️ Baki AL juga tidak mencukupi (baki AL: " + alBal.toFixed(2) + " hari).";
+              }
+              alert(elMsg);
+          }
+      }
+
       // Mandatory File Validations
       if (selectedLeaveType === 'MC') {
           const mcUpload = document.getElementById('mc-upload');
@@ -10537,7 +10584,8 @@ function renderModal() {
 
   // Kiraan AL/MC/EL untuk modal (Formula B: Jumlah − Guna Sebelum − Guna Sistem − Pelarasan)
   const _modalSysUsed = (t) => leaveRecords
-    .filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === t)
+    .filter(r => r.ic === staff.ic && r.status === 'APPROVED' && r.type === t
+      && leaveYearOf(r) === window.getCurrentLeaveYear())
     .reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
 
   // Medan "Guna Dalam Sistem" — bergantung pada autoSystemUsage.
@@ -10564,7 +10612,17 @@ function renderModal() {
   const _modalAlUsedPre = (staff.al_used_pre === undefined && staff.al_pelarasan === undefined && parseFloat(staff.al_adj || 0) > 0)
     ? Math.max(0, _modalTotalAL - parseFloat(staff.al_adj || 0))
     : parseFloat(staff.al_used_pre || 0);
-  const _modalAlBalance = Math.max(0, _modalTotalAL - _modalAlUsedPre - (autoSystemUsage ? _modalSysUsedAL : _modalAlUsedSysAdj) - _modalAlPelarasan);
+  // EL overflow into AL (mirror getLeaveStats): excess EL usage beyond the EL bucket is
+  // deducted from AL here too, so the modal's "Baki AL Sebenar" matches the dashboard.
+  const _modalElSys      = _modalSysUsed('EL');
+  const _modalElEnt      = (staff.ent_EL !== undefined && staff.ent_EL !== null) ? parseFloat(staff.ent_EL) : 3;
+  const _modalElOverflow = computeElOverflow({
+    entEL: _modalElEnt,
+    usedPre: parseFloat(staff.el_used_pre || 0),
+    usedSys: autoSystemUsage ? _modalElSys : parseFloat(staff.el_used_sys_adj || 0),
+    pelarasan: parseFloat(staff.el_pelarasan || 0)
+  });
+  const _modalAlBalance = Math.max(0, _modalTotalAL - _modalAlUsedPre - (autoSystemUsage ? _modalSysUsedAL : _modalAlUsedSysAdj) - _modalAlPelarasan - _modalElOverflow);
 
   // Helper HTML breakdown untuk MC & EL (tiada CF). prefix: 'mc'|'el'.
   const _leaveBreakdownHTML = (prefix, typeId, title, annualDefault, accent) => {
@@ -10736,6 +10794,7 @@ function renderModal() {
                   value="${_modalAlBalance.toFixed(1)}"
                   style="border-left: 3px solid #10b981; font-weight: 800; color: #10b981; opacity: 1; cursor: default;">
                 <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Jumlah − Guna Sebelum − Guna Sistem − Pelarasan HR</span>
+                <span id="al-el-overflow-note" style="font-size: 0.68rem; color: #f59e0b; font-weight: 700; margin-top: 0.35rem; display: ${_modalElOverflow > 0 ? 'block' : 'none'};">${_modalElOverflow > 0 ? `− ${_modalElOverflow.toFixed(1)} hari ditolak dari limpahan EL` : ''}</span>
               </div>
             </div>
           </div>

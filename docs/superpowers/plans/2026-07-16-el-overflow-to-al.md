@@ -289,6 +289,131 @@ git commit -m "feat(leave): warn on EL application that overflows into Annual Le
 
 ---
 
+### Task 5: Reflect EL overflow in the HR staff-edit modal
+
+**Files:**
+- Modify: `src/main.js:1922-1940` (`window._recalcLeaveBalance` — live recompute)
+- Modify: `src/main.js:10570-10579` (server-render `_modalAlBalance`)
+- Modify: `src/main.js:~10745-10751` (the "Baki AL Sebenar" display block — add a note span)
+
+**Interfaces:**
+- Consumes: `computeElOverflow` from Task 1 (already imported into `main.js` by Task 2).
+- Produces: no new interface. The modal's "Baki AL Sebenar" (both initial render and live-on-edit) now subtracts EL overflow and shows a note when overflow > 0.
+
+**Why:** The HR staff-edit modal recomputes the AL balance from its own fields
+(`_modalAlBalance`, `_recalcLeaveBalance`) instead of calling `getLeaveStats`, so after
+Task 2 it would show an AL number inconsistent with the dashboard/reports whenever EL
+overflow > 0. Per the approved decision, align it and show why AL dropped. EL field IDs in
+this modal follow the same pattern as AL: `ent-EL`, `el-used-pre-input`,
+`el-sys-used-display` (auto) / `el-sys-adj-input` (manual), `el-pelarasan-input`.
+
+- [ ] **Step 1: Fold EL overflow into the server-rendered `_modalAlBalance`**
+
+In `src/main.js`, replace the single line (currently `src/main.js:10579`):
+
+```javascript
+  const _modalAlBalance = Math.max(0, _modalTotalAL - _modalAlUsedPre - (autoSystemUsage ? _modalSysUsedAL : _modalAlUsedSysAdj) - _modalAlPelarasan);
+```
+
+with:
+
+```javascript
+  // EL overflow into AL (mirror getLeaveStats): excess EL usage beyond the EL bucket is
+  // deducted from AL here too, so the modal's "Baki AL Sebenar" matches the dashboard.
+  const _modalElSys      = _modalSysUsed('EL');
+  const _modalElEnt      = (staff.ent_EL !== undefined && staff.ent_EL !== null) ? parseFloat(staff.ent_EL) : 3;
+  const _modalElOverflow = computeElOverflow({
+    entEL: _modalElEnt,
+    usedPre: parseFloat(staff.el_used_pre || 0),
+    usedSys: autoSystemUsage ? _modalElSys : parseFloat(staff.el_used_sys_adj || 0),
+    pelarasan: parseFloat(staff.el_pelarasan || 0)
+  });
+  const _modalAlBalance = Math.max(0, _modalTotalAL - _modalAlUsedPre - (autoSystemUsage ? _modalSysUsedAL : _modalAlUsedSysAdj) - _modalAlPelarasan - _modalElOverflow);
+```
+
+- [ ] **Step 2: Add the note span under "Baki AL Sebenar"**
+
+In `src/main.js`, find the descriptor span inside the "Baki AL Sebenar" block (currently
+`src/main.js:10750`):
+
+```javascript
+                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Jumlah − Guna Sebelum − Guna Sistem − Pelarasan HR</span>
+```
+
+Insert immediately AFTER it:
+
+```javascript
+                <span id="al-el-overflow-note" style="font-size: 0.68rem; color: #f59e0b; font-weight: 700; margin-top: 0.35rem; display: ${_modalElOverflow > 0 ? 'block' : 'none'};">${_modalElOverflow > 0 ? `− ${_modalElOverflow.toFixed(1)} hari ditolak dari limpahan EL` : ''}</span>
+```
+
+- [ ] **Step 3: Fold EL overflow into the live recompute `_recalcLeaveBalance`**
+
+In `src/main.js`, replace the tail of `window._recalcLeaveBalance` (currently
+`src/main.js:1933-1940`):
+
+```javascript
+    const pre = parseFloat(document.getElementById(prefix + '-used-pre-input')?.value || 0);
+    const sysAuto = parseFloat(document.getElementById(prefix + '-sys-used-display')?.dataset.used || 0);
+    const sysManual = parseFloat(document.getElementById(prefix + '-sys-adj-input')?.value || 0);
+    const sys = autoSystemUsage ? sysAuto : sysManual;
+    const pel = parseFloat(document.getElementById(prefix + '-pelarasan-input')?.value || 0);
+    const balEl = document.getElementById(prefix + '-balance-display');
+    if (balEl) balEl.value = Math.max(0, total - pre - sys - pel).toFixed(1);
+};
+```
+
+with:
+
+```javascript
+    const pre = parseFloat(document.getElementById(prefix + '-used-pre-input')?.value || 0);
+    const sysAuto = parseFloat(document.getElementById(prefix + '-sys-used-display')?.dataset.used || 0);
+    const sysManual = parseFloat(document.getElementById(prefix + '-sys-adj-input')?.value || 0);
+    const sys = autoSystemUsage ? sysAuto : sysManual;
+    const pel = parseFloat(document.getElementById(prefix + '-pelarasan-input')?.value || 0);
+    // AL absorbs EL overflow: read the live EL fields from the same modal so the displayed
+    // AL balance stays consistent with the dashboard (getLeaveStats). Only AL is affected.
+    let elOv = 0;
+    if (prefix === 'al') {
+        const elEnt = parseFloat(document.getElementById('ent-EL')?.value || 0);
+        const elPre = parseFloat(document.getElementById('el-used-pre-input')?.value || 0);
+        const elSysAuto = parseFloat(document.getElementById('el-sys-used-display')?.dataset.used || 0);
+        const elSysManual = parseFloat(document.getElementById('el-sys-adj-input')?.value || 0);
+        const elPel = parseFloat(document.getElementById('el-pelarasan-input')?.value || 0);
+        elOv = computeElOverflow({ entEL: elEnt, usedPre: elPre, usedSys: autoSystemUsage ? elSysAuto : elSysManual, pelarasan: elPel });
+        const noteEl = document.getElementById('al-el-overflow-note');
+        if (noteEl) {
+            noteEl.textContent = elOv > 0 ? `− ${elOv.toFixed(1)} hari ditolak dari limpahan EL` : '';
+            noteEl.style.display = elOv > 0 ? 'block' : 'none';
+        }
+    }
+    const balEl = document.getElementById(prefix + '-balance-display');
+    if (balEl) balEl.value = Math.max(0, total - pre - sys - pel - elOv).toFixed(1);
+    // Editing EL fields must refresh the AL balance, since AL absorbs EL overflow.
+    if (prefix === 'el') window._recalcLeaveBalance('al');
+};
+```
+
+- [ ] **Step 4: Verify the build compiles**
+
+Run: `npm run build`
+Expected: build completes with no error.
+
+- [ ] **Step 5: Manual verification**
+
+Run `npm run dev`, open the HR staff-edit modal for a staff member with EL overflow. Confirm:
+- "Baki AL Sebenar" matches that staff's dashboard AL balance, and the amber note "− X hari ditolak dari limpahan EL" appears.
+- Editing an EL field (e.g. EL Pelarasan HR, or EL Guna Sebelum Sistem) live-updates the AL balance and the note.
+- A staff member with no EL overflow shows no note and an unchanged AL balance.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/main.js
+git commit -m "feat(leave): reflect EL overflow in HR staff-edit AL balance"
+```
+
+---
+
 ## Self-Review Notes
 
 - **Spec coverage:** §1 overflow formula → Task 1; §2 AL balance + reports (automatic via `.bal`) → Task 2; §3 apply-time warning → Task 4; §4 print form → Task 3; scope/global constraints → Global Constraints block. All spec sections mapped.

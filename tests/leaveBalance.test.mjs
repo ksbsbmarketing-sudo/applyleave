@@ -79,3 +79,35 @@ test('the record itself is never double-counted', () => {
   const r = recordBalances({ record: C, ent: 14, records: ALL });
   assert.strictEqual(r.before, 9); // 14 - (A3+B2), NOT minus C
 });
+
+import { computeElOverflow } from '../src/leaveBalance.js';
+
+test('EL within the bucket → no overflow', () => {
+  assert.strictEqual(computeElOverflow({ entEL: 3, usedSys: 2 }), 0);
+});
+
+test('EL exceeding the bucket → overflow is the excess', () => {
+  assert.strictEqual(computeElOverflow({ entEL: 3, usedSys: 5 }), 2);
+});
+
+test('EL exactly at the bucket edge → no overflow', () => {
+  assert.strictEqual(computeElOverflow({ entEL: 3, usedSys: 3 }), 0);
+});
+
+test('HR pelarasan counts toward overflow', () => {
+  // usedPre 2 + pelarasan 2 = 4, ent 3 → overflow 1
+  assert.strictEqual(computeElOverflow({ entEL: 3, usedPre: 2, pelarasan: 2 }), 1);
+});
+
+test('pre + system usage combine toward overflow', () => {
+  // usedPre 1 + usedSys 3 = 4, ent 3 → overflow 1
+  assert.strictEqual(computeElOverflow({ entEL: 3, usedPre: 1, usedSys: 3 }), 1);
+});
+
+test('overflow never goes negative', () => {
+  assert.strictEqual(computeElOverflow({ entEL: 3 }), 0);
+});
+
+test('non-numeric / missing inputs are treated as zero', () => {
+  assert.strictEqual(computeElOverflow({ entEL: 3, usedSys: 'x', pelarasan: null }), 0);
+});
