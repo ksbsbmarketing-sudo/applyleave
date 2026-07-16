@@ -2751,16 +2751,18 @@ window.generateApprovedReport = function() {
   document.getElementById('print-container').remove();
 };
 
-window.printAllLeaveReport = function() {
-  const MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
-  const year = window.getCurrentLeaveYear();
+// ── Shared print-report helpers (used by printAllLeaveReport + printLeaveTypeReport) ──
+const REPORT_MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
+const LEAVE_TYPE_COLOR = { AL:'#3b82f6', MC:'#10b981', EL:'#f59e0b', EL_EMG:'#ef4444', HL:'#06b6d4', ML:'#ec4899', ML_PL:'#6366f1', CME:'#8b5cf6', UP:'#64748b' };
+const ALL_LEAVE_TYPES = ['AL','MC','EL','EL_EMG','HL','ML','ML_PL','CME','UP'];
+
+// Active staff within the current user's report scope (same predicate as the attendance/CME report).
+function getReportStaffPool() {
   const reportBranch = window.getUserReportBranch(user);
   const reportDaerah = window.getUserReportDaerah(user);
   const userStateScope = window.getUserStateScope(user);
   const activeBranch = attendanceReportBranch;
-
-  // Active staff within the current user's report scope (same predicate as the attendance/CME report).
-  const pool = staffList.filter(s => {
+  return staffList.filter(s => {
     if (s.inactive) return false;
     if (reportBranch && s.branch !== reportBranch) return false;
     if (activeBranch && activeBranch !== 'SEMUA' && s.branch !== activeBranch) return false;
@@ -2770,21 +2772,25 @@ window.printAllLeaveReport = function() {
     if (bObj && reportDaerah && bObj.daerah !== reportDaerah) return false;
     return true;
   });
+}
 
-  const fmtDate = d => {
-    if (!d) return '-';
-    const dt = new Date(d);
-    if (isNaN(dt.getTime())) return d;
-    return `${dt.getDate()} ${MONTHS_MS[dt.getMonth()]} ${dt.getFullYear()}`;
-  };
-  const fmtRange = r => (r.startDate && r.endDate && r.startDate !== r.endDate)
-    ? `${fmtDate(r.startDate)} – ${fmtDate(r.endDate)}` : fmtDate(r.startDate || r.endDate);
+function fmtLeaveDate(d) {
+  if (!d) return '-';
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return d;
+  return `${dt.getDate()} ${REPORT_MONTHS_MS[dt.getMonth()]} ${dt.getFullYear()}`;
+}
+function fmtLeaveRange(r) {
+  return (r.startDate && r.endDate && r.startDate !== r.endDate)
+    ? `${fmtLeaveDate(r.startDate)} – ${fmtLeaveDate(r.endDate)}` : fmtLeaveDate(r.startDate || r.endDate);
+}
 
-  const TYPES = ['AL','MC','EL','EL_EMG','HL','ML','ML_PL','CME','UP'];
-  const typeColor = { AL:'#3b82f6', MC:'#10b981', EL:'#f59e0b', EL_EMG:'#ef4444', HL:'#06b6d4', ML:'#ec4899', ML_PL:'#6366f1', CME:'#8b5cf6', UP:'#64748b' };
-
-  let grandTotal = 0, sectionCount = 0;
-  const sections = TYPES.map(type => {
+// Build HTML for the given leave-type sections. Returns { html, sectionCount, grandTotal, staffCount }.
+// Only staff with >=1 APPROVED record of a type in `year` are listed (sorted branch, then name);
+// empty sections are skipped. Per staff: Kelayakan/Guna/Baki from getLeaveStats, or Guna only when ent===0.
+function renderLeaveSections(types, pool, year) {
+  let grandTotal = 0, sectionCount = 0, staffCount = 0;
+  const html = types.map(type => {
     const perStaff = pool.map(s => {
       const recs = leaveRecords
         .filter(r => r.ic === s.ic && r.type === type && r.status === 'APPROVED' && leaveYearOf(r) === year)
@@ -2795,7 +2801,8 @@ window.printAllLeaveReport = function() {
 
     if (!perStaff.length) return '';
     sectionCount++;
-    const accent = typeColor[type] || '#334155';
+    staffCount += perStaff.length;
+    const accent = LEAVE_TYPE_COLOR[type] || '#334155';
     const blocks = perStaff.map(({ s, recs }) => {
       const st = window.getLeaveStats(s, type);
       const used = recs.reduce((acc,r) => acc + parseFloat(r.days||0), 0);
@@ -2803,7 +2810,7 @@ window.printAllLeaveReport = function() {
       const summary = st.ent > 0
         ? `Kelayakan: ${Math.round(st.ent)} &nbsp;|&nbsp; Guna: ${parseFloat(st.used.toFixed(1))} &nbsp;|&nbsp; Baki: ${parseFloat(st.bal.toFixed(1))}`
         : `Guna: ${parseFloat(used.toFixed(1))}`;
-      const rows = recs.map(r => `<div style="padding:3px 0 3px 18px;font-size:11px;color:#334155;">• ${fmtRange(r)} &nbsp;(${parseFloat(r.days||0)} hari)&nbsp; ${r.reason ? '— ' + r.reason : ''}</div>`).join('');
+      const rows = recs.map(r => `<div style="padding:3px 0 3px 18px;font-size:11px;color:#334155;">• ${fmtLeaveRange(r)} &nbsp;(${parseFloat(r.days||0)} hari)&nbsp; ${r.reason ? '— ' + r.reason : ''}</div>`).join('');
       return `
         <div style="margin-bottom:10px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
           <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 12px;background:${accent}12;border-bottom:1px solid #e2e8f0;">
@@ -2819,6 +2826,14 @@ window.printAllLeaveReport = function() {
         ${blocks}
       </div>`;
   }).join('');
+  return { html, sectionCount, grandTotal, staffCount };
+}
+
+window.printAllLeaveReport = function() {
+  const year = window.getCurrentLeaveYear();
+  const activeBranch = attendanceReportBranch;
+  const pool = getReportStaffPool();
+  const { html: sections, sectionCount, grandTotal } = renderLeaveSections(ALL_LEAVE_TYPES, pool, year);
 
   const pw = window.open('', '_blank');
   pw.document.write(`<!DOCTYPE html><html><head>
