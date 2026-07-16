@@ -111,3 +111,32 @@ test('overflow never goes negative', () => {
 test('non-numeric / missing inputs are treated as zero', () => {
   assert.strictEqual(computeElOverflow({ entEL: 3, usedSys: 'x', pelarasan: null }), 0);
 });
+
+import { computeCMEEntitlement } from '../src/leaveBalance.js';
+
+test('CME entitlement: doctor with no override defaults to 5', () => {
+  assert.strictEqual(computeCMEEntitlement({ category: 'Doctor' }), 5);
+});
+
+test('CME entitlement: non-doctor defaults to 0', () => {
+  assert.strictEqual(computeCMEEntitlement({ category: 'Admin Staff' }), 0);
+  assert.strictEqual(computeCMEEntitlement({ category: 'Operation Staff' }), 0);
+});
+
+test('CME entitlement: explicit override wins for doctor and non-doctor', () => {
+  assert.strictEqual(computeCMEEntitlement({ category: 'Doctor', ent_CME: 3 }), 3);
+  assert.strictEqual(computeCMEEntitlement({ category: 'Admin Staff', ent_CME: 2 }), 2);
+});
+
+test('CME entitlement: explicit 0 override is honored (not treated as unset)', () => {
+  assert.strictEqual(computeCMEEntitlement({ category: 'Doctor', ent_CME: 0 }), 0);
+});
+
+test('CME entitlement: null/undefined ent_CME falls back to category rule', () => {
+  assert.strictEqual(computeCMEEntitlement({ category: 'Doctor', ent_CME: null }), 5);
+  assert.strictEqual(computeCMEEntitlement({ category: 'Doctor', ent_CME: undefined }), 5);
+});
+
+test('CME entitlement: missing category treated as non-doctor', () => {
+  assert.strictEqual(computeCMEEntitlement({}), 0);
+});

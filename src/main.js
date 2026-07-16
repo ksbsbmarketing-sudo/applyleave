@@ -1,6 +1,6 @@
 import './style.css'
 import { countLeaveDays } from './leaveDays.js';
-import { recordBalances, computeElOverflow } from './leaveBalance.js';
+import { recordBalances, computeElOverflow, computeCMEEntitlement } from './leaveBalance.js';
 import { computeYearEndRollover, buildStaffRolloverPatch, CF_CAP } from './yearEnd.js';
 import { loadSectionState, toggleSection, saveSectionState, isOpen as isMsgSectionOpen } from './msgSections.js';
 import { applyEmoticons } from './emoticons.js';
@@ -2751,6 +2751,83 @@ window.generateApprovedReport = function() {
   document.getElementById('print-container').remove();
 };
 
+window.printCMEReport = function() {
+  const MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
+  const year = window.getCurrentLeaveYear();
+  const reportBranch = window.getUserReportBranch(user);
+  const reportDaerah = window.getUserReportDaerah(user);
+  const userStateScope = window.getUserStateScope(user);
+  const activeBranch = attendanceReportBranch;
+
+  // Active doctors within the current user's report scope (same predicate as the attendance report).
+  const doctors = staffList.filter(s => {
+    if (s.category !== 'Doctor' || s.inactive) return false;
+    if (reportBranch && s.branch !== reportBranch) return false;
+    if (activeBranch && activeBranch !== 'SEMUA' && s.branch !== activeBranch) return false;
+    const bObj = branches.find(b => b.name === s.branch);
+    if (!bObj && userStateScope !== 'all') return false;
+    if (bObj && userStateScope !== 'all' && bObj.state !== userStateScope) return false;
+    if (bObj && reportDaerah && bObj.daerah !== reportDaerah) return false;
+    return true;
+  }).sort((a,b) => (a.branch||'').localeCompare(b.branch||'') || a.name.localeCompare(b.name));
+
+  const fmtDate = d => {
+    if (!d) return '-';
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return d;
+    return `${dt.getDate()} ${MONTHS_MS[dt.getMonth()]} ${dt.getFullYear()}`;
+  };
+  const fmtRange = r => (r.startDate && r.endDate && r.startDate !== r.endDate)
+    ? `${fmtDate(r.startDate)} – ${fmtDate(r.endDate)}` : fmtDate(r.startDate || r.endDate);
+
+  let totUsed = 0, totBal = 0;
+  const blocks = doctors.map(s => {
+    const st = window.getLeaveStats(s, 'CME');
+    const ent = window.getEntitlementCME(s);
+    totUsed += st.used; totBal += st.bal;
+    const recs = leaveRecords
+      .filter(r => r.ic === s.ic && r.type === 'CME' && r.status === 'APPROVED' && leaveYearOf(r) === year)
+      .sort((a,b) => (a.startDate||'').localeCompare(b.startDate||''));
+    const rows = recs.length
+      ? recs.map(r => `<div style="padding:3px 0 3px 18px;font-size:11px;color:#334155;">• ${fmtRange(r)} &nbsp;(${parseFloat(r.days||0)} hari)&nbsp; ${r.reason ? '— ' + r.reason : ''}</div>`).join('')
+      : `<div style="padding:3px 0 3px 18px;font-size:11px;color:#94a3b8;font-style:italic;">(tiada cuti CME direkodkan)</div>`;
+    return `
+      <div style="margin-bottom:12px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 12px;background:#f5f3ff;border-bottom:1px solid #e2e8f0;">
+          <div style="font-size:12px;font-weight:700;color:#5b21b6;">${s.name} <span style="font-weight:500;color:#64748b;">— ${s.branch || '-'}</span></div>
+          <div style="font-size:11px;font-weight:700;color:#334155;">Kelayakan: ${Math.round(ent)} &nbsp;|&nbsp; Guna: ${parseFloat(st.used.toFixed(1))} &nbsp;|&nbsp; Baki: ${parseFloat(st.bal.toFixed(1))}</div>
+        </div>
+        <div style="padding:6px 12px;">${rows}</div>
+      </div>`;
+  }).join('');
+
+  const pw = window.open('', '_blank');
+  pw.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>Laporan Cuti CME — Doktor — ${year}</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box;}
+      body{font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff;}
+      .print-btn{margin:16px 0;text-align:right;}
+      .print-btn button{padding:8px 20px;background:#5b21b6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;}
+      @media print{.print-btn{display:none;} body{padding:16px;}}
+    </style>
+  </head><body>
+    <div class="print-btn"><button onclick="window.print()">🖨️ PRINT / SIMPAN PDF</button></div>
+    ${window.printHeaderHTML({ isReport: true, branch: activeBranch, title: 'LAPORAN CUTI CME — DOKTOR', meta: [{ label: 'Tahun', value: String(year) }, { label: 'Bilangan', value: doctors.length + ' doktor' }] })}
+    ${doctors.length ? blocks : '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px;">Tiada doktor dalam skop ini.</div>'}
+    <div style="margin-top:14px;padding-top:10px;border-top:2px solid #cbd5e1;font-size:11px;font-weight:700;color:#334155;display:flex;gap:24px;">
+      <span>Jumlah: ${doctors.length} doktor</span>
+      <span>Jumlah Guna: ${parseFloat(totUsed.toFixed(1))} hari</span>
+      <span>Jumlah Baki: ${parseFloat(totBal.toFixed(1))} hari</span>
+    </div>
+    <div style="margin-top:14px;font-size:9px;color:#718096;border-top:1px solid #e2e8f0;padding-top:8px;">
+      Laporan CME dijana oleh KSB Leave Apply System pada ${new Date().toLocaleString('ms-MY')}. Rekod berstatus APPROVED, tahun ${year}.
+    </div>
+  </body></html>`);
+  pw.document.close();
+};
+
 window.generateAttendanceReport = function() {
   const MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
   const monthLabel = MONTHS_MS[parseInt(attendanceReportMonth)-1] + ' ' + attendanceReportYear;
@@ -2787,6 +2864,7 @@ window.generateAttendanceReport = function() {
     const alEnt = alSt.ent, alRem = alSt.bal;
     const mcSt = window.getLeaveStats(s, 'MC');
     const mcEnt = mcSt.ent, mcRem = mcSt.bal;
+    const cmeSt = isDoctor ? window.getLeaveStats(s, 'CME') : null;
     const al = ml['AL']||0, mc = ml['MC']||0;
     const el = (ml['EL']||0)+(ml['EL_EMG']||0), up = ml['UP']||0;
     const last = isDoctor ? (ml['CME']||0) : ((ml['HL']||0)+(ml['ML']||0)+(ml['ML_PL']||0));
@@ -2800,6 +2878,7 @@ window.generateAttendanceReport = function() {
       <td style="padding:5px 6px;text-align:center;font-size:11px;font-weight:${last>0?700:400};color:${last>0?'#7c3aed':'#cbd5e1'};">${fmt(last)}</td>
       <td style="padding:5px 8px;text-align:center;font-size:10px;font-weight:700;color:#1d4ed8;border-left:1px solid #e2e8f0;">${fmtBal(alRem,alEnt)}</td>
       <td style="padding:5px 8px;text-align:center;font-size:10px;font-weight:700;color:#065f46;">${fmtBal(mcRem,mcEnt)}</td>
+      ${isDoctor ? `<td style="padding:5px 8px;text-align:center;font-size:10px;font-weight:700;color:#6d28d9;">${fmtBal(cmeSt.bal,cmeSt.ent)}</td>` : ''}
     </tr>`;
   }).join('');
 
@@ -2822,6 +2901,7 @@ window.generateAttendanceReport = function() {
             <th style="padding:7px 6px;text-align:center;font-size:10px;color:${lastColor};">${lastHdr}</th>
             <th style="padding:7px 8px;text-align:center;font-size:10px;color:#1d4ed8;border-left:1px solid #e2e8f0;">Baki Cuti</th>
             <th style="padding:7px 8px;text-align:center;font-size:10px;color:#065f46;">Baki MC</th>
+            ${isDoctor ? `<th style="padding:7px 8px;text-align:center;font-size:10px;color:#6d28d9;">Baki CME</th>` : ''}
           </tr>
         </thead>
         <tbody>${renderRows(arr, isDoctor)}</tbody>
@@ -2833,7 +2913,7 @@ window.generateAttendanceReport = function() {
             <td style="padding:7px 6px;text-align:center;font-size:11px;color:#d97706;">${arr.reduce((s,x)=>s+((getMonthLeave(x.ic)['EL']||0)+(getMonthLeave(x.ic)['EL_EMG']||0)),0).toFixed(1).replace('.0','')}</td>
             <td style="padding:7px 6px;text-align:center;">${arr.reduce((s,x)=>s+(getMonthLeave(x.ic)['UP']||0),0)||'-'}</td>
             <td style="padding:7px 6px;text-align:center;">${isDoctor ? (arr.reduce((s,x)=>s+(getMonthLeave(x.ic)['CME']||0),0)||'-') : (arr.reduce((s,x)=>s+((getMonthLeave(x.ic)['HL']||0)+(getMonthLeave(x.ic)['ML']||0)+(getMonthLeave(x.ic)['ML_PL']||0)),0)||'-')}</td>
-            <td colspan="2"></td>
+            <td colspan="${isDoctor ? 3 : 2}"></td>
           </tr>
         </tfoot>
       </table>
@@ -4008,6 +4088,13 @@ window.getEntitlementMC = function(staffObj) {
   return years >= 5 ? 22 : years >= 2 ? 18 : 14;
 };
 
+// CME entitlement (doctors-only, default 5). ent_CME is an optional HR override.
+// Mirrors getEntitlementMC. Delegates the rule to the pure computeCMEEntitlement helper.
+window.getEntitlementCME = function(staffObj) {
+  if (!staffObj) return 0;
+  return computeCMEEntitlement({ category: staffObj.category, ent_CME: staffObj.ent_CME });
+};
+
 window.getMonthsWorkedThisYear = function(startDate) {
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -4070,6 +4157,8 @@ window.getLeaveStats = function(staff, type, year) {
     ent = window.getEarnedAL(staff); // Jumlah = ent_AL + CF
   } else if (type === 'MC') {
     ent = window.getEntitlementMC(staff); // peruntukan MC ikut tahun khidmat (14/18/22)
+  } else if (type === 'CME') {
+    ent = window.getEntitlementCME(staff); // doctors 5, non-doctors 0, ent_CME overrides
   } else {
     // ML_PL entitlement is saved as ent_PL by the HR form (legacy key)
     const entKey = type === 'ML_PL' ? 'ent_PL' : `ent_${type}`;
@@ -8464,6 +8553,10 @@ function renderView() {
               : (userPerms.report_attendance ? `<button onclick="window.generateAttendanceReport()" title="Muat turun PDF — Rekod Kedatangan" class="neu-btn" style="background:rgba(30,41,59,0.1);border:1px solid rgba(30,41,59,0.3);color:var(--text);font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                   PDF
+                </button>
+                <button onclick="window.printCMEReport()" title="Cetak Laporan CME — Doktor" class="neu-btn" style="background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.25);color:#7c3aed;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 2H9a2 2 0 0 0-2 2v2"></path><rect x="3" y="8" width="13" height="13" rx="2"></rect></svg>
+                  CME
                 </button>` : '')
             }
           </div>
@@ -9029,6 +9122,7 @@ function renderView() {
               const alEnt = alSt.ent, alRem = alSt.bal;
               const mcSt = window.getLeaveStats(s, 'MC');
               const mcEnt = mcSt.ent, mcRem = mcSt.bal;
+              const cmeSt = isDoctor ? window.getLeaveStats(s, 'CME') : null;
               const al = ml['AL']||0, mc = ml['MC']||0;
               const el = (ml['EL']||0)+(ml['EL_EMG']||0), up = ml['UP']||0;
               const last = isDoctor ? (ml['CME']||0) : ((ml['HL']||0)+(ml['ML']||0)+(ml['ML_PL']||0));
@@ -9044,6 +9138,7 @@ function renderView() {
                 <td style="padding:0.55rem 0.5rem;text-align:center;">${fmtV(last)}</td>
                 <td style="padding:0.55rem 0.75rem;text-align:center;border-left:1px solid rgba(163,177,198,0.15);font-size:0.75rem;color:#3b82f6;">${fmtBal(alRem,alEnt)}</td>
                 <td style="padding:0.55rem 0.75rem;text-align:center;font-size:0.75rem;color:#10b981;">${fmtBal(mcRem,mcEnt)}</td>
+                ${isDoctor ? `<td style="padding:0.55rem 0.75rem;text-align:center;font-size:0.75rem;color:#8b5cf6;">${fmtBal(cmeSt.bal,cmeSt.ent)}</td>` : ''}
               </tr>`;
             };
 
@@ -9077,6 +9172,7 @@ function renderView() {
                           <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:${lastColor};min-width:42px;" title="${isDoctor?'CME':'Hospitalization/Bersalin/Lain-lain'}">${lastLabel}</th>
                           <th style="padding:0.55rem 0.75rem;text-align:center;font-size:0.6rem;font-weight:700;color:#3b82f6;border-left:1px solid rgba(163,177,198,0.2);min-width:72px;">Baki Cuti</th>
                           <th style="padding:0.55rem 0.75rem;text-align:center;font-size:0.6rem;font-weight:700;color:#10b981;min-width:62px;">Baki MC</th>
+                          ${isDoctor ? `<th style="padding:0.55rem 0.75rem;text-align:center;font-size:0.6rem;font-weight:700;color:#8b5cf6;min-width:72px;">Baki CME</th>` : ''}
                         </tr>
                       </thead>
                       <tbody>
@@ -9090,7 +9186,7 @@ function renderView() {
                           <td style="padding:0.65rem 0.5rem;text-align:center;font-weight:800;font-size:0.8rem;color:#f59e0b;">${totEL>0?totEL.toFixed(1).replace('.0',''):'—'}</td>
                           <td style="padding:0.65rem 0.5rem;text-align:center;font-weight:800;font-size:0.8rem;color:#94a3b8;">${totUP>0?totUP:'—'}</td>
                           <td style="padding:0.65rem 0.5rem;text-align:center;font-weight:800;font-size:0.8rem;color:${lastColor};">${totLast>0?totLast:'—'}</td>
-                          <td colspan="2"></td>
+                          <td colspan="${isDoctor ? 3 : 2}"></td>
                         </tr>
                       </tfoot>
                     </table>
@@ -10801,6 +10897,32 @@ function renderModal() {
 
           ${_leaveBreakdownHTML('mc', 'MC', 'MC — Cuti Sakit', window.getEntitlementMC(staff), '#10b981')}
           ${_leaveBreakdownHTML('el', 'EL', 'EL — Cuti Ehsan', 3, '#f59e0b')}
+          ${(() => {
+            if (staff.category !== 'Doctor') return ''; // doctors only
+            const _cmeEnt = window.getEntitlementCME(staff);
+            const _cmeSys = _modalSysUsed('CME');
+            const _cmeBal = Math.max(0, _cmeEnt - _cmeSys);
+            const _lbl = 'font-size:0.75rem;margin-bottom:0.5rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;';
+            return `
+      <div style="margin-top:1.75rem;padding-top:1.5rem;border-top:1px solid rgba(163,177,198,0.15);">
+        <div style="font-size:0.7rem;text-transform:uppercase;color:#8b5cf6;font-weight:700;letter-spacing:1px;margin-bottom:1rem;">CME — Cuti Pendidikan Perubatan (Doktor)</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;">
+          <div style="display:flex;flex-direction:column;">
+            <label style="${_lbl}color:var(--text-muted);">Peruntukan Setahun</label>
+            <input type="number" id="ent-CME" class="neu-inset" min="0" step="0.5" value="${_cmeEnt}" oninput="window._recalcLeaveBalance('cme')" style="border-left:3px solid #8b5cf6;">
+          </div>
+          <div style="display:flex;flex-direction:column;">
+            <label style="${_lbl}color:#ef4444;">Guna Dalam Sistem</label>
+            <input type="number" id="cme-sys-used-display" class="neu-inset" disabled value="${_cmeSys.toFixed(1)}" data-used="${_cmeSys}" style="border-left:3px solid #ef4444;color:#ef4444;font-weight:700;opacity:1;cursor:default;">
+            <span style="font-size:0.68rem;color:var(--text-muted);margin-top:0.35rem;">Auto dari rekod CME diluluskan (tahun ini)</span>
+          </div>
+          <div style="display:flex;flex-direction:column;">
+            <label style="${_lbl}color:#10b981;">Baki CME</label>
+            <input type="number" id="cme-balance-display" class="neu-inset" disabled value="${_cmeBal.toFixed(1)}" style="border-left:3px solid #10b981;font-weight:800;color:#10b981;opacity:1;cursor:default;">
+          </div>
+        </div>
+      </div>`;
+          })()}
 
           <!-- Grid cuti lain (AL/MC/EL ada breakdown sendiri di atas) -->
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem 2rem; border-top: 1px solid rgba(163,177,198,0.15); padding-top: 1.5rem;">
@@ -10823,10 +10945,6 @@ function renderModal() {
             <div style="display: flex; flex-direction: column;">
                <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">UL &mdash; Tanpa Gaji</label>
                <input type="number" id="ent-UP" class="neu-inset" value="${staff.ent_UP !== undefined ? staff.ent_UP : 0}">
-            </div>
-            <div style="display: flex; flex-direction: column;">
-               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">CME &mdash; Cuti Pendidikan Perubatan</label>
-               <input type="number" id="ent-CME" class="neu-inset" value="${staff.ent_CME !== undefined ? staff.ent_CME : 0}">
             </div>
           </div>
 
