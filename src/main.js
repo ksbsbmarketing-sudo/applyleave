@@ -37,7 +37,8 @@ import {
   where,
   orderBy,
   limit,
-  documentId
+  documentId,
+  serverTimestamp
 } from "firebase/firestore";
 
 // ── Reload-loop circuit breaker ─────────────────────────────────────────────
@@ -1961,6 +1962,25 @@ window._updateAlBalance = () => window._recalcLeaveBalance('al');
 
 let systemAuditLogs = [];
 
+// Masa audit datang dari serverTimestamp(), jadi nilainya boleh jadi Firestore
+// Timestamp (dah disahkan server), null (tulisan sendiri yang belum sampai
+// server — anggap "baru sahaja"), atau nombor epoch (rekod lama sebelum tukar).
+function auditMillis(v) {
+    if (v === null) return Date.now();          // pending server write = terbaru
+    if (v === undefined) return 0;              // medan tiada langsung
+    if (typeof v === 'number') return v;        // rekod lama (Date.now())
+    if (typeof v.toMillis === 'function') return v.toMillis();
+    return 0;
+}
+
+function auditTimeLabel(log) {
+    const ms = auditMillis(log.createdAt);
+    // Rekod lama simpan teks masa dalam log.timestamp; guna ia kalau tiada createdAt.
+    if (!ms) return log.timestamp || '-';
+    if (log.createdAt === null && log.timestamp) return log.timestamp;
+    return new Date(ms).toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' });
+}
+
 window.logSystemActivity = async function(activityDesc, overrideUser) {
     const actUser = overrideUser || user;
     if (!actUser) return;
@@ -1970,6 +1990,8 @@ window.logSystemActivity = async function(activityDesc, overrideUser) {
     
     const newLog = {
         id: Date.now().toString(),
+        // Paparan sementara (jam peranti) sementara serverTimestamp belum sampai.
+        // Sumber rasmi masa ialah createdAt di bawah.
         timestamp: new Date().toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' }),
         name: actUser.name,
         branch: actUser.branch || 'N/A',
@@ -1977,7 +1999,7 @@ window.logSystemActivity = async function(activityDesc, overrideUser) {
         ip: osInfo,
         location: tzStr,
         activity: activityDesc,
-        createdAt: Date.now()
+        createdAt: serverTimestamp()
     };
     
     try {
@@ -3447,7 +3469,7 @@ async function initData() {
   // Real-time Audit Logs
   onSnapshot(collection(db, "audit_logs"), (snapshot) => {
     systemAuditLogs = snapshot.docs.map(doc => doc.data())
-      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      .sort((a, b) => auditMillis(b.createdAt) - auditMillis(a.createdAt));
     render();
   });
 
@@ -4062,7 +4084,7 @@ function renderLogin() {
     localStorage.setItem('ksb_logged_in_ic', user.ic);
     localStorage.setItem('ksb_logged_in_sid', currentSessionId);
     setDoc(doc(db, 'sessions', user.ic), {
-      sessionId: currentSessionId, loginAt: Date.now(), name: user.name,
+      sessionId: currentSessionId, loginAt: serverTimestamp(), name: user.name,
       device: navigator.userAgent.slice(0, 150)
     }).then(() => startSessionListener(user.ic, currentSessionId));
     window.logSystemActivity("Logged into system");
@@ -8364,7 +8386,7 @@ function renderView() {
                           ${systemAuditLogs.map(log => `
                           <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.2s;">
                               <td style="padding: 1.5rem 1rem;">
-                                  <div style="font-weight: 600; font-size: 0.8rem; color: var(--text-muted);">${log.timestamp}</div>
+                                  <div style="font-weight: 600; font-size: 0.8rem; color: var(--text-muted);">${auditTimeLabel(log)}</div>
                               </td>
                               <td style="padding: 1.5rem 1rem;">
                                   <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; margin-bottom: 0.25rem;">${log.name}</div>
