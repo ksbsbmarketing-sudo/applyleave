@@ -27,6 +27,16 @@ test("Admin Staff at Balok → admin_balok", () => {
   assert.equal(getStaffGroup(s, branches), "admin_balok");
 });
 
+test("Operation Staff at Balok with leaveAsAdmin → admin_balok (routes to HOD Balok)", () => {
+  const s = { branch: BALOK_HQ, category: "Operation Staff", role: "supervisor", leaveAsAdmin: true };
+  assert.equal(getStaffGroup(s, branches), "admin_balok");
+});
+
+test("leaveAsAdmin does NOT change routing outside Balok", () => {
+  const s = { branch: "Klinik Syed Badaruddin Kuantan", category: "Operation Staff", role: "supervisor", leaveAsAdmin: true };
+  assert.equal(getStaffGroup(s, branches), "pahang_lain");
+});
+
 test("juru_xray / sonographer at Balok → xray_sono_balok", () => {
   assert.equal(getStaffGroup({ branch: BALOK_HQ, role: "juru_xray", category: "Operation Staff" }, branches), "xray_sono_balok");
   assert.equal(getStaffGroup({ branch: BALOK_HQ, role: "sonographer", category: "Operation Staff" }, branches), "xray_sono_balok");
@@ -86,6 +96,12 @@ test("operation_balok applicant → Balok HQ supervisors (active only)", () => {
 
 test("admin_balok applicant → HOD Balok", () => {
   const applicant = { ic: "A2", branch: BALOK_HQ, category: "Admin Staff", role: "clerk" };
+  const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
+  assert.deepEqual(out.map((s) => s.ic), ["HOD1"]);
+});
+
+test("Operation Staff at Balok with leaveAsAdmin → HOD Balok (P1 approver)", () => {
+  const applicant = { ic: "SUP1", branch: BALOK_HQ, category: "Operation Staff", role: "supervisor", leaveAsAdmin: true };
   const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
   assert.deepEqual(out.map((s) => s.ic), ["HOD1"]);
 });

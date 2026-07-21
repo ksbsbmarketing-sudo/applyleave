@@ -31,6 +31,9 @@ export function getStaffGroup(s, branches) {
   if (s.role === "juru_audio" && isBalok) return "juru_audio_balok";
   if (s.role === "pemandu" && isBalok) return "pemandu_balok";
 
+  // Per-staff override: Operation Staff flagged leaveAsAdmin follow the Admin Staff
+  // leave route (→ HOD Balok), while staying Operation Staff everywhere else.
+  if (isBalok && s.leaveAsAdmin) return "admin_balok";
   // Operation Staff at Balok → TL → Supervisor → HR
   if (isBalok && s.category === "Operation Staff") return "operation_balok";
   // Admin Staff at Balok HQ → HOD Balok

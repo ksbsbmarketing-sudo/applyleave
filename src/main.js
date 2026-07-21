@@ -1659,6 +1659,9 @@ window.getStaffGroup = function(s) {
   if (s.role === 'juru_audio'                        && isBalok) return 'juru_audio_balok';
   if (s.role === 'pemandu'                           && isBalok) return 'pemandu_balok';
 
+  // Pengecualian per-staff: Operation Staff bertanda leaveAsAdmin ikut laluan cuti
+  // Admin Staff (→ HOD Balok), tetapi kekal Operation Staff di tempat lain (laporan).
+  if (isBalok && s.leaveAsAdmin) return 'admin_balok';
   // Hanya Operation Staff di Balok → TL → Supervisor → HR
   if (isBalok && s.category === 'Operation Staff') return 'operation_balok';
   // Admin Staff di Balok HQ → HOD Balok
@@ -2188,7 +2191,7 @@ const CALENDAR_DAY_LEAVE_TYPES = ['ML', 'ML_PL', 'HL'];
 // else counts all calendar days. Calendar-day leave types (ML/ML_PL/HL) ALWAYS
 // count calendar days regardless of category. Returns whole days (callers apply half-day).
 window.computeLeaveDays = function(startDate, endDate, staff, leaveType) {
-  const isAdmin = !!staff && (staff.category === 'Admin Staff' || staff.category === 'Admin');
+  const isAdmin = !!staff && (staff.category === 'Admin Staff' || staff.category === 'Admin' || staff.leaveAsAdmin === true);
   const calendarOnly = CALENDAR_DAY_LEAVE_TYPES.includes(leaveType);
   let holidayDates = [];
   if (isAdmin && !calendarOnly) {
@@ -5878,9 +5881,11 @@ function renderDashboard() {
                   const passwordInput = document.querySelector('#edit-password');
                   const phoneInput = document.querySelector('#edit-phone');
                   const applyProrateInput = document.querySelector('#edit-apply-prorate');
+                  const leaveAsAdminInput = document.querySelector('#edit-leave-as-admin');
 
                   const updates = {};
                   if(applyProrateInput) updates.apply_prorate = applyProrateInput.checked;
+                  if(leaveAsAdminInput) updates.leaveAsAdmin = leaveAsAdminInput.checked;
                   if(statusSelect) updates.inactive = statusSelect.value === 'inactive';
                   if(startInput) updates.startDate = startInput.value;
                   if(branchSelect) updates.branch = branchSelect.value;
@@ -7212,7 +7217,7 @@ function renderView() {
                         flowColor = '#059669';
                         flowIcon = 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z';
                     }
-                } else if (user.category === 'Admin Staff') {
+                } else if (user.category === 'Admin Staff' || user.leaveAsAdmin === true) {
                     const _isBalokHQ = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
                     step1Who = _isBalokHQ ? 'HOD Balok — Klinik Syed Badaruddin Balok (HQ)' : `Doctor PIC — ${user.branch || 'Klinik Anda'}`;
                     step1Note = _isBalokHQ ? 'Staff admin Balok HQ mendapat kelulusan HOD Balok pada peringkat pertama.' : 'Staff admin mendapat kelulusan Doctor PIC klinik masing-masing pada peringkat pertama.';
@@ -7236,7 +7241,7 @@ function renderView() {
                 </div>`;
 
                 // 3-step flow untuk operation staff Balok jika needs_tl aktif
-                const isOpBalokTL = user.category === 'Operation Staff' && isBalokStaff &&
+                const isOpBalokTL = user.category === 'Operation Staff' && !user.leaveAsAdmin && isBalokStaff &&
                     !!(approvalRouting['operation_balok'] || {}).needs_tl;
 
                 if (isOpBalokTL) {
@@ -11014,7 +11019,17 @@ function renderModal() {
                 </div>
              </label>
           </div>
-          
+
+          <div style="display: flex; flex-direction: column; background: rgba(14, 165, 233, 0.06); padding: 1rem; border-radius: 8px; border-left: 4px solid #0ea5e9; margin-top: 1rem;">
+             <label style="display: flex; align-items: flex-start; gap: 0.75rem; cursor: pointer; margin: 0;">
+                <input type="checkbox" id="edit-leave-as-admin" ${staff.leaveAsAdmin === true ? 'checked' : ''} style="margin-top: 0.15rem; width: 1.25rem; height: 1.25rem; accent-color: #0ea5e9;">
+                <div style="display: flex; flex-direction: column;">
+                    <span style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Layan Seperti Staff Admin untuk Cuti (Sabtu &amp; Ahad Cuti)</span>
+                    <span style="font-size: 0.7rem; color: var(--text-muted); line-height: 1.4; margin-top: 0.25rem;">Untuk Operation Staff yang bekerja Isnin–Jumaat sahaja. Jika di-tick: hari Sabtu/Ahad &amp; cuti umum TIDAK dikira dalam permohonan cuti, dan permohonan dihalakan ke HOD Balok (bukan Team Leader/Supervisor). Kategori kekal "Operation Staff" dalam laporan.</span>
+                </div>
+             </label>
+          </div>
+
           <!-- Seksyen AL: Baki Tahun Lepas + Peruntukan Tahun Ini + Jumlah -->
           <div style="border-top: 1px solid rgba(163,177,198,0.25); padding-top: 2rem; margin-top: 1.5rem; margin-bottom: 1.5rem;">
             <div style="font-size: 0.7rem; text-transform: uppercase; color: var(--primary); font-weight: 700; letter-spacing: 1px; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
