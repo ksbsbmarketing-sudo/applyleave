@@ -1071,6 +1071,15 @@ window.canManageRequest = function(user, req) {
         const reqBranchObj = branches.find(b => b.name === req.branch);
         return !reqBranchObj || reqBranchObj.state === 'Pahang';
     }
+    // Pengasingan tugas: tiada sesiapa boleh menilai permohonan cutinya SENDIRI pada
+    // Peringkat 0/1 (Team Leader / HOD / Doctor PIC / Supervisor). Semakan ini perlu
+    // kerana getRoutingP1Approvers membuang pemohon dari senarai calon, tetapi laluan
+    // 'TL APPROVED' + laluan config P1 di bawah hanya semak peranan & cawangan — jadi
+    // pelulus tunggal di cawangannya (cth. satu-satunya Supervisor Balok) boleh
+    // meluluskan cuti sendiri. HR/Admin (Peringkat 2) sudah pulang true di atas dan
+    // sengaja dikecualikan: jika tidak, cuti HR sendiri tiada pelulus akhir.
+    if (req.ic === user.ic) return false;
+
     // Team Leader: hanya urus PENDING staf operasi Balok yang memilih TL ini (jika needs_tl aktif)
     if (user.role === 'team_leader') {
         if (!(approvalRouting['operation_balok'] || {}).needs_tl) return false;
@@ -7116,8 +7125,12 @@ function renderView() {
               const _fIsOpBalok = window.getStaffGroup(user) === 'operation_balok' &&
                   !!(approvalRouting['operation_balok'] || {}).needs_tl;
               if (!_fIsOpBalok) return '';
+              // Buang diri sendiri — seorang Team Leader tidak boleh menjadi pelulus
+              // Peringkat 0 bagi cutinya sendiri (selari dengan getRoutingP1Approvers
+              // dan guard `req.ic === user.ic` dalam canManageRequest).
               const _tlList = staffList.filter(s =>
                   s.role === 'team_leader' && (s.branch || '').includes('Balok') && !s.inactive
+                  && s.ic !== user.ic
               );
               return `
             <div style="margin-bottom:1.5rem;">
