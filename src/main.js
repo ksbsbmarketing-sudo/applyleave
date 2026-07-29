@@ -2214,6 +2214,33 @@ window.computeLeaveDays = function(startDate, endDate, staff, leaveType) {
   return countLeaveDays(startDate, endDate, isAdmin, holidayDates, calendarOnly);
 };
 
+// Auto-pulih tempoh cuti untuk rekod yang MASIH MENUNGGU sahaja.
+// `days` dibekukan pada masa hantar (src/main.js: newRecord.days). Jika tetapan
+// berubah SELEPAS staf hantar — cth. staf ditanda leaveAsAdmin, atau cuti umum
+// ditambah ke Polisi Cuti Umum — rekod PENDING dikira semula & disimpan supaya
+// paparan kelulusan + potongan baki mengikut tetapan terkini.
+// Rekod APPROVED/REJECTED/CANCELLED KEKAL BEKU: getLeaveStats menjumlahkan
+// days rekod APPROVED, jadi mengira semula rekod sejarah akan mengubah baki lalu
+// secara senyap. Rekod muktamad sengaja tidak disentuh (integriti perakaunan).
+const FINAL_LEAVE_STATUSES = ['APPROVED', 'REJECTED', 'CANCELLED'];
+function selfHealPendingLeaveDays() {
+  if (!Array.isArray(staffList) || !staffList.length) return;      // staf belum dimuat
+  if (!Array.isArray(leaveRecords) || !leaveRecords.length) return;
+  leaveRecords.forEach(rec => {
+    if (!rec || FINAL_LEAVE_STATUSES.includes(rec.status)) return; // hanya belum muktamad
+    const staff = staffList.find(s => s.ic === rec.ic);
+    if (!staff) return;
+    let recomputed = window.computeLeaveDays(rec.startDate, rec.endDate, staff, rec.type);
+    if (!(recomputed > 0)) return;                 // jangan timpa dengan 0 / nilai tak sah
+    // Rekod tak simpan flag separuh hari — kesan pecahan .5 tersimpan & kekalkannya.
+    const stored = parseFloat(rec.days || 0);
+    if (Math.abs((stored % 1) - 0.5) < 1e-9) recomputed -= 0.5;
+    if (Math.abs(recomputed - stored) < 1e-9) return;              // sudah betul
+    updateDoc(doc(db, 'leaves', (rec.docId || rec.id).toString()), { days: recomputed })
+      .catch(err => console.warn('selfHealPendingLeaveDays skip', rec.id, err?.code || err));
+  });
+}
+
 // Staff edits their OWN leave's dates/reason. Resets to PENDING (re-approval),
 // after a before→after confirmation of exactly what changed.
 window.staffEditOwnLeave = async function(id) {
@@ -3441,6 +3468,10 @@ async function initData() {
       if (refreshed) user = refreshed;
     }
 
+    // Staf mungkin dimuat SELEPAS rekod cuti — pulih semula tempoh PENDING supaya
+    // perubahan leaveAsAdmin (dsb.) diambil kira walaupun susunan muat berbeza.
+    selfHealPendingLeaveDays();
+
     // Auto-restore session after page refresh (if user was logged in before)
     if (!user) {
       const savedIC  = localStorage.getItem('ksb_logged_in_ic');
@@ -3492,6 +3523,7 @@ async function initData() {
       docId: doc.id
     })).sort((a, b) => b.id - a.id);
     console.log('Leave records updated from Firestore');
+    selfHealPendingLeaveDays();
     render();
   });
 
