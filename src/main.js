@@ -490,7 +490,7 @@ let showProfileSettings = false;
 let selectedLeaveType = 'AL';
 let analyticsFilterMonth = 0; // 0 = All Months, 1-12 = specific month
 let analyticsFilterYear = new Date().getFullYear().toString(); // 'SEMUA' or a year e.g. '2026'; default current year to align with HR Reports
-let analyticsCatFilter = 'SEMUA'; // 'SEMUA', 'Doktor', 'Admin Staff', 'Operation Staff'
+let analyticsCatFilter = 'SEMUA'; // 'SEMUA', 'Doctor', 'Admin Staff', 'Operation Staff' — mesti sama dgn staff.category
 let analyticsBranchFilter = 'SEMUA'; // 'SEMUA' or branch name
 let analyticsRankModal = null; // null, or leave type 'AL'/'MC'/'EL_EMG' for full-list ranking modal
 let branchDashboardMonth = 0; // 0 = all months, 1-12 = specific month for HOD/PIC branch view
@@ -1004,6 +1004,11 @@ window.closeRankModal = function() {
   analyticsRankModal = null;
   render();
 };
+
+// Label paparan untuk analyticsCatFilter (nilainya ikut staff.category yg English).
+function analyticsCatLabel(catFilter) {
+  return catFilter === 'Doctor' ? 'DOKTOR' : catFilter.toUpperCase();
+}
 
 // Shared source of truth for the "Ranking Penggunaan Cuti" cards + full-list modal.
 // Aggregates APPROVED-only records of a given leave type per person (sum days,
@@ -6247,7 +6252,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
           </div>
         </div>
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
-          ${[['SEMUA','Semua'],['Doktor','Doktor'],['Admin Staff','Admin'],['Operation Staff','Operasi']].map(([val, label]) => `
+          ${[['SEMUA','Semua'],['Doctor','Doktor'],['Admin Staff','Admin'],['Operation Staff','Operasi']].map(([val, label]) => `
             <button onclick="window.setAnalyticsCat('${val}')" style="padding:0.35rem 0.85rem;font-size:0.75rem;border-radius:20px;border:1px solid ${analyticsCatFilter === val ? 'var(--primary)' : 'rgba(163,177,198,0.3)'};cursor:pointer;transition:all 0.2s;font-weight:600;background:${analyticsCatFilter === val ? 'var(--primary)' : 'transparent'};color:${analyticsCatFilter === val ? 'white' : 'var(--text-muted)'};">${label}</button>
           `).join('')}
         </div>
@@ -6275,7 +6280,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
               </div>
               <div>
                 <div style="font-size:0.8rem;font-weight:800;color:#fff;letter-spacing:0.3px;">${cat.label}</div>
-                <div style="font-size:0.65rem;color:rgba(255,255,255,0.75);font-weight:600;">TOP 3 ${analyticsCatFilter !== 'SEMUA' ? '· ' + analyticsCatFilter.toUpperCase() : ''}</div>
+                <div style="font-size:0.65rem;color:rgba(255,255,255,0.75);font-weight:600;">TOP 3 ${analyticsCatFilter !== 'SEMUA' ? '· ' + analyticsCatLabel(analyticsCatFilter) : ''}</div>
               </div>
               <div style="margin-left:auto;background:rgba(255,255,255,0.2);border-radius:8px;padding:0.25rem 0.6rem;">
                 <span style="font-size:0.9rem;font-weight:800;color:#fff;">${approvedRecords}</span>
@@ -6359,7 +6364,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
             <div style="padding:1.1rem 1.3rem;background:${meta.grad};box-shadow:0 4px 15px ${meta.glow};display:flex;align-items:center;gap:0.75rem;">
               <div>
                 <div style="font-size:0.95rem;font-weight:800;color:#fff;letter-spacing:0.3px;">${meta.label} — Senarai Penuh</div>
-                <div style="font-size:0.66rem;color:rgba(255,255,255,0.8);font-weight:600;">Cuti diluluskan sahaja${analyticsCatFilter !== 'SEMUA' ? ' · ' + analyticsCatFilter.toUpperCase() : ''} · ${rows.length} staf</div>
+                <div style="font-size:0.66rem;color:rgba(255,255,255,0.8);font-weight:600;">Cuti diluluskan sahaja${analyticsCatFilter !== 'SEMUA' ? ' · ' + analyticsCatLabel(analyticsCatFilter) : ''} · ${rows.length} staf</div>
               </div>
               <button onclick="window.closeRankModal()" style="margin-left:auto;background:rgba(255,255,255,0.2);border:none;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;flex-shrink:0;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
