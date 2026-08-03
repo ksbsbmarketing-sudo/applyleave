@@ -35,7 +35,14 @@ test('invisible doc is hidden from others even if online & fresh', () => {
 });
 
 test('stale doc (older than window) is hidden', () => {
-  assert.strictEqual(isVisibleToOthers({ online: true, lastSeen: NOW - 5 * 60 * 1000 }, NOW), false);
+  assert.strictEqual(isVisibleToOthers({ online: true, lastSeen: NOW - 10 * 60 * 1000 }, NOW), false);
+});
+
+// The heartbeat is 3 minutes, so the window must survive one missed beat —
+// otherwise everyone flickers offline between beats.
+test('one missed heartbeat still counts as online', () => {
+  assert.strictEqual(isVisibleToOthers({ online: true, lastSeen: NOW - 4 * 60 * 1000 }, NOW), true);
+  assert.strictEqual(isVisibleToOthers({ online: true, lastSeen: NOW - 6 * 60 * 1000 }, NOW), true);
 });
 
 test('offline / malformed docs are hidden', () => {

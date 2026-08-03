@@ -25,6 +25,9 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { getAnalytics } from "firebase/analytics";
 import {
   getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   collection,
   onSnapshot,
   doc,
@@ -107,7 +110,25 @@ if (RECAPTCHA_V3_SITE_KEY && !RECAPTCHA_V3_SITE_KEY.startsWith('__')) {
   } catch (e) { console.error('App Check init failed:', e); }
 }
 
-const db = getFirestore(firebaseApp);
+// Cache kekal (IndexedDB), bukan cache dalam-memori lalai. Tanpa ini, setiap
+// page-load membaca semula SETIAP dokumen bagi setiap pendengar dari server —
+// staff (119) + leaves (116) + branches + registration_requests pada setiap
+// refresh, bagi setiap pengguna. Dengan cache kekal, pendengar menyambung dari
+// cakera dan hanya dokumen yang BERUBAH sejak sinkronisasi terakhir dibayar.
+// Ini penting kerana projek berada di pelan Spark (50k bacaan/hari).
+//
+// persistentMultipleTabManager: staf memang membuka app dalam beberapa tab;
+// tanpa ia, hanya satu tab dapat cache kekal dan yang lain gagal senyap.
+let db;
+try {
+  db = initializeFirestore(firebaseApp, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  });
+} catch (e) {
+  // Pelayar tanpa IndexedDB (cth. mod privasi ketat) — jangan halang app.
+  console.warn('Cache kekal Firestore tidak tersedia, guna cache memori:', e);
+  db = getFirestore(firebaseApp);
+}
 const auth = getAuth(firebaseApp);
 const analytics = getAnalytics(firebaseApp);
 const functions = getFunctions(firebaseApp);
@@ -439,6 +460,10 @@ window.setView = function(v) {
   messengerView = 'rooms';
   messengerFileObj = null;
   inboxSelected.clear(); // pilihan checkbox inbox tidak kekal antara navigasi
+  // Presence hanya berjalan semasa Messenger dibuka — di luar itu ia membakar
+  // kuota Spark untuk ciri yang tidak sedang dilihat oleh sesiapa.
+  if (v === 'messenger') window.initPresence();
+  else if (presenceUnsub || presenceHeartbeatInterval) window.stopPresence();
   view = v;
   render();
 };
@@ -606,6 +631,9 @@ let messengerUnreadRooms = new Set(); // tracks which leave id has 2nd locum row
 let onlineUsers = {}; // { [ic]: { name, branch, role, lastSeen } }
 let presenceUnsub = null;
 let presenceHeartbeatInterval = null;
+// Selang denyut presence. Setiap denyut = 1 tulisan + 1 bacaan bagi setiap klien
+// yang bersambung, jadi angka ini terikat terus kepada kuota harian Spark.
+const PRESENCE_HEARTBEAT_MS = 3 * 60 * 1000;
 let msgToasts = []; // [{ id, roomId, roomName, senderName, preview, isDM, createdAt, timer }]
 // Messenger accordion (collapsible sections) — persisted per device.
 let msgSections = loadSectionState(typeof localStorage !== 'undefined' ? localStorage : null);
@@ -3588,7 +3616,8 @@ async function initData() {
           startSessionListener(savedIC, savedSID);
           window.initMessengerRooms();
           window.initInbox();
-          window.initPresence();
+          // initPresence() SENGAJA tidak dipanggil di sini — ia bermula bila
+          // pengguna membuka Messenger (setView). Lihat komen di initPresence.
           window.startNewMessageListener();
           window.requestNotifPermission();
           startReminderScheduler();
@@ -4248,7 +4277,7 @@ function renderLogin() {
     window.logSystemActivity("Logged into system");
     window.initMessengerRooms();
     window.initInbox();
-    window.initPresence();
+    // initPresence() bermula bila Messenger dibuka, bukan pada log masuk.
     window.startNewMessageListener();
     window.requestNotifPermission();
     startReminderScheduler();
@@ -4608,8 +4637,18 @@ function getDMRoomId(ic1, ic2) {
 }
 
 // ── Presence ──────────────────────────────────────────────
+// Presence hidup HANYA semasa Messenger dibuka (lihat setView), bukan sepanjang
+// sesi. Sebabnya kuota: setiap denyut ialah satu tulisan, dan pendengar di bawah
+// menolak setiap tulisan itu kepada SETIAP klien yang bersambung — satu bacaan
+// setiap satu. Pada denyut 30s dahulu, 10 staf yang membuka app sepanjang hari
+// sudah melebihi had bacaan harian Spark, walaupun tiada siapa guna Messenger.
+//
+// Dipanggil semula setiap kali masuk Messenger, jadi ia MESTI idempotent —
+// tanpa membersihkan interval lama, setiap kali masuk akan menambah satu denyut
+// selari.
 window.initPresence = async function() {
   if (!user) return;
+  if (presenceHeartbeatInterval) { clearInterval(presenceHeartbeatInterval); presenceHeartbeatInterval = null; }
   const presRef = doc(db, 'user_presence', user.ic);
   const writeOnline = () => setDoc(presRef, {
     ic: user.ic, name: user.name,
@@ -4625,8 +4664,9 @@ window.initPresence = async function() {
     setDoc(presRef, { online: false, lastSeen: Date.now() }, { merge: true });
   });
 
-  // Heartbeat every 30s
-  presenceHeartbeatInterval = setInterval(writeOnline, 30000);
+  // Denyut setiap 3 minit. ONLINE_WINDOW_MS dalam presenceStatus.js (7 minit)
+  // mesti kekal lebih panjang daripada ini, jika tidak pengguna berkelip offline.
+  presenceHeartbeatInterval = setInterval(writeOnline, PRESENCE_HEARTBEAT_MS);
 
   // Listen for all presence changes
   if (presenceUnsub) { presenceUnsub(); presenceUnsub = null; }

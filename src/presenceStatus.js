@@ -11,7 +11,10 @@ export const PRESENCE_STATUSES = [
 ];
 
 export const DEFAULT_STATUS = 'available';
-const ONLINE_WINDOW_MS = 3 * 60 * 1000; // matches presence heartbeat staleness
+// Heartbeat ialah 3 minit (lihat initPresence). Tetingkap ini MESTI lebih panjang
+// daripada satu denyut, jika tidak semua orang berkelip offline antara denyut —
+// 7 minit bermakna satu denyut tertinggal masih dimaafkan.
+const ONLINE_WINDOW_MS = 7 * 60 * 1000;
 
 export function getStatusMeta(id) {
   return PRESENCE_STATUSES.find(s => s.id === id)
