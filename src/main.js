@@ -2073,6 +2073,10 @@ window._updateAlBalance = () => window._recalcLeaveBalance('al');
 
 let systemAuditLogs = [];
 
+// Berapa banyak entri audit yang dibaca pada setiap page-load. Lihat pendengar
+// audit_logs untuk sebab ia perlu berhad.
+const AUDIT_LOG_LIMIT = 200;
+
 // Masa audit datang dari serverTimestamp(), jadi nilainya boleh jadi Firestore
 // Timestamp (dah disahkan server), null (tulisan sendiri yang belum sampai
 // server — anggap "baru sahaja"), atau nombor epoch (rekod lama sebelum tukar).
@@ -3606,12 +3610,25 @@ async function initData() {
     render();
   });
 
-  // Real-time Audit Logs
-  onSnapshot(collection(db, "audit_logs"), (snapshot) => {
-    systemAuditLogs = snapshot.docs.map(doc => doc.data())
-      .sort((a, b) => auditMillis(b.createdAt) - auditMillis(a.createdAt));
-    render();
-  });
+  // Real-time Audit Logs — 200 rekod terbaru SAHAJA.
+  //
+  // Dulu ini onSnapshot(collection(db,"audit_logs")) tanpa had: seluruh koleksi
+  // dibaca setiap kali app dibuka, oleh setiap pengguna. Koleksi itu membesar
+  // dengan SETIAP log masuk, kelulusan dan kemas kini profil, jadi kos setiap
+  // page-load meningkat tanpa henti — itulah yang membakar kuota harian Firestore
+  // (pelan Spark) sampai habis dua kali pada 2026-08-03, sehingga tiada tulisan
+  // pun boleh masuk. Paparan `login_audit` hanya jadual rata tanpa carian atau
+  // pagination, jadi 200 terbaru mencukupi.
+  //
+  // orderBy medan tunggal + limit tidak perlukan indeks komposit.
+  onSnapshot(
+    query(collection(db, "audit_logs"), orderBy("createdAt", "desc"), limit(AUDIT_LOG_LIMIT)),
+    (snapshot) => {
+      systemAuditLogs = snapshot.docs.map(doc => doc.data())
+        .sort((a, b) => auditMillis(b.createdAt) - auditMillis(a.createdAt));
+      render();
+    }
+  );
 
   // Real-time Leave Records
   onSnapshot(collection(db, "leaves"), (snapshot) => {
@@ -8514,6 +8531,7 @@ function renderView() {
           <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem; margin-top: 1rem;">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
               <h2 style="font-size: 1.25rem; font-weight: 600;">System Access & Activity Log</h2>
+              <span style="font-size:0.68rem;color:var(--text-muted);font-weight:600;">${systemAuditLogs.length} rekod terbaru (had ${AUDIT_LOG_LIMIT})</span>
           </div>
 
           <section class="glass-card fade-in" style="padding: 0; overflow: hidden;">
