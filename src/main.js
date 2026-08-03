@@ -6,6 +6,7 @@ import { loadSectionState, toggleSection, saveSectionState, isOpen as isMsgSecti
 import { applyEmoticons } from './emoticons.js';
 import { PRESENCE_STATUSES, DEFAULT_STATUS, getStatusMeta, resolveStatus, isVisibleToOthers, normalizeMood } from './presenceStatus.js';
 import { formatPersonName } from './nameFormat.js';
+import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -1464,8 +1465,8 @@ window.formatPersonName = formatPersonName;
 
 window.saveSelfProfile = async function(event) {
     if (event) event.preventDefault();
-    const rawName = document.getElementById('self-name')?.value?.trim() || '';
-    const phone   = document.getElementById('self-phone')?.value?.trim() || '';
+    const rawName  = document.getElementById('self-name')?.value?.trim() || '';
+    const rawPhone = document.getElementById('self-phone')?.value?.trim() || '';
     const email   = document.getElementById('self-email')?.value?.trim() || '';
     const address = document.getElementById('self-address')?.value?.trim() || '';
 
@@ -1490,13 +1491,12 @@ window.saveSelfProfile = async function(event) {
         if (!confirm(`Tukar nama daripada:\n\n"${user.name}"\n\nkepada:\n\n"${name}"\n\nNama ini akan digunakan di skrin log masuk dan pada permohonan cuti anda. Teruskan?`)) return;
     }
 
-    const cleanPhone = phone.replace(/\D/g, '');
-    if (cleanPhone && !cleanPhone.startsWith('6')) {
-        alert('⚠️ Format nombor tidak sah.\n\nNombor WhatsApp MESTI bermula dengan 6.\n\nContoh: 60171234678\n(bukan 0171234678)');
-        return;
-    }
-    if (cleanPhone && (cleanPhone.length < 10 || cleanPhone.length > 12)) {
-        alert('⚠️ Nombor telefon tidak sah. Contoh format: 60171234678');
+    // "013-652 9531" dibetulkan kepada "60136529531" — bukan ditolak. Rekod lama
+    // tersimpan dengan awalan 0, dan menolaknya bermakna staf berkenaan langsung
+    // tidak boleh menyimpan profil (nama sekalipun) sehingga telefon dibetulkan.
+    const phone = normalizePhone(rawPhone);
+    if (!isValidPhone(phone)) {
+        alert('⚠️ Nombor telefon tidak sah.\n\nContoh: 0171234678 atau 60171234678');
         return;
     }
 
@@ -1587,9 +1587,7 @@ window.submitRegister = async function(event) {
   const ic       = form.querySelector('#reg-ic').value.trim();
   const branch   = form.querySelector('#reg-branch').value;
   const category = form.querySelector('#reg-category').value;
-  let phone = form.querySelector('#reg-phone').value.trim().replace(/\D/g, '');
-  if (phone.startsWith('0')) phone = '6' + phone;
-  else if (!phone.startsWith('6')) phone = '60' + phone;
+  const phone = normalizePhone(form.querySelector('#reg-phone').value);
 
   if (!name || !ic || !branch || !category || !phone) {
     alert('Sila lengkapkan semua maklumat yang diperlukan.');
@@ -1676,11 +1674,16 @@ window.submitAddStaff = async function(event) {
   const branch   = form.querySelector('#as-branch').value;
   const category = form.querySelector('#as-category').value;
   const role     = form.querySelector('#as-role').value;
-  const phone    = form.querySelector('#as-phone').value.trim();
+  // Borang ini menyimpan nombor mentah dulu — itulah punca rekod 01XXXXXXXX.
+  const phone    = normalizePhone(form.querySelector('#as-phone').value);
   const initialPassword = form.querySelector('#as-password')?.value || ic;
 
   if (!name || !ic || !branch) {
     alert('Sila lengkapkan Nama, No. IC, dan Cawangan.');
+    return;
+  }
+  if (!isValidPhone(phone)) {
+    alert('⚠️ Nombor telefon tidak sah.\n\nContoh: 0171234678 atau 60171234678');
     return;
   }
   if (staffList.find(s => s.ic === ic)) {
@@ -6021,7 +6024,7 @@ function renderDashboard() {
                   if(branchSelect) updates.branch = branchSelect.value;
                   if(categorySelect) updates.category = categorySelect.value;
                   if(roleSelect) updates.role = roleSelect.value;
-                  if(phoneInput) updates.phone = phoneInput.value;
+                  if(phoneInput) updates.phone = normalizePhone(phoneInput.value);
 
                   // Save Entitlements
                   const leaveTypes = ['AL', 'MC', 'HL', 'ML', 'PL', 'EL_EMG', 'EL', 'UP', 'CF', 'CME'];
@@ -11648,14 +11651,10 @@ window.dismissPhoneReminder = function() { showPhoneReminderModal = false; rende
 window.savePhoneFromReminder = async function() {
   const input = document.getElementById('reminder-phone-input');
   if (!input) return;
-  const clean = input.value.trim().replace(/\D/g, '');
+  const clean = normalizePhone(input.value);
   if (!clean) { alert('Sila masukkan nombor telefon.'); return; }
-  if (!clean.startsWith('6')) {
-    alert('⚠️ Nombor MESTI bermula dengan 6.\n\nContoh: 60171234678\n(bukan 0171234678)');
-    return;
-  }
-  if (clean.length < 10 || clean.length > 12) {
-    alert('⚠️ Nombor telefon tidak sah.\n\nContoh: 60171234678');
+  if (!isValidPhone(clean)) {
+    alert('⚠️ Nombor telefon tidak sah.\n\nContoh: 0171234678 atau 60171234678');
     return;
   }
   try {
