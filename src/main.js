@@ -1082,6 +1082,22 @@ window.getUserStateScope = function(u) {
     return (branchObj && branchObj.state) ? branchObj.state : null;
 };
 
+// Rekod cuti yang berada dalam skop pengguna. HR hanya nampak zonnya sendiri;
+// admin/super_admin ('all') nampak semua. Digunakan oleh papan pemuka Analisa —
+// skrin laporan menapis sendiri melalui getUserStateScope + reportBranch/Daerah.
+window.recordsInUserScope = function(records) {
+    const scope = window.getUserStateScope(user);
+    if (!scope || scope === 'all') return records;
+    return records.filter(r => window.scopeStateOfBranch(r.branch) === scope);
+};
+
+// Cawangan yang berada dalam skop pengguna — untuk dropdown penapis.
+window.branchesInUserScope = function() {
+    const scope = window.getUserStateScope(user);
+    if (!scope || scope === 'all') return branches;
+    return branches.filter(b => window.scopeStateOfBranch(b.name) === scope);
+};
+
 // Penerima notifikasi/kelulusan HR bagi satu cawangan — HR zon lain dikecualikan.
 // Admin & Super Admin sentiasa termasuk (mereka nampak kedua-dua zon).
 window.hrRecipientsForBranch = function(branchName) {
@@ -6131,13 +6147,25 @@ function renderDashboard() {
 
 function renderAnalyticsDashboard(lockedBranch = null) {
   // lockedBranch: when set (branch_analisa mode), filters are locked to that branch
-  const effectiveBranchFilter = lockedBranch || analyticsBranchFilter;
+
+  // Skop zon DAHULU — HR Terengganu tidak boleh nampak rekod Pahang dan
+  // sebaliknya. Semua kiraan di bawah bermula daripada `scopedRecords`, bukan
+  // `leaveRecords`, supaya tiada panel terlepas. Admin/Super Admin = semua.
+  const scopedRecords = window.recordsInUserScope(leaveRecords);
+  const scopeBranches = window.branchesInUserScope();
+  const userScope = window.getUserStateScope(user);
+  const scopeLimited = userScope && userScope !== 'all';
+  // Jika penapis cawangan tersimpan berada di luar zon (cth. tukar peranan),
+  // jangan hormatinya — kembali kepada semua cawangan dalam zon.
+  const branchInScope = analyticsBranchFilter === 'SEMUA'
+    || scopeBranches.some(b => b.name === analyticsBranchFilter);
+  const effectiveBranchFilter = lockedBranch || (branchInScope ? analyticsBranchFilter : 'SEMUA');
 
   // Years present in the data (for the year dropdown); always include the current year.
-  const analyticsYears = reportYearOptions(leaveRecords);
+  const analyticsYears = reportYearOptions(scopedRecords);
 
   // Apply year + month + branch filters
-  const filteredRecords = leaveRecords.filter(r => {
+  const filteredRecords = scopedRecords.filter(r => {
     if (analyticsFilterYear !== 'SEMUA') {
       if (!r.id) return false;
       if (new Date(r.id).getFullYear().toString() !== analyticsFilterYear) return false;
@@ -6163,7 +6191,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
   const sortedBranches = Object.entries(branchesCount).sort((a,b) => b[1] - a[1]);
 
   const monthsList = ['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ogo','Sep','Okt','Nov','Dis'];
-  const monthCounts = monthsList.map((m, i) => leaveRecords.filter(r => {
+  const monthCounts = monthsList.map((m, i) => scopedRecords.filter(r => {
       if (!r.id) return false;
       if (lockedBranch && r.branch !== lockedBranch) return false;
       if (analyticsFilterYear !== 'SEMUA' && new Date(r.id).getFullYear().toString() !== analyticsFilterYear) return false;
@@ -6195,8 +6223,8 @@ function renderAnalyticsDashboard(lockedBranch = null) {
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
           </div>
           <div>
-            <h1 style="font-size:1.3rem;font-weight:800;margin:0;letter-spacing:-0.3px;">${lockedBranch ? `Analisa Cuti Cawangan` : 'Analisa Cuti — Admin View'}</h1>
-            <p style="color:var(--text-muted);font-size:0.8rem;margin:0.15rem 0 0;">${lockedBranch ? `${lockedBranch} — rekod cuti kakitangan cawangan` : 'Gambaran keseluruhan rekod cuti seluruh kakitangan'}</p>
+            <h1 style="font-size:1.3rem;font-weight:800;margin:0;letter-spacing:-0.3px;">${lockedBranch ? `Analisa Cuti Cawangan` : scopeLimited ? `Analisa Cuti — Zon ${userScope}` : 'Analisa Cuti — Admin View'}</h1>
+            <p style="color:var(--text-muted);font-size:0.8rem;margin:0.15rem 0 0;">${lockedBranch ? `${lockedBranch} — rekod cuti kakitangan cawangan` : scopeLimited ? `${scopeBranches.length} cawangan dalam seliaan anda — rekod zon lain tidak dipaparkan` : 'Gambaran keseluruhan rekod cuti seluruh kakitangan'}</p>
           </div>
         </div>
         <div style="display:flex;gap:0.65rem;align-items:center;flex-wrap:wrap;">
@@ -6206,8 +6234,8 @@ function renderAnalyticsDashboard(lockedBranch = null) {
                 ${lockedBranch}
               </div>`
             : `<select class="neu-inset" style="padding:0.45rem 0.9rem;font-size:0.85rem;width:auto;color-scheme:light;font-weight:600;" onchange="window.setAnalyticsBranch(this.value)">
-                <option value="SEMUA" ${analyticsBranchFilter === 'SEMUA' ? 'selected' : ''}>Semua Cawangan</option>
-                ${branches.map(b => `<option value="${b.name}" ${analyticsBranchFilter === b.name ? 'selected' : ''}>${b.name}</option>`).join('')}
+                <option value="SEMUA" ${effectiveBranchFilter === 'SEMUA' ? 'selected' : ''}>${scopeLimited ? 'Semua Cawangan (zon anda)' : 'Semua Cawangan'}</option>
+                ${scopeBranches.map(b => `<option value="${b.name}" ${effectiveBranchFilter === b.name ? 'selected' : ''}>${b.name}</option>`).join('')}
               </select>`
           }
           <select class="neu-inset" style="padding:0.45rem 0.9rem;font-size:0.85rem;width:auto;color-scheme:light;font-weight:600;" onchange="window.setAnalyticsYear(this.value)">
