@@ -10,10 +10,19 @@ service cloud.firestore {
     function canApprove() { return signedIn() && request.auth.token.canApprove == true; }
     function manageStaff() { return signedIn() && request.auth.token.manageStaff == true; }
 
-    // Pre-login picker — readable by anyone (incl. anonymous bootstrap). Written only by the Cloud Function (Admin SDK bypasses rules).
+    // Pre-login picker — readable by anyone (incl. anonymous bootstrap). Created and
+    // removed only via the Admin SDK (provision-auth.js); staff may rename themselves.
     match /directory/{id} {
       allow read: if request.auth != null;
-      allow write: if false;
+      // The login-screen name list. Staff may sync ONLY their own `name` here,
+      // so a self-service rename doesn't leave a stale name at login. Everything
+      // else (branch, inactive, creating/removing entries) stays Admin-SDK only.
+      allow update: if signedIn() && myIC() == id
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 3
+        && request.resource.data.name.size() <= 80;
+      allow create, delete: if false;
     }
 
     // Account signup is created by not-yet-staff (anonymous allowed); managed by HR/Admin.
@@ -25,10 +34,17 @@ service cloud.firestore {
     match /staff/{ic} {
       allow read: if signedIn();
       allow create, delete: if manageStaff();
+      // Staff may edit their OWN contact details and name. `name` is here so staff
+      // can fix the casing of their own name (records were a mix of CAPS and
+      // lowercase); the app title-cases it on save. Role, branch, category,
+      // entitlements and inactive stay HR-only.
       allow update: if manageStaff()
         || ( myIC() == ic
              && request.resource.data.diff(resource.data).affectedKeys()
-                  .hasOnly(['phone', 'email', 'address', 'photoUrl']) );
+                  .hasOnly(['name', 'phone', 'email', 'address', 'photoUrl'])
+             && request.resource.data.name is string
+             && request.resource.data.name.size() >= 3
+             && request.resource.data.name.size() <= 80 );
     }
 
     match /leaves/{id} {

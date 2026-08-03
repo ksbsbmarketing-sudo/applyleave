@@ -755,7 +755,7 @@ const HELP_FAQ = [
     a:'Pilih nama anda dari senarai, kemudian tekan <strong>"Lupa Kata Laluan?"</strong> → satu <strong>kod OTP</strong> akan dihantar ke <strong>WhatsApp</strong> anda. Masukkan kod itu dan tetapkan kata laluan baharu terus di skrin. Pastikan nombor telefon anda telah didaftarkan oleh HR/Admin.' },
   { id:'update-phone', cat:'Akaun', keywords:['tukar telefon','profil','kemaskini','nombor telefon','tukar nombor'],
     q:'Tukar nombor telefon / kemas kini profil',
-    a:'Nombor telefon & maklumat profil dikemas kini oleh <strong>HR/Admin</strong>. Sila hubungi mereka untuk sebarang perubahan.' },
+    a:'Buka <strong>Tetapan</strong> → anda boleh kemas kini sendiri <strong>Nama Penuh</strong>, alamat, nombor telefon, e-mel dan gambar profil. Huruf besar/kecil nama diseragamkan automatik. Cawangan, jawatan dan kelayakan cuti hanya boleh diubah oleh <strong>HR/Admin</strong>.' },
   { id:'balance-check', cat:'Akaun', keywords:['baki','balance','berapa baki','baki cuti','baki saya'],
     q:'Berapa baki cuti saya?',
     a: function(u) {
@@ -1441,8 +1441,29 @@ window.adminSetPassword = async function(ic, newPassword) {
   }
 };
 
+// Seragamkan huruf besar/kecil nama: "MOHD ALI BIN ABU" / "mohd ali bin abu"
+// → "Mohd Ali Bin Abu". Rekod sedia ada bercampur CAPS & huruf kecil, jadi setiap
+// nama yang disimpan melalui borang staf/HR dilalukan di sini.
+//   • a/p, a/l, s/o, d/o kekal huruf besar (A/P) — ia singkatan, bukan perkataan.
+//   • Sempang, koma-atas dan @ dikendalikan: "abd-rahman" → "Abd-Rahman",
+//     "d'cruz" → "D'Cruz", "ali @ bakar" → "Ali @ Bakar".
+//   • Token dengan digit dibiar apa adanya (cth. gelaran/nombor).
+window.formatPersonName = function(raw) {
+  const s = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  const UPPER = ['a/p', 'a/l', 's/o', 'd/o'];
+  return s.split(' ').map(word => {
+    const lower = word.toLowerCase();
+    if (UPPER.includes(lower)) return lower.toUpperCase();
+    if (word === '@' || /\d/.test(word)) return word;
+    // Kapitalkan selepas setiap sempang / koma-atas juga.
+    return lower.replace(/(^|[-'])([a-zà-ÿ])/g, (m, sep, ch) => sep + ch.toUpperCase());
+  }).join(' ');
+};
+
 window.saveSelfProfile = async function(event) {
     if (event) event.preventDefault();
+    const rawName = document.getElementById('self-name')?.value?.trim() || '';
     const phone   = document.getElementById('self-phone')?.value?.trim() || '';
     const email   = document.getElementById('self-email')?.value?.trim() || '';
     const address = document.getElementById('self-address')?.value?.trim() || '';
@@ -1450,6 +1471,22 @@ window.saveSelfProfile = async function(event) {
     if (!user || !user.ic) {
         alert('Ralat: Sesi tidak sah. Sila log masuk semula.');
         return;
+    }
+
+    const name = window.formatPersonName(rawName);
+    if (name.length < 3) {
+        alert('⚠️ Nama terlalu pendek. Sila masukkan nama penuh anda.');
+        return;
+    }
+    if (name.length > 80) {
+        alert('⚠️ Nama terlalu panjang (maksimum 80 aksara).');
+        return;
+    }
+    // Nama ialah identiti rasmi pada rekod cuti — sahkan perubahan sebenar,
+    // bukan sekadar pembetulan huruf besar/kecil.
+    const nameChanged = name !== (user.name || '');
+    if (nameChanged && name.toLowerCase() !== String(user.name || '').toLowerCase()) {
+        if (!confirm(`Tukar nama daripada:\n\n"${user.name}"\n\nkepada:\n\n"${name}"\n\nNama ini akan digunakan di skrin log masuk dan pada permohonan cuti anda. Teruskan?`)) return;
     }
 
     const cleanPhone = phone.replace(/\D/g, '');
@@ -1462,18 +1499,33 @@ window.saveSelfProfile = async function(event) {
         return;
     }
 
+    const previousName = user.name || '';
     const s = staffList.find(i => i.ic === user.ic);
     if (s) {
+        s.name    = name;
         s.phone   = phone;
         s.email   = email;
         s.address = address;
+        user.name    = name;
         user.phone   = phone;
         user.email   = email;
         user.address = address;
     }
 
     try {
-        await updateDoc(doc(db, "staff", user.ic), { phone, email, address });
+        await updateDoc(doc(db, "staff", user.ic), { name, phone, email, address });
+        // Senarai log masuk dibaca dari `directory`, bukan `staff` — tanpa ini nama
+        // lama kekal di skrin log masuk. Rules benarkan staf tulis medan `name`
+        // pada dokumen directory sendiri sahaja.
+        if (nameChanged) {
+            try {
+                await updateDoc(doc(db, "directory", user.ic), { name });
+            } catch (dirErr) {
+                console.error("Error syncing directory name:", dirErr);
+                alert('⚠️ Nama disimpan pada profil, tetapi gagal dikemas kini pada senarai log masuk.\nSila maklumkan HR/IT — nama lama mungkin masih dipaparkan semasa log masuk.');
+            }
+            window.logSystemActivity(`Staff renamed self: "${previousName}" → "${name}" (${user.ic})`);
+        }
     } catch (err) {
         console.error("Error saving profile:", err);
         alert('Ralat menyimpan profil ke pangkalan data.');
@@ -1583,7 +1635,7 @@ window.approveRegistration = async function(docId) {
   }
   try {
     const newStaff = {
-      name: req.name, ic: req.ic, branch: req.branch, category: req.category,
+      name: window.formatPersonName(req.name), ic: req.ic, branch: req.branch, category: req.category,
       role: 'staff', phone: req.phone, inactive: false,
       startDate: new Date().toISOString().split('T')[0]
     };
@@ -1617,7 +1669,8 @@ window.rejectRegistration = async function(docId) {
 window.submitAddStaff = async function(event) {
   event.preventDefault();
   const form = event.target;
-  const name     = form.querySelector('#as-name').value.trim().toUpperCase();
+  // Dulu .toUpperCase() — itulah punca nama bercampur CAPS/huruf kecil dalam sistem.
+  const name     = window.formatPersonName(form.querySelector('#as-name').value);
   const ic       = form.querySelector('#as-ic').value.trim();
   const branch   = form.querySelector('#as-branch').value;
   const category = form.querySelector('#as-category').value;
@@ -11342,6 +11395,12 @@ function renderSelfProfileModal() {
                </div>
                <input type="file" id="settings-avatar-upload" accept="image/*" style="display:none;" onchange="window.uploadProfilePhoto(this)">
                <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.5rem;">Tekan gambar untuk muat naik (maks 5MB)</div>
+            </div>
+
+            <div style="margin-bottom: 1.5rem;">
+               <label style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 0.5rem;">Nama Penuh</label>
+               <input id="self-name" type="text" value="${(user.name || '').replace(/"/g,'&quot;')}" placeholder="Nama penuh anda..." required style="width: 100%; padding: 1rem; border-radius: 12px; background: rgba(0,0,0,0.03); border: 1px inset rgba(255,255,255,0.5); outline: none; box-shadow: inset 2px 2px 5px rgba(0,0,0,0.05), inset -2px -2px 5px white; color: #374151; box-sizing: border-box;">
+               <div style="font-size:0.7rem; color:#9ca3af; margin-top:0.4rem;">Huruf besar/kecil akan diseragamkan automatik semasa simpan (cth: <em>ahmad bin ali</em> → <em>Ahmad Bin Ali</em>). Nama ini digunakan di skrin log masuk dan pada permohonan cuti baharu.</div>
             </div>
 
             <div style="margin-bottom: 1.5rem;">
