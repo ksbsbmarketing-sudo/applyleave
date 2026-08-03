@@ -80,8 +80,12 @@ test("unknown / other Pahang staff → pahang_lain", () => {
 });
 
 // ── shouldSkipP1 ─────────────────────────────────────────────────────────────
-test("hod_balok skips P1; others do not", () => {
+test("hod_balok and supervisor skip P1; others do not", () => {
   assert.equal(shouldSkipP1({ role: "hod_balok" }), true);
+  assert.equal(shouldSkipP1({ role: "supervisor" }), true);
+  // Peringkat-1 approvers that are NOT exempt.
+  assert.equal(shouldSkipP1({ role: "doctor_pic" }), false);
+  assert.equal(shouldSkipP1({ role: "team_leader" }), false);
   assert.equal(shouldSkipP1({ role: "nurse" }), false);
   assert.equal(shouldSkipP1(null), false);
 });
@@ -109,7 +113,7 @@ test("admin_balok applicant → HOD Balok", () => {
 });
 
 test("Operation Staff at Balok with leaveAsAdmin → HOD Balok (P1 approver)", () => {
-  const applicant = { ic: "SUP1", branch: BALOK_HQ, category: "Operation Staff", role: "supervisor", leaveAsAdmin: true };
+  const applicant = { ic: "A5", branch: BALOK_HQ, category: "Operation Staff", role: "nurse", leaveAsAdmin: true };
   const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
   assert.deepEqual(out.map((s) => s.ic), ["HOD1"]);
 });
@@ -144,8 +148,26 @@ test("hod_balok applicant → no P1 approvers (skips P1)", () => {
   assert.deepEqual(out, []);
 });
 
-test("applicant never routes to themselves", () => {
+test("supervisor applicant → no P1 approvers (straight to HR)", () => {
   const applicant = { ic: "SUP1", branch: BALOK_HQ, category: "Operation Staff", role: "supervisor" };
   const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
-  assert.ok(!out.some((s) => s.ic === "SUP1"));
+  assert.deepEqual(out, []);
+});
+
+test("supervisor with leaveAsAdmin still skips P1 (does not go to HOD Balok)", () => {
+  const applicant = { ic: "SUP1", branch: BALOK_HQ, category: "Operation Staff", role: "supervisor", leaveAsAdmin: true };
+  const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
+  assert.deepEqual(out, []);
+});
+
+test("team_leader applicant still gets P1 approvers (not exempt)", () => {
+  const applicant = { ic: "TL1", branch: BALOK_HQ, category: "Operation Staff", role: "team_leader" };
+  const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
+  assert.deepEqual(out.map((s) => s.ic), ["SUP1"]);
+});
+
+test("applicant never routes to themselves", () => {
+  const applicant = { ic: "PIC1", branch: "Klinik Syed Badaruddin Kuantan", category: "Admin Staff", role: "doctor_pic" };
+  const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
+  assert.ok(!out.some((s) => s.ic === "PIC1"));
 });

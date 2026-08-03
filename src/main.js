@@ -1702,11 +1702,16 @@ window.staffNeedsP2 = function(s) {
 // (HOD / Penyelia). Sumber tunggal kebenaran untuk SEMUA bahagian (borang, padanan
 // pelulus, senarai pending, kelulusan HR, paparan config):
 //   (a) HOD Balok memohon cuti SENDIRI — semua jenis cuti (tak perlu HOD lain lulus).
+//   (b) Supervisor memohon cuti SENDIRI — terus ke HR (2026-08-03). Supervisor &
+//       HOD Balok ialah pelulus Peringkat 1; mereka tidak perlu memohon sesama sendiri.
+// Doctor PIC TIDAK termasuk — mereka kekal naik ke Supervisor Balok. Team Leader juga
+// tidak termasuk — cuti TL sendiri kekal ikut laluan TL → Supervisor → HR.
 // (Kakitangan Admin Balok kini ikut laluan asal HOD Balok → HR/Admin untuk SEMUA
 //  jenis cuti — pengecualian terus-ke-HR untuk MC/EL/ML/ML_PL telah ditarik balik.)
 window.shouldSkipP1 = function(applicant, leaveType) {
   if (!applicant) return false;
   if (applicant.role === 'hod_balok') return true;                                  // (a)
+  if (applicant.role === 'supervisor') return true;                                 // (b)
   return false;
 };
 
@@ -7343,7 +7348,7 @@ function renderView() {
                             <div>
                                 <div style="font-size:0.82rem;font-weight:700;color:var(--text);">Kelulusan Akhir HR/Admin</div>
                                 <div style="font-size:0.78rem;color:#059669;font-weight:600;margin-top:0.1rem;">HR / Admin — KSB HQ</div>
-                                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.1rem;">Permohonan HOD Balok dihantar terus ke HR — tanpa kelulusan HOD lain.</div>
+                                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.1rem;">Sebagai ${user.role === 'supervisor' ? 'Supervisor' : 'HOD Balok'}, permohonan anda dihantar terus ke HR — tanpa sokongan Peringkat 1.</div>
                             </div>
                         </div>
                     </div>
@@ -7501,7 +7506,10 @@ function renderView() {
                 }
                 const isOperationBalok = user.category === 'Operation Staff' && isBalokStaff;
                 let steps;
-                if (isOperationBalok) {
+                if (window.shouldSkipP1(user)) {
+                  // Supervisor / HOD Balok — terus ke HR, tiada Peringkat 1.
+                  steps = [{ n:1, label:'Kelulusan Akhir (terus ke HR)', who: 'HR / Admin — KSB HQ', color: '#10b981' }];
+                } else if (isOperationBalok) {
                   steps = [
                     { n:1, label:'Sokongan Peringkat 0', who: 'Team Leader — Balok', color: '#f43f5e' },
                     { n:2, label:'Nilai Peringkat 1', who: 'Supervisor — Balok', color: '#f59e0b' },

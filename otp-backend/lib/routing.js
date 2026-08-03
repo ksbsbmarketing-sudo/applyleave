@@ -51,9 +51,12 @@ export function getStaffGroup(s, branches) {
 }
 
 // Whether Peringkat 1 (HOD/Supervisor/PIC) is skipped entirely. Mirrors shouldSkipP1.
+// Peringkat-1 approvers do not approve each other: HOD Balok and Supervisor go
+// straight to HR for their own leave. Doctor PIC and Team Leader are NOT included.
 export function shouldSkipP1(applicant) {
   if (!applicant) return false;
   if (applicant.role === "hod_balok") return true;
+  if (applicant.role === "supervisor") return true;
   return false;
 }
 

@@ -73,7 +73,8 @@ function getStaffGroup(s) {
   return "pahang_lain";
 }
 
-const shouldSkipP1 = (s) => s.role === "hod_balok";
+// Peringkat-1 approvers don't approve each other — HOD Balok & Supervisor go straight to HR.
+const shouldSkipP1 = (s) => s.role === "hod_balok" || s.role === "supervisor";
 
 function getRoutingP1Approvers(s) {
   if (shouldSkipP1(s)) return [];
@@ -137,7 +138,7 @@ const ROUTES = [
     sub: "Laluan pemandu",
     pick: (s) => getStaffGroup(s) === "pemandu_balok" },
   // ── Balok exceptions ──
-  { zone: "balok", group: "admin_balok", label: "HOD Balok (cuti sendiri)", exception: true,
+  { zone: "balok", group: "admin_balok", label: "HOD Balok &amp; Supervisor (cuti sendiri)", exception: true,
     sub: "Peringkat 1 DILANGKAU — terus ke HR", skipP1: true,
     pick: (s) => shouldSkipP1(s) },
   { zone: "balok", group: "admin_balok", label: "Operation Staff bertanda <i>leaveAsAdmin</i>", exception: true,
