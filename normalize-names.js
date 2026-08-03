@@ -1,8 +1,8 @@
-// normalize-names.js — one-off cleanup: title-case every stored person name.
+// normalize-names.js — one-off cleanup: put every stored person name in ALL CAPS.
 //
-// Staff records were a mix of ALL CAPS and lowercase (the old "Tambah Staff" form
-// forced .toUpperCase()). This rewrites them to the same casing the app now applies
-// on save, across all three places a name is stored:
+// Staff records were a mix of ALL CAPS and lowercase. This rewrites them to the
+// same casing the app now applies on save, across all three places a name is
+// stored:
 //   staff/{ic}.name      — the source of truth
 //   directory/{ic}.name  — the login-screen picker
 //   leaves/*.name        — denormalised onto every leave record at submit time
@@ -12,24 +12,13 @@
 //
 // Uses ADC, same as pull_from_prod.js.
 import admin from "firebase-admin";
+// Fungsi yang SAMA seperti aplikasi — bukan salinan, supaya tak boleh terpesong.
+import { formatPersonName } from "./src/nameFormat.js";
 
 admin.initializeApp({ projectId: "apply-leave-89ebb" });
 const db = admin.firestore();
 
 const APPLY = process.argv.includes("--apply");
-
-// Keep in sync with window.formatPersonName in src/main.js.
-const UPPER = ["a/p", "a/l", "s/o", "d/o"];
-function formatPersonName(raw) {
-  const s = String(raw || "").replace(/\s+/g, " ").trim();
-  if (!s) return "";
-  return s.split(" ").map((word) => {
-    const lower = word.toLowerCase();
-    if (UPPER.includes(lower)) return lower.toUpperCase();
-    if (word === "@" || /\d/.test(word)) return word;
-    return lower.replace(/(^|[-'])([a-zà-ÿ])/g, (m, sep, ch) => sep + ch.toUpperCase());
-  }).join(" ");
-}
 
 async function run() {
   console.log(APPLY ? "MOD: APPLY — akan menulis ke Firestore\n" : "MOD: DRY RUN — tiada tulisan (guna --apply untuk laksana)\n");
