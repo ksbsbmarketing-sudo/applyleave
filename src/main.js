@@ -1061,20 +1061,45 @@ window.getUserReportBranch = function(u) {
     return null;
 };
 
+// Negeri yang menentukan SKOP HR bagi sesebuah cawangan. Sama seperti state
+// cawangan, KECUALI cawangan dalam ROUTES_AS_PAHANG (Utama) — fizikalnya di
+// Terengganu tetapi diuruskan oleh Balok HQ, jadi ia milik zon Pahang.
+window.scopeStateOfBranch = function(branchName) {
+    if (ROUTES_AS_PAHANG.includes(branchName)) return 'Pahang';
+    const b = branches.find(x => x.name === branchName);
+    return (b && b.state) ? b.state : null;
+};
+
+// Skop HR per-staf. `hrState` disimpan pada rekod staf HR:
+//   Norhazlinah → 'Pahang' (Balok, cawangan Pahang & Utama)
+//   Zahirah     → 'Terengganu' (Kerteh, Paka, KR X-Ray Dungun)
+// HR tanpa hrState kekal 'Pahang' (tingkah laku asal sebelum 2026-08-03).
 window.getUserStateScope = function(u) {
     if (!u) return null;
     if (['super_admin', 'admin'].includes(u.role)) return 'all';
-    if (u.role === 'hr') return 'Pahang'; // HR kawalan Kuantan/Pahang sahaja
+    if (u.role === 'hr') return u.hrState || 'Pahang';
     const branchObj = branches.find(b => b.name === u.branch);
     return (branchObj && branchObj.state) ? branchObj.state : null;
+};
+
+// Penerima notifikasi/kelulusan HR bagi satu cawangan — HR zon lain dikecualikan.
+// Admin & Super Admin sentiasa termasuk (mereka nampak kedua-dua zon).
+window.hrRecipientsForBranch = function(branchName) {
+    const zone = window.scopeStateOfBranch(branchName);
+    return staffList.filter(s => {
+        if (!['admin', 'hr', 'super_admin'].includes(s.role) || s.inactive) return false;
+        if (s.role !== 'hr') return true;
+        return (s.hrState || 'Pahang') === zone;
+    });
 };
 
 window.canManageRequest = function(user, req) {
     if (!user || !req) return false;
     if (['super_admin', 'admin'].includes(user.role)) return true;
     if (user.role === 'hr') {
-        const reqBranchObj = branches.find(b => b.name === req.branch);
-        return !reqBranchObj || reqBranchObj.state === 'Pahang';
+        // HR hanya urus zon sendiri — Pahang & Terengganu berasingan sepenuhnya.
+        const zone = window.scopeStateOfBranch(req.branch);
+        return !zone || zone === (user.hrState || 'Pahang');
     }
     // Pengasingan tugas: tiada sesiapa boleh menilai permohonan cutinya SENDIRI pada
     // Peringkat 0/1 (Team Leader / HOD / Doctor PIC / Supervisor). Semakan ini perlu
@@ -1652,7 +1677,8 @@ const STATE_DAERAH = { Pahang: PAHANG_DAERAH, Terengganu: TERENGGANU_DAERAH };
 // APPROVAL ROUTING CONFIG
 // ============================================================
 const ROUTING_DEFAULTS = {
-  terengganu:       { needs_tl: false, p1_doctor_pic: true,  p1_supervisor: false, p1_hod_balok: false, needs_p2: false },
+  // Terengganu kini 2 peringkat: Doctor PIC → HR Terengganu (Zahirah). 2026-08-03.
+  terengganu:       { needs_tl: false, p1_doctor_pic: true,  p1_supervisor: false, p1_hod_balok: false, needs_p2: true  },
   pahang_lain:      { needs_tl: false, p1_doctor_pic: true,  p1_supervisor: false, p1_hod_balok: false, needs_p2: true  },
   admin_balok:      { needs_tl: false, p1_doctor_pic: false, p1_supervisor: false, p1_hod_balok: true,  needs_p2: true  },
   doctor_pahang:    { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
@@ -1663,9 +1689,15 @@ const ROUTING_DEFAULTS = {
 };
 let approvalRouting = JSON.parse(JSON.stringify(ROUTING_DEFAULTS));
 
+// Cawangan yang terletak di Terengganu tetapi kelulusan cutinya diuruskan oleh
+// Balok HQ — dilayan seperti cawangan Pahang untuk routing SAHAJA. State cawangan
+// kekal Terengganu untuk laporan & lokasi. (Utama, disahkan 2026-08-03.)
+const ROUTES_AS_PAHANG = ['Klinik Syed Badaruddin Utama'];
+
 window.getStaffGroup = function(s) {
   const branchObj  = branches.find(b => b.name === s.branch);
-  const isTerengganu = branchObj && branchObj.state === 'Terengganu';
+  const routesAsPahang = ROUTES_AS_PAHANG.includes(s.branch);
+  const isTerengganu = branchObj && branchObj.state === 'Terengganu' && !routesAsPahang;
   const isBalok      = (s.branch || '').includes('Balok');
 
   // Peranan paramedik — laluan kelulusan khusus, hanya di Balok
@@ -1685,7 +1717,7 @@ window.getStaffGroup = function(s) {
   // Doktor di SEMUA cawangan Pahang → Supervisor Balok (HQ) → HR, bukan HOD.
   // Pengecualian Bentong & MCKIP dibuang (2026-08-03): Doctor PIC di kedua-dua
   // cawangan itu tiada pelulus P1 sendiri, jadi permohonan mereka tersangkut.
-  if (s.category === 'Doctor' && branchObj && branchObj.state === 'Pahang') {
+  if (s.category === 'Doctor' && branchObj && (branchObj.state === 'Pahang' || routesAsPahang)) {
     return 'doctor_pahang';
   }
 
@@ -2415,9 +2447,7 @@ window.finalizeLeave = async function(id) {
             if (isTLApprovedOperationBalok || p2Required) {
                 // Perlu Peringkat 2 — notify HR/Admin
                 newStatus = "HOD APPROVED";
-                const admins = staffList.filter(s =>
-                    ['admin', 'hr', 'super_admin'].includes(s.role) && s.phone && !s.inactive
-                );
+                const admins = window.hrRecipientsForBranch(record.branch).filter(s => s.phone);
                 const p1Label = isTLApprovedOperationBalok ? 'SUPERVISOR (selepas Team Leader)' : (user.role || '').toUpperCase();
                 const p1Title = isTLApprovedOperationBalok ? 'SOKONGAN SUPERVISOR' : `SOKONGAN ${p1Label}`;
                 const msg = `📋 *${p1Title} — PERLU KELULUSAN HR/ADMIN (Peringkat 2)*\n\nPermohonan cuti telah dinilai dan disokong oleh *${user.name} (${p1Label})* dan menunggu kelulusan akhir anda.\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\n🔗 *Log masuk untuk kelulusan akhir:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
@@ -2431,7 +2461,7 @@ window.finalizeLeave = async function(id) {
                 }
                 // Inbox kepada HR/Admin (selari dengan WhatsApp) — perlu kelulusan akhir
                 window.notifyApproversInbox(
-                    staffList.filter(s => ['admin', 'hr', 'super_admin'].includes(s.role)),
+                    window.hrRecipientsForBranch(record.branch),
                     '📥 Cuti Perlu Kelulusan Akhir (Peringkat 2)',
                     `${record.name} — ${leaveTypeName} (${record.startDate} → ${record.endDate}) telah disokong ${p1Label}; memerlukan kelulusan akhir HR/Admin.`,
                     id.toString(), record.ic);
@@ -2493,8 +2523,8 @@ window.finalizeLeave = async function(id) {
             window.addNotification(user.ic, 'approval_made', '🗂️ Tindakan Kelulusan Direkod',
                 `Anda telah ${_actionLabel} permohonan ${_leaveInfo}.`, id.toString());
             // (b) HR/Admin — pemantauan setiap kelulusan (kecuali approver sendiri & pemohon)
-            [...new Map(staffList
-                .filter(s => ['admin', 'hr', 'super_admin'].includes(s.role) && !s.inactive && s.ic !== user.ic && s.ic !== record.ic)
+            [...new Map(window.hrRecipientsForBranch(record.branch)
+                .filter(s => s.ic !== user.ic && s.ic !== record.ic)
                 .map(s => [s.ic, s])).values()]
                 .forEach(s => window.addNotification(s.ic, 'approval_made', '🗂️ Rekod Kelulusan',
                     `${user.name} telah ${_actionLabel} permohonan ${_leaveInfo}.`, id.toString()));
@@ -2621,8 +2651,8 @@ window.resendLeaveWA = function(id) {
             recipients = staffList.filter(s => s.ic === record.hodIC && s.phone);
             msg = `🔔 *PERINGATAN — Permohonan Cuti Menunggu Sokongan Anda (Peringkat 1)*\n\nPermohonan cuti di bawah masih menunggu sokongan anda.${info}`;
         } else if (record.directHR || (applicant && window.shouldSkipP1(applicant, record.type))) {
-            // Terus ke HR (skip HOD): peringatan kepada HR/Admin
-            recipients = staffList.filter(s => ['admin', 'hr', 'super_admin'].includes(s.role) && s.phone && !s.inactive);
+            // Terus ke HR (skip HOD): peringatan kepada HR zon rekod + Admin
+            recipients = window.hrRecipientsForBranch(record.branch).filter(s => s.phone);
             msg = `🔔 *PERINGATAN — Permohonan Cuti Menunggu Kelulusan HR*\n\nPermohonan cuti di bawah dilaluankan terus ke HR dan masih menunggu kelulusan.${info}`;
         } else {
             // PENDING routing auto: peringatan kepada semua P1 approver
@@ -2634,8 +2664,8 @@ window.resendLeaveWA = function(id) {
         recipients = staffList.filter(s => s.role === 'supervisor' && (s.branch || '').includes('Balok') && s.phone && !s.inactive);
         msg = `🔔 *PERINGATAN — Permohonan Cuti Menunggu Nilai Anda (Peringkat 1)*\n\nPermohonan cuti telah disokong Team Leader dan masih menunggu penilaian *Supervisor*.${info}`;
     } else if (record.status === 'HOD APPROVED' || record.status === 'HOD RECOMMENDED') {
-        // Supervisor dah lulus — peringatan kepada HR/Admin
-        recipients = staffList.filter(s => ['admin', 'hr', 'super_admin'].includes(s.role) && s.phone && !s.inactive);
+        // Peringkat 1 dah lulus — peringatan kepada HR zon rekod + Admin
+        recipients = window.hrRecipientsForBranch(record.branch).filter(s => s.phone);
         msg = `🔔 *PERINGATAN — Permohonan Cuti Menunggu Kelulusan Akhir Anda (Peringkat 2)*\n\nPermohonan cuti telah disokong dan masih menunggu kelulusan akhir *HR/Admin*.${info}`;
     }
 
@@ -2844,7 +2874,7 @@ function getReportStaffPool() {
     if (activeBranch && activeBranch !== 'SEMUA' && s.branch !== activeBranch) return false;
     const bObj = branches.find(b => b.name === s.branch);
     if (!bObj && userStateScope !== 'all') return false;
-    if (bObj && userStateScope !== 'all' && bObj.state !== userStateScope) return false;
+    if (bObj && userStateScope !== 'all' && window.scopeStateOfBranch(s.branch) !== userStateScope) return false;
     if (bObj && reportDaerah && bObj.daerah !== reportDaerah) return false;
     return true;
   });
@@ -2986,7 +3016,7 @@ window.printCMEReport = function() {
     if (activeBranch && activeBranch !== 'SEMUA' && s.branch !== activeBranch) return false;
     const bObj = branches.find(b => b.name === s.branch);
     if (!bObj && userStateScope !== 'all') return false;
-    if (bObj && userStateScope !== 'all' && bObj.state !== userStateScope) return false;
+    if (bObj && userStateScope !== 'all' && window.scopeStateOfBranch(s.branch) !== userStateScope) return false;
     if (bObj && reportDaerah && bObj.daerah !== reportDaerah) return false;
     return true;
   }).sort((a,b) => (a.branch||'').localeCompare(b.branch||'') || a.name.localeCompare(b.name));
@@ -3063,7 +3093,7 @@ window.generateAttendanceReport = function() {
     if (activeBranch && activeBranch !== 'SEMUA' && s.branch !== activeBranch) return false;
     const bObj = branches.find(b => b.name === s.branch);
     if (!bObj && userStateScope !== 'all') return false;
-    if (bObj && userStateScope !== 'all' && bObj.state !== userStateScope) return false;
+    if (bObj && userStateScope !== 'all' && window.scopeStateOfBranch(s.branch) !== userStateScope) return false;
     if (bObj && reportDaerah && bObj.daerah !== reportDaerah) return false;
     return true;
   });
@@ -3187,7 +3217,7 @@ window.generateJenisCutiReport = function() {
       if (!rb || rb.daerah !== reportDaerah) return false;
     } else if (userStateScope !== 'all') {
       const rb = branches.find(b => b.name === r.branch);
-      if (!rb || rb.state !== userStateScope) return false;
+      if (!rb || window.scopeStateOfBranch(r.branch) !== userStateScope) return false;
     }
     return true;
   });
@@ -5800,7 +5830,7 @@ function renderDashboard() {
         hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 0 (Sokongan Team Leader)*\n\nPermohonan cuti memerlukan sokongan anda (Team Leader) sebelum dihantar ke Supervisor.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
       } else if (_sbmDirectHR) {
         // Terus ke HR — HR/Admin ialah pelulus (bukan HOD)
-        hodToNotify = staffList.filter(s => ['admin', 'hr', 'super_admin'].includes(s.role) && s.phone && !s.inactive);
+        hodToNotify = window.hrRecipientsForBranch(user.branch).filter(s => s.phone);
         hodMsg = `📩 *PERMOHONAN CUTI BARU — Kelulusan HR (Terus)*\n\nPermohonan cuti ini dilaluankan TERUS kepada HR/Admin untuk kelulusan (tanpa peringkat HOD).\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
       } else if (selectedHOD) {
         hodToNotify = staffList.filter(s => s.ic === selectedHOD && s.phone);
@@ -5814,7 +5844,7 @@ function renderDashboard() {
 
       // Inbox kepada pelulus (selari dengan WhatsApp) — peringkat yang sesuai
       const _apprStaff = _sbmIsOpBalokTL ? staffList.filter(s => s.ic === selectedTL)
-        : _sbmDirectHR ? staffList.filter(s => ['admin', 'hr', 'super_admin'].includes(s.role) && !s.inactive)
+        : _sbmDirectHR ? window.hrRecipientsForBranch(user.branch)
         : selectedHOD ? staffList.filter(s => s.ic === selectedHOD)
         : window.getRoutingP1Approvers(user, selectedLeaveType);
       window.notifyApproversInbox(_apprStaff,
@@ -5832,15 +5862,10 @@ function renderDashboard() {
         window.sendWhatsApp(user.phone, confirmMsg);
       }
 
-      // CC: notify HR/Admin terus supaya mereka aware ada permohonan baru
-      // HR hanya dapat notifikasi untuk cawangan Pahang sahaja
-      const userBranchForCC = branches.find(b => b.name === user.branch);
-      const isTerengganuLeave = userBranchForCC && userBranchForCC.state === 'Terengganu';
-      const adminCC = staffList.filter(s => {
-        if (!['admin', 'hr', 'super_admin'].includes(s.role) || !s.phone || s.inactive) return false;
-        if (isTerengganuLeave && s.role === 'hr') return false;
-        return true;
-      });
+      // CC: notify HR/Admin terus supaya mereka aware ada permohonan baru.
+      // HR zon lain dikecualikan — Terengganu ke HR Terengganu, Pahang ke HR Pahang.
+      // (Dulu SEMUA hr disekat untuk cuti Terengganu kerana tiada HR Terengganu.)
+      const adminCC = window.hrRecipientsForBranch(user.branch).filter(s => s.phone);
       const adminCCMsg = _sbmIsOpBalokTL
         ? `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan Team Leader)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan Team Leader (Peringkat 0).\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`
         : `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan HOD)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan HOD/Supervisor (Peringkat 1).\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
@@ -7236,8 +7261,10 @@ function renderView() {
 
             ${(() => {
                 const branchObj = branches.find(b => b.name === user.branch);
-                const isPahang = branchObj && branchObj.state === 'Pahang';
-                const isTerengganu = branchObj && branchObj.state === 'Terengganu';
+                // Utama: fizikal Terengganu, laluan kelulusan ikut Pahang (Balok HQ).
+                const _routesAsPahang = ROUTES_AS_PAHANG.includes(user.branch);
+                const isPahang = (branchObj && branchObj.state === 'Pahang') || _routesAsPahang;
+                const isTerengganu = branchObj && branchObj.state === 'Terengganu' && !_routesAsPahang;
                 const isBalokStaff = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
                 const isDoctor = user.category === 'Doctor';
 
@@ -7491,7 +7518,7 @@ function renderView() {
               </div>
               ${(() => {
                 const branchObj = branches.find(b => b.name === user.branch);
-                const isPahang = branchObj && branchObj.state === 'Pahang';
+                const isPahang = (branchObj && branchObj.state === 'Pahang') || ROUTES_AS_PAHANG.includes(user.branch);
                 const isBalokStaff = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
                 const isDoctor = user.category === 'Doctor';
                 let step1Who;
@@ -7622,7 +7649,7 @@ function renderView() {
           if (s.role === 'super_admin') return false;
           if (userStateScope === 'all') return true;
           const sBranch = branches.find(b => b.name === s.branch);
-          return sBranch && sBranch.state === userStateScope;
+          return sBranch && window.scopeStateOfBranch(s.branch) === userStateScope;
       });
       if (manageBranchFilter !== 'All') {
           filteredStaff = filteredStaff.filter(s => s.branch === manageBranchFilter);
@@ -8543,7 +8570,7 @@ function renderView() {
             if (reportBranch && s.branch !== reportBranch) return false;
             const b = branches.find(br => br.name === s.branch);
             if (!reportBranch) {
-              if (userStateScope !== 'all' && (!b || b.state !== userStateScope)) return false;
+              if (userStateScope !== 'all' && (!b || window.scopeStateOfBranch(s.branch) !== userStateScope)) return false;
               if (reportDaerah && (!b || b.daerah !== reportDaerah)) return false;
             }
             return true;
@@ -8715,7 +8742,7 @@ function renderView() {
             if (userStateScope === 'all' && !reportDaerah) return true;
             const rb = branches.find(b => b.name === r.branch);
             if (!rb) return false;
-            if (userStateScope !== 'all' && rb.state !== userStateScope) return false;
+            if (userStateScope !== 'all' && window.scopeStateOfBranch(r.branch) !== userStateScope) return false;
             if (reportDaerah && rb.daerah !== reportDaerah) return false;
             return true;
           });
@@ -9111,7 +9138,7 @@ function renderView() {
               const b = branches.find(br => br.name === s.branch);
               if (!reportBranch) {
                 if (userStateScope !== 'all') {
-                  if (!b || b.state !== userStateScope) return false;
+                  if (!b || window.scopeStateOfBranch(b.name) !== userStateScope) return false;
                 }
                 if (reportDaerah && (!b || b.daerah !== reportDaerah)) return false;
               }
@@ -9128,7 +9155,7 @@ function renderView() {
               if (!reportBranch) {
                 const b = branches.find(br => br.name === r.branch);
                 if (userStateScope !== 'all') {
-                  if (!b || b.state !== userStateScope) return false;
+                  if (!b || window.scopeStateOfBranch(b.name) !== userStateScope) return false;
                 }
                 if (reportDaerah && (!b || b.daerah !== reportDaerah)) return false;
               }
@@ -9303,7 +9330,7 @@ function renderView() {
               if (reportBranch) return b === reportBranch;
               const bObj = branches.find(br => br.name === b);
               if (!bObj) return userStateScope === 'all';
-              if (userStateScope !== 'all' && bObj.state !== userStateScope) return false;
+              if (userStateScope !== 'all' && window.scopeStateOfBranch(bObj.name) !== userStateScope) return false;
               if (reportDaerah && bObj.daerah !== reportDaerah) return false;
               return true;
             });
@@ -9316,7 +9343,7 @@ function renderView() {
               if (reportBranch && s.branch !== reportBranch) return false;
               if (_selBranch && _selBranch !== 'SEMUA' && s.branch !== _selBranch) return false;
               const bObj = branches.find(b => b.name === s.branch);
-              if (userStateScope !== 'all') { if (!bObj || bObj.state !== userStateScope) return false; }
+              if (userStateScope !== 'all') { if (!bObj || window.scopeStateOfBranch(bObj.name) !== userStateScope) return false; }
               if (reportDaerah && (!bObj || bObj.daerah !== reportDaerah)) return false;
               return true;
             });

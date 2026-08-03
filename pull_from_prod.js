@@ -56,6 +56,16 @@ async function pull() {
     fs.writeFileSync("./data/staff.json", JSON.stringify(staff, null, 2) + "\n");
     console.log(`✅ Pulled ${staff.length} staff records  → data/staff.json`);
 
+    // Branches — state/daerah drive approval routing, and the hardcoded lists in
+    // src/main.js and the chart generators DO drift from the live doc (e.g. Utama
+    // is Terengganu/Kemaman live, Pahang/Kuantan in the seed list). Snapshot them
+    // so offline tools route off the same data the app does.
+    const branches = await pullCollection("branches", (a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""))
+    );
+    fs.writeFileSync("./data/branches.json", JSON.stringify(branches, null, 2) + "\n");
+    console.log(`✅ Pulled ${branches.length} branches       → data/branches.json`);
+
     process.exit(0);
   } catch (err) {
     console.error("\nPull failed:", err.message);

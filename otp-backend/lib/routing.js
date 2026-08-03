@@ -8,7 +8,8 @@
 // Firestore `config/approvalRouting` overrides these defaults at runtime.
 
 export const ROUTING_DEFAULTS = {
-  terengganu:       { needs_tl: false, p1_doctor_pic: true,  p1_supervisor: false, p1_hod_balok: false, needs_p2: false },
+  // Terengganu is 2-stage since 2026-08-03: Doctor PIC then the Terengganu HR.
+  terengganu:       { needs_tl: false, p1_doctor_pic: true,  p1_supervisor: false, p1_hod_balok: false, needs_p2: true  },
   pahang_lain:      { needs_tl: false, p1_doctor_pic: true,  p1_supervisor: false, p1_hod_balok: false, needs_p2: true  },
   admin_balok:      { needs_tl: false, p1_doctor_pic: false, p1_supervisor: false, p1_hod_balok: true,  needs_p2: true  },
   doctor_pahang:    { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
@@ -20,10 +21,25 @@ export const ROUTING_DEFAULTS = {
 
 const BALOK_HQ = "Klinik Syed Badaruddin Balok (HQ)";
 
+// Branches sited in Terengganu whose leave approvals are run out of Balok HQ —
+// treated as Pahang for ROUTING only; the branch state stays Terengganu for
+// reporting and location. (Utama, confirmed 2026-08-03.)
+const ROUTES_AS_PAHANG = ["Klinik Syed Badaruddin Utama"];
+
+// The state that decides HR SCOPE for a branch — the branch's own state, except
+// for ROUTES_AS_PAHANG branches (Utama), which belong to the Pahang HR zone.
+// Mirrors window.scopeStateOfBranch in src/main.js.
+export function scopeStateOfBranch(branchName, branches) {
+  if (ROUTES_AS_PAHANG.includes(branchName)) return "Pahang";
+  const b = branches.find((x) => x.name === branchName);
+  return (b && b.state) ? b.state : null;
+}
+
 // Which routing group a staff member falls into. Mirrors src/main.js getStaffGroup.
 export function getStaffGroup(s, branches) {
   const branchObj   = branches.find((b) => b.name === s.branch);
-  const isTerengganu = !!(branchObj && branchObj.state === "Terengganu");
+  const routesAsPahang = ROUTES_AS_PAHANG.includes(s.branch);
+  const isTerengganu = !!(branchObj && branchObj.state === "Terengganu") && !routesAsPahang;
   const isBalok      = (s.branch || "").includes("Balok");
 
   // Paramedic roles — special routing, Balok only.
@@ -43,7 +59,7 @@ export function getStaffGroup(s, branches) {
   // Doctors in ALL Pahang branches → Supervisor Balok (HQ) → HR, not HOD.
   // The Bentong & MCKIP carve-outs were removed (2026-08-03): the Doctor PIC at
   // those branches had no P1 approver of their own, so their leave stalled.
-  if (s.category === "Doctor" && branchObj && branchObj.state === "Pahang") {
+  if (s.category === "Doctor" && branchObj && (branchObj.state === "Pahang" || routesAsPahang)) {
     return "doctor_pahang";
   }
 

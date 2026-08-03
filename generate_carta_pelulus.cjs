@@ -20,8 +20,13 @@ const puppeteer = require("puppeteer");
 const ROOT = __dirname;
 const OUT = path.join(os.homedir(), "Desktop", "Carta-Peringkat-Pelulus-Cuti-KSB.pdf");
 
-// ── Branch registry (mirrors `branches`, src/main.js:3309) ──────────────────
-const branches = [
+// ── Branch registry ─────────────────────────────────────────────────────────
+// Prefer the live snapshot (`npm run pull` → data/branches.json). state/daerah
+// decide routing, and the seed list below HAS drifted from production (Utama is
+// Terengganu/Kemaman live, Pahang/Kuantan here), which would silently put staff
+// in the wrong zone on the chart. Fall back to the seed list only if unpulled.
+const BRANCH_SNAPSHOT = path.join(ROOT, "data", "branches.json");
+const branchesFallback = [
   { name: "Management / HQ", state: "Pahang", daerah: "Kuantan" },
   { name: "Klinik Syed Badaruddin Balok (HQ)", state: "Pahang", daerah: "Kuantan" },
   { name: "Klinik Syed Badaruddin Beserah", state: "Pahang", daerah: "Kuantan" },
@@ -35,15 +40,22 @@ const branches = [
   { name: "Klinik Syed Badaruddin Paka", state: "Terengganu", daerah: "Dungun" },
   { name: "Klinik Rakyat dan X-Ray Dungun", state: "Terengganu", daerah: "Dungun" },
 ];
+const usingLiveBranches = fs.existsSync(BRANCH_SNAPSHOT);
+const branches = usingLiveBranches
+  ? JSON.parse(fs.readFileSync(BRANCH_SNAPSHOT, "utf8"))
+  : branchesFallback;
+console.log(usingLiveBranches
+  ? `Branches: live snapshot (${branches.length}) — data/branches.json`
+  : "Branches: SEED FALLBACK — run `npm run pull` for live state/daerah.");
 
 /* EFFECTIVE routing config.
    ROUTING_DEFAULTS (src/main.js:1654) merged with the live Firestore doc
    config/approvalRouting, exactly as src/main.js:3368 does — it iterates the
    DEFAULT keys and spreads the stored doc over each. The live doc still carries
-   the pre-rename fields `p1_hod` / `p1_pic_hod`, which no longer match anything
-   the code reads, so every effective value below equals the code default. */
+   the pre-rename fields p1_hod / p1_pic_hod until 2026-08-03, when the doc was
+   rewritten with the current field names, so it now matches the code default. */
 const ROUTING = {
-  terengganu:       { needs_tl:false, p1_doctor_pic:true,  p1_supervisor:false, p1_hod_balok:false, needs_p2:false },
+  terengganu:       { needs_tl:false, p1_doctor_pic:true,  p1_supervisor:false, p1_hod_balok:false, needs_p2:true  },
   pahang_lain:      { needs_tl:false, p1_doctor_pic:true,  p1_supervisor:false, p1_hod_balok:false, needs_p2:true  },
   admin_balok:      { needs_tl:false, p1_doctor_pic:false, p1_supervisor:false, p1_hod_balok:true,  needs_p2:true  },
   doctor_pahang:    { needs_tl:false, p1_doctor_pic:false, p1_supervisor:true,  p1_hod_balok:false, needs_p2:true  },
@@ -58,9 +70,13 @@ const staffList = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "staff.json
 const snapshotDate = fs.statSync(path.join(ROOT, "data", "staff.json")).mtime;
 
 // ── Routing logic (replica of src/main.js) ──────────────────────────────────
+// Terletak di Terengganu tetapi kelulusan diuruskan Balok HQ — routing ikut Pahang.
+const ROUTES_AS_PAHANG = ["Klinik Syed Badaruddin Utama"];
+
 function getStaffGroup(s) {
   const b = branches.find((x) => x.name === s.branch);
-  const isTerengganu = b && b.state === "Terengganu";
+  const routesAsPahang = ROUTES_AS_PAHANG.includes(s.branch);
+  const isTerengganu = b && b.state === "Terengganu" && !routesAsPahang;
   const isBalok = (s.branch || "").includes("Balok");
   if (["juru_xray", "sonographer"].includes(s.role) && isBalok) return "xray_sono_balok";
   if (s.role === "juru_audio" && isBalok) return "juru_audio_balok";
@@ -69,7 +85,7 @@ function getStaffGroup(s) {
   if (isBalok && s.category === "Operation Staff") return "operation_balok";
   if (isBalok && s.category === "Admin Staff") return "admin_balok";
   if (isTerengganu) return "terengganu";
-  if (s.category === "Doctor" && b && b.state === "Pahang") return "doctor_pahang";
+  if (s.category === "Doctor" && b && (b.state === "Pahang" || routesAsPahang)) return "doctor_pahang";
   return "pahang_lain";
 }
 
@@ -112,6 +128,7 @@ const shortBranch = (n) => n.replace(/^Klinik Syed Badaruddin /, "").replace(/^K
 const zoneOf = (s) => {
   const b = branches.find((x) => x.name === s.branch);
   if ((s.branch || "").includes("Balok")) return "balok";
+  if (ROUTES_AS_PAHANG.includes(s.branch)) return "pahang";
   if (b && b.state === "Terengganu") return "terengganu";
   return "pahang";
 };
@@ -393,16 +410,20 @@ ${zoneBlock("balok", "Zon A · Balok (HQ)", `${zoneCount("balok")} staf aktif`,
 ${header("CARTA PERINGKAT PELULUS CUTI — ZON B &amp; C")}
 ${legend}
 
-${zoneBlock("pahang", "Zon B · Cawangan Pahang (selain Balok)", `${zoneCount("pahang")} staf aktif · 8 cawangan`,
+${zoneBlock("pahang", "Zon B · Laluan Pahang (selain Balok)", `${zoneCount("pahang")} staf aktif · 9 cawangan`,
   ROUTES.filter((r) => r.zone === "pahang"),
   "Doktor di <strong>semua cawangan Pahang</strong> — termasuk <strong>Bentong</strong> dan <strong>MCKIP</strong> — " +
   "tidak diluluskan di cawangan sendiri; permohonan mereka naik ke <strong>Supervisor Balok (HQ)</strong>, " +
-  "kemudian HR/Admin. Staf bukan doktor kekal di bawah Doctor PIC cawangan masing-masing.")}
+  "kemudian HR/Admin. Staf bukan doktor kekal di bawah Doctor PIC cawangan masing-masing. " +
+  "<strong>Klinik Syed Badaruddin Utama</strong> terletak di Terengganu tetapi kelulusannya diuruskan oleh " +
+  "Balok HQ, jadi ia mengikut laluan zon ini (2 peringkat, tamat di HR) — bukan laluan Terengganu.")}
 
-${zoneBlock("terengganu", "Zon C · Cawangan Terengganu", `${zoneCount("terengganu")} staf aktif · 3 cawangan`,
+${zoneBlock("terengganu", "Zon C · Cawangan Terengganu", `${zoneCount("terengganu")} staf aktif · 3 cawangan (Kerteh · Paka · KR X-Ray Dungun)`,
   ROUTES.filter((r) => r.zone === "terengganu"),
-  "Terengganu ialah <strong>satu peringkat sahaja</strong> — cuti menjadi SAH sebaik Doctor PIC meluluskan. " +
-  "Tiada kelulusan HR. HR juga tidak menerima notifikasi bagi permohonan Terengganu.")}
+  "Sejak 2026-08-03 Terengganu ialah <strong>2 peringkat</strong>: Doctor PIC cawangan menyokong, kemudian " +
+  "<strong>HR Terengganu (Zahirah Dahria)</strong> memberi kelulusan akhir — cuti SAH selepas itu. " +
+  "HR Pahang (Norhazlinah) tidak nampak zon ini, dan Zahirah tidak nampak zon Pahang; Admin/Super Admin nampak kedua-duanya. " +
+  "Cawangan Utama TIDAK termasuk di sini — lihat Zon B.")}
 
 <div class="callout">
   <strong>Pintasan menyeluruh.</strong> ${ADMINS.map((a) => esc(nm(a))).join(" dan ")}

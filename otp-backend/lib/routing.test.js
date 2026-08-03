@@ -14,6 +14,8 @@ const branches = [
   { name: "Klinik Syed Badaruddin Bentong", state: "Pahang", daerah: "Bentong" },
   { name: "Klinik Syed Badaruddin MCKIP", state: "Pahang", daerah: "Kuantan" },
   { name: "Klinik Syed Badaruddin Kemaman", state: "Terengganu", daerah: "Kemaman" },
+  // Sited in Terengganu, but its approvals are run out of Balok HQ.
+  { name: "Klinik Syed Badaruddin Utama", state: "Terengganu", daerah: "Kemaman" },
 ];
 
 // ── getStaffGroup ────────────────────────────────────────────────────────────
@@ -72,6 +74,23 @@ test("Pahang doctor at MCKIP → doctor_pahang (carve-out removed)", () => {
 test("non-doctor at MCKIP still → pahang_lain", () => {
   const s = { branch: "Klinik Syed Badaruddin MCKIP", category: "Operation Staff", role: "nurse" };
   assert.equal(getStaffGroup(s, branches), "pahang_lain");
+});
+
+// Utama is in Terengganu but Balok HQ runs its approvals, so it must NOT fall into
+// the one-stage terengganu group (confirmed 2026-08-03).
+test("doctor at Utama (Terengganu) → doctor_pahang, not terengganu", () => {
+  const s = { branch: "Klinik Syed Badaruddin Utama", category: "Doctor", role: "doctor_pic" };
+  assert.equal(getStaffGroup(s, branches), "doctor_pahang");
+});
+
+test("non-doctor at Utama → pahang_lain (own Doctor PIC + HR), not terengganu", () => {
+  const s = { branch: "Klinik Syed Badaruddin Utama", category: "Operation Staff", role: "staff" };
+  assert.equal(getStaffGroup(s, branches), "pahang_lain");
+});
+
+test("other Terengganu branches keep the one-stage terengganu route", () => {
+  const s = { branch: "Klinik Syed Badaruddin Kemaman", category: "Doctor", role: "doctor_pic" };
+  assert.equal(getStaffGroup(s, branches), "terengganu");
 });
 
 test("unknown / other Pahang staff → pahang_lain", () => {
@@ -140,6 +159,19 @@ test("Operation Staff at MCKIP still → Doctor PIC at own branch", () => {
   const applicant = { ic: "A4", branch: "Klinik Syed Badaruddin MCKIP", category: "Operation Staff", role: "nurse" };
   const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
   assert.deepEqual(out.map((s) => s.ic), ["PICM"]);
+});
+
+test("Doctor PIC at Utama → Balok HQ supervisor (was: no approver at all)", () => {
+  const applicant = { ic: "PICU", branch: "Klinik Syed Badaruddin Utama", category: "Doctor", role: "doctor_pic" };
+  const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
+  assert.deepEqual(out.map((s) => s.ic), ["SUP1"]);
+});
+
+test("Operation Staff at Utama → Doctor PIC of their own branch", () => {
+  const list = [...staffList, { ic: "PICU", role: "doctor_pic", branch: "Klinik Syed Badaruddin Utama", category: "Doctor" }];
+  const applicant = { ic: "A6", branch: "Klinik Syed Badaruddin Utama", category: "Operation Staff", role: "staff" };
+  const out = getRoutingP1Approvers(applicant, list, branches, ROUTING_DEFAULTS);
+  assert.deepEqual(out.map((s) => s.ic), ["PICU"]);
 });
 
 test("hod_balok applicant → no P1 approvers (skips P1)", () => {

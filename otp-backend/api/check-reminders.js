@@ -12,7 +12,7 @@
 import { db } from "../lib/firebase.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import {
-  ROUTING_DEFAULTS, shouldSkipP1, getRoutingP1Approvers,
+  ROUTING_DEFAULTS, shouldSkipP1, getRoutingP1Approvers, scopeStateOfBranch,
 } from "../lib/routing.js";
 
 const OVERDUE_DAYS = 3;
@@ -50,6 +50,18 @@ function buildReminderMsg(record, ageDays, peringkat) {
 function resolveRecipients(record, applicant, staffList, branches, approvalRouting) {
   const active = (s) => s && !s.inactive && s.phone;
 
+  // HR is zone-scoped (2026-08-03): Norhazlinah covers Pahang + Utama, Zahirah the
+  // three Terengganu branches. Admin/super_admin see both. Mirrors src/main.js
+  // hrRecipientsForBranch — a HR from the wrong zone must never be reminded.
+  const hrForRecord = () => {
+    const zone = scopeStateOfBranch(record.branch, branches);
+    return staffList.filter((s) => {
+      if (!HR_ROLES.includes(s.role) || !active(s)) return false;
+      if (s.role !== "hr") return true;
+      return (s.hrState || "Pahang") === zone;
+    });
+  };
+
   if (record.status === "PENDING") {
     if (record.hodIC) {
       // A specific approver was chosen at submission time.
@@ -57,7 +69,7 @@ function resolveRecipients(record, applicant, staffList, branches, approvalRouti
     }
     if (record.directHR || (applicant && shouldSkipP1(applicant))) {
       // Straight-to-HR (skip P1).
-      return staffList.filter((s) => HR_ROLES.includes(s.role) && active(s));
+      return hrForRecord();
     }
     // Auto-routed → derive Peringkat-1 approvers.
     if (!applicant) return [];
@@ -72,7 +84,7 @@ function resolveRecipients(record, applicant, staffList, branches, approvalRouti
 
   if (record.status === "HOD APPROVED") {
     // Awaiting final HR/Admin approval (Peringkat 2).
-    return staffList.filter((s) => HR_ROLES.includes(s.role) && active(s));
+    return hrForRecord();
   }
 
   return [];
