@@ -12,7 +12,7 @@
 import { db } from "../lib/firebase.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import {
-  ROUTING_DEFAULTS, shouldSkipP1, getRoutingP1Approvers, scopeStateOfBranch,
+  shouldSkipP1, getRoutingP1Approvers, scopeStateOfBranch, mergeRoutingConfig,
 } from "../lib/routing.js";
 
 const OVERDUE_DAYS = 3;
@@ -110,9 +110,7 @@ export default async function handler(req, res) {
     ]);
     const staffList = staffSnap.docs.map((d) => ({ ...d.data(), ic: d.data().ic || d.id }));
     const branches = branchSnap.docs.map((d) => d.data());
-    const approvalRouting = routingSnap.exists
-      ? { ...ROUTING_DEFAULTS, ...routingSnap.data() }
-      : ROUTING_DEFAULTS;
+    const approvalRouting = mergeRoutingConfig(routingSnap.exists ? routingSnap.data() : null);
 
     // Pending leaves only.
     const leavesSnap = await firestore

@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ROUTING_DEFAULTS, getStaffGroup, shouldSkipP1, getRoutingP1Approvers,
+  ROUTING_DEFAULTS, getStaffGroup, shouldSkipP1, getRoutingP1Approvers, mergeRoutingConfig,
 } from "./routing.js";
 
 const BALOK_HQ = "Klinik Syed Badaruddin Balok (HQ)";
@@ -96,6 +96,35 @@ test("other Terengganu branches keep the one-stage terengganu route", () => {
 test("unknown / other Pahang staff → pahang_lain", () => {
   const s = { branch: "Klinik Syed Badaruddin Kuantan", category: "Admin Staff", role: "clerk" };
   assert.equal(getStaffGroup(s, branches), "pahang_lain");
+});
+
+// ── mergeRoutingConfig ───────────────────────────────────────────────────────
+test("stored group merges OVER the default, keeping flags it omits", () => {
+  // The real bug: the live doc carried `pahang_lain` without `p1_doctor_pic`
+  // (it used the pre-rename `p1_hod` / `p1_pic_hod`). A shallow top-level merge
+  // dropped p1_doctor_pic entirely and the cron reminded nobody.
+  const stored = { pahang_lain: { needs_tl: false, p1_hod: true, p1_pic_hod: true, p1_supervisor: false, needs_p2: true } };
+  const merged = mergeRoutingConfig(stored);
+  assert.equal(merged.pahang_lain.p1_doctor_pic, true, "default flag must survive a partial stored group");
+  assert.equal(merged.pahang_lain.needs_p2, true);
+});
+
+test("stored values win over defaults", () => {
+  const merged = mergeRoutingConfig({ terengganu: { needs_p2: false } });
+  assert.equal(merged.terengganu.needs_p2, false);
+  assert.equal(merged.terengganu.p1_doctor_pic, true);
+});
+
+test("missing / null stored config falls back to every default group", () => {
+  assert.deepEqual(mergeRoutingConfig(null), ROUTING_DEFAULTS);
+  assert.deepEqual(mergeRoutingConfig({}), ROUTING_DEFAULTS);
+});
+
+test("merged config resolves the same P1 approvers as the defaults do", () => {
+  const stored = { pahang_lain: { needs_tl: false, p1_hod: true, p1_pic_hod: true, p1_supervisor: false, needs_p2: true } };
+  const applicant = { ic: "A7", branch: "Klinik Syed Badaruddin Kuantan", category: "Admin Staff", role: "clerk" };
+  const out = getRoutingP1Approvers(applicant, staffList, branches, mergeRoutingConfig(stored));
+  assert.deepEqual(out.map((s) => s.ic), ["PIC1"]);
 });
 
 // ── shouldSkipP1 ─────────────────────────────────────────────────────────────

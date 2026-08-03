@@ -19,6 +19,19 @@ export const ROUTING_DEFAULTS = {
   pemandu_balok:    { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
 };
 
+// Merge the stored Firestore config over the defaults, PER GROUP — exactly what
+// src/main.js:3368 does. A shallow `{...DEFAULTS, ...stored}` is wrong: a stored
+// group REPLACES the default wholesale, so any flag the admin's saved doc happens
+// to omit (or spells with an old field name) silently disappears, and the cron
+// then resolves different approvers than the app shows the applicant.
+export function mergeRoutingConfig(stored) {
+  const merged = {};
+  for (const [group, def] of Object.entries(ROUTING_DEFAULTS)) {
+    merged[group] = stored && stored[group] ? { ...def, ...stored[group] } : { ...def };
+  }
+  return merged;
+}
+
 const BALOK_HQ = "Klinik Syed Badaruddin Balok (HQ)";
 
 // Branches sited in Terengganu whose leave approvals are run out of Balok HQ —
