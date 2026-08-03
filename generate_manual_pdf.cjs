@@ -777,8 +777,8 @@ async function waitForApp(page) {
     <thead><tr><th>Kategori Staf</th><th>Cawangan</th><th>Peringkat 0</th><th>Peringkat 1</th><th>Peringkat 2</th></tr></thead>
     <tbody>
       <tr style="background:#fff0f0;"><td><strong>Staff Operasi</strong></td><td><strong>Balok HQ</strong></td><td><strong style="color:#dc2626;">Team Leader (WAJIB)</strong></td><td>Supervisor — Balok HQ</td><td>HR / Admin</td></tr>
-      <tr><td>Doktor</td><td>Pahang (kecuali MCKIP &amp; Bentong)</td><td>—</td><td>Supervisor — Balok HQ</td><td>HR / Admin</td></tr>
-      <tr><td>Doktor</td><td>MCKIP / Bentong</td><td>—</td><td>HOD / PIC_HOD cawangan sendiri</td><td>HR / Admin</td></tr>
+      <tr><td>Doktor</td><td>Pahang (semua cawangan)</td><td>—</td><td>Supervisor — Balok HQ</td><td>HR / Admin</td></tr>
+      <tr><td>Doktor</td><td>Terengganu</td><td>—</td><td>Doctor PIC cawangan sendiri</td><td>—</td></tr>
       <tr><td>Doktor</td><td>Terengganu</td><td>—</td><td>HOD / PIC_HOD cawangan sendiri</td><td>—</td></tr>
       <tr><td>Staff Admin</td><td>Pahang</td><td>—</td><td>HOD klinik → (tiada: PIC)</td><td>HR / Admin</td></tr>
       <tr><td>Staff Admin</td><td>Terengganu</td><td>—</td><td>HOD klinik → (tiada: PIC)</td><td>—</td></tr>
@@ -928,8 +928,8 @@ async function waitForApp(page) {
     <thead><tr><th>Kategori</th><th>Cawangan</th><th>Peringkat 0</th><th>Peringkat 1</th><th>Peringkat 2</th></tr></thead>
     <tbody>
       <tr style="background:#fef2f2;"><td><strong>Staff Operasi</strong></td><td><strong>Balok HQ</strong></td><td><strong style="color:#dc2626;">Team Leader ★</strong></td><td>Supervisor Balok HQ</td><td>HR / Admin</td></tr>
-      <tr><td>Doktor</td><td>Pahang (kec. MCKIP &amp; Bentong)</td><td>—</td><td>Supervisor Balok HQ</td><td>HR / Admin</td></tr>
-      <tr><td>Doktor</td><td>MCKIP / Bentong / lain</td><td>—</td><td>HOD / PIC_HOD sendiri</td><td>HR / Admin</td></tr>
+      <tr><td>Doktor</td><td>Pahang (semua cawangan)</td><td>—</td><td>Supervisor Balok HQ</td><td>HR / Admin</td></tr>
+      <tr><td>Doktor</td><td>Terengganu</td><td>—</td><td>Doctor PIC sendiri</td><td>—</td></tr>
       <tr><td>Doktor</td><td>Terengganu</td><td>—</td><td>HOD / PIC_HOD sendiri</td><td>— (tidak diperlukan)</td></tr>
       <tr><td>Staff Admin</td><td>Pahang / Semua</td><td>—</td><td>HOD → (tiada: PIC)</td><td>HR / Admin</td></tr>
       <tr><td>Staff Admin</td><td>Terengganu</td><td>—</td><td>HOD → (tiada: PIC)</td><td>— (tidak diperlukan)</td></tr>
@@ -1398,7 +1398,7 @@ async function waitForApp(page) {
   <ul>
     <li><strong>Supervisor Balok HQ</strong> — untuk Staff Operasi Balok (status: TL APPROVED)</li>
     <li><strong>HOD atau PIC/HOD</strong> cawangan pemohon — untuk Staff Admin dan kebanyakan Doktor</li>
-    <li><strong>Supervisor Balok HQ</strong> — untuk Doktor Pahang (kecuali MCKIP &amp; Bentong)</li>
+    <li><strong>Supervisor Balok HQ</strong> — untuk Doktor Pahang (semua cawangan)</li>
     <li><strong>Doctor PIC cawangan</strong> — untuk Staff Operasi di cawangan lain</li>
   </ul>
 
@@ -1626,7 +1626,7 @@ async function waitForApp(page) {
     <tbody>
       <tr style="background:#fef2f2;"><td><strong>Kak. Operasi</strong></td><td>Balok (HQ)</td><td><strong style="color:#dc2626;">Wajib</strong></td><td>Supervisor Balok</td><td>✓</td></tr>
       <tr><td>Doktor</td><td>Kuantan/Pahang</td><td>—</td><td>Supervisor Balok</td><td>✓</td></tr>
-      <tr><td>Doktor</td><td>Bentong / MCKIP</td><td>—</td><td>HOD / PIC HOD</td><td>✓</td></tr>
+      <tr><td>Doktor</td><td>Terengganu</td><td>—</td><td>Doctor PIC</td><td>—</td></tr>
       <tr><td>Doktor</td><td>Terengganu</td><td>—</td><td>HOD / PIC HOD</td><td>—</td></tr>
       <tr><td>Kak. Admin</td><td>Pahang</td><td>—</td><td>HOD</td><td>✓</td></tr>
       <tr><td>Kak. Admin</td><td>Terengganu</td><td>—</td><td>HOD</td><td>—</td></tr>

@@ -52,18 +52,25 @@ test("Terengganu branch → terengganu", () => {
   assert.equal(getStaffGroup(s, branches), "terengganu");
 });
 
-test("Pahang doctor (not Bentong / not MCKIP) → doctor_pahang", () => {
+test("Pahang doctor → doctor_pahang", () => {
   const s = { branch: "Klinik Syed Badaruddin Kuantan", category: "Doctor", role: "doctor" };
   assert.equal(getStaffGroup(s, branches), "doctor_pahang");
 });
 
-test("Pahang doctor at Bentong → pahang_lain (not doctor_pahang)", () => {
+// Bentong & MCKIP used to be carved out of doctor_pahang. That left their Doctor
+// PIC (and, at Bentong, everyone) without a Peringkat-1 approver — removed 2026-08-03.
+test("Pahang doctor at Bentong → doctor_pahang (carve-out removed)", () => {
   const s = { branch: "Klinik Syed Badaruddin Bentong", category: "Doctor", role: "doctor" };
-  assert.equal(getStaffGroup(s, branches), "pahang_lain");
+  assert.equal(getStaffGroup(s, branches), "doctor_pahang");
 });
 
-test("Pahang doctor at MCKIP → pahang_lain (not doctor_pahang)", () => {
+test("Pahang doctor at MCKIP → doctor_pahang (carve-out removed)", () => {
   const s = { branch: "Klinik Syed Badaruddin MCKIP", category: "Doctor", role: "doctor" };
+  assert.equal(getStaffGroup(s, branches), "doctor_pahang");
+});
+
+test("non-doctor at MCKIP still → pahang_lain", () => {
+  const s = { branch: "Klinik Syed Badaruddin MCKIP", category: "Operation Staff", role: "nurse" };
   assert.equal(getStaffGroup(s, branches), "pahang_lain");
 });
 
@@ -86,6 +93,7 @@ const staffList = [
   { ic: "HOD1", role: "hod_balok", branch: BALOK_HQ },
   { ic: "PIC1", role: "doctor_pic", branch: "Klinik Syed Badaruddin Kuantan" },
   { ic: "SUPK", role: "supervisor", branch: "Klinik Syed Badaruddin Kuantan" },
+  { ic: "PICM", role: "doctor_pic", branch: "Klinik Syed Badaruddin MCKIP", category: "Doctor" },
 ];
 
 test("operation_balok applicant → Balok HQ supervisors (active only)", () => {
@@ -110,6 +118,24 @@ test("pahang_lain applicant → doctor_pic at own branch", () => {
   const applicant = { ic: "A3", branch: "Klinik Syed Badaruddin Kuantan", category: "Admin Staff", role: "clerk" };
   const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
   assert.deepEqual(out.map((s) => s.ic), ["PIC1"]);
+});
+
+test("Doctor PIC at MCKIP → Balok HQ supervisor, not an empty list", () => {
+  const applicant = { ic: "PICM", branch: "Klinik Syed Badaruddin MCKIP", category: "Doctor", role: "doctor_pic" };
+  const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
+  assert.deepEqual(out.map((s) => s.ic), ["SUP1"]);
+});
+
+test("doctor at Bentong → Balok HQ supervisor", () => {
+  const applicant = { ic: "DRB", branch: "Klinik Syed Badaruddin Bentong", category: "Doctor", role: "doctor" };
+  const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
+  assert.deepEqual(out.map((s) => s.ic), ["SUP1"]);
+});
+
+test("Operation Staff at MCKIP still → Doctor PIC at own branch", () => {
+  const applicant = { ic: "A4", branch: "Klinik Syed Badaruddin MCKIP", category: "Operation Staff", role: "nurse" };
+  const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
+  assert.deepEqual(out.map((s) => s.ic), ["PICM"]);
 });
 
 test("hod_balok applicant → no P1 approvers (skips P1)", () => {

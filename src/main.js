@@ -1682,10 +1682,10 @@ window.getStaffGroup = function(s) {
   if (isBalok && s.category === 'Admin Staff') return 'admin_balok';
   if (isTerengganu)  return 'terengganu';
 
-  // Doktor di Pahang KECUALI Bentong & MCKIP → Supervisor Balok (HQ) → HR, bukan HOD
-  if (s.category === 'Doctor' && branchObj && branchObj.state === 'Pahang'
-      && branchObj.daerah !== 'Bentong'
-      && s.branch !== 'Klinik Syed Badaruddin MCKIP') {
+  // Doktor di SEMUA cawangan Pahang → Supervisor Balok (HQ) → HR, bukan HOD.
+  // Pengecualian Bentong & MCKIP dibuang (2026-08-03): Doctor PIC di kedua-dua
+  // cawangan itu tiada pelulus P1 sendiri, jadi permohonan mereka tersangkut.
+  if (s.category === 'Doctor' && branchObj && branchObj.state === 'Pahang') {
     return 'doctor_pahang';
   }
 
@@ -7233,28 +7233,16 @@ function renderView() {
                 const branchObj = branches.find(b => b.name === user.branch);
                 const isPahang = branchObj && branchObj.state === 'Pahang';
                 const isTerengganu = branchObj && branchObj.state === 'Terengganu';
-                const isBentong = user.branch === 'Uni Klinik Bentong';
-                const isMCKIP = user.branch === 'Klinik Syed Badaruddin MCKIP';
                 const isBalokStaff = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
                 const isDoctor = user.category === 'Doctor';
 
                 let step1Who, step1Note, flowColor, flowIcon;
 
                 if (isDoctor) {
-                    if (isPahang && !isBentong && !isMCKIP) {
+                    if (isPahang) {
                         step1Who = 'Supervisor — Klinik Syed Badaruddin Balok (HQ)';
-                        step1Note = 'Doktor Pahang (kecuali MCKIP & Bentong) mesti mendapat sokongan Supervisor Balok terlebih dahulu.';
+                        step1Note = 'Doktor Pahang (semua cawangan) mesti mendapat sokongan Supervisor Balok terlebih dahulu.';
                         flowColor = '#4361ee';
-                        flowIcon = 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z';
-                    } else if (isBentong) {
-                        step1Who = 'Doctor PIC — Uni Klinik Bentong';
-                        step1Note = 'Doktor Bentong mendapat kelulusan Doctor PIC cawangan sendiri.';
-                        flowColor = '#7c3aed';
-                        flowIcon = 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z';
-                    } else if (isMCKIP) {
-                        step1Who = 'Doctor PIC — Klinik Syed Badaruddin MCKIP';
-                        step1Note = 'Doktor MCKIP mendapat kelulusan Doctor PIC cawangan sendiri.';
-                        flowColor = '#7c3aed';
                         flowIcon = 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z';
                     } else if (isTerengganu) {
                         step1Who = 'Doctor PIC — Cawangan Terengganu';
@@ -7499,13 +7487,11 @@ function renderView() {
               ${(() => {
                 const branchObj = branches.find(b => b.name === user.branch);
                 const isPahang = branchObj && branchObj.state === 'Pahang';
-                const isBentong = user.branch === 'Uni Klinik Bentong';
-                const isMCKIP = user.branch === 'Klinik Syed Badaruddin MCKIP';
                 const isBalokStaff = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
                 const isDoctor = user.category === 'Doctor';
                 let step1Who;
                 if (isDoctor) {
-                  if (isPahang && !isBentong && !isMCKIP) step1Who = 'Supervisor Balok';
+                  if (isPahang) step1Who = 'Supervisor Balok';
                   else step1Who = 'Doctor PIC Cawangan';
                 } else if (user.category === 'Admin Staff') {
                   const _isBalokHQ2 = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
@@ -9592,7 +9578,7 @@ function renderView() {
             { key:'terengganu',       label:'Semua Kakitangan',  sub:'Terengganu',           color:'#0d9488', bg:'rgba(13,148,136,0.06)'  },
             { key:'pahang_lain',      label:'Semua Kakitangan',  sub:'Pahang (Selain Balok)', color:'#3b82f6', bg:'rgba(59,130,246,0.06)'  },
             { key:'admin_balok',      label:'Kakitangan Admin',  sub:'Balok (HQ)',            color:'#0ea5e9', bg:'rgba(14,165,233,0.06)'  },
-            { key:'doctor_pahang',    label:'Doktor',            sub:'Pahang (Selain Bentong)', color:'#d97706', bg:'rgba(217,119,6,0.06)'  },
+            { key:'doctor_pahang',    label:'Doktor',            sub:'Pahang (Semua Cawangan)', color:'#d97706', bg:'rgba(217,119,6,0.06)'  },
             { key:'operation_balok',  label:'Kakitangan Operasi',sub:'Balok (HQ)',            color:'#10b981', bg:'rgba(16,185,129,0.06)'  },
             { key:'xray_sono_balok',  label:'Juru X-Ray / Sono', sub:'Balok (HQ)',            color:'#ec4899', bg:'rgba(236,72,153,0.06)'  },
             { key:'juru_audio_balok', label:'Juru Audio',        sub:'Balok (HQ)',            color:'#0d9488', bg:'rgba(13,148,136,0.06)'  },
@@ -9638,7 +9624,7 @@ function renderView() {
               <div style="width:16px;height:16px;border-radius:4px;background:rgba(239,68,68,0.1);display:flex;align-items:center;justify-content:center;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
               <span style="font-size:0.68rem;color:#ef4444;font-weight:600;">Tidak Aktif</span>
             </div>
-            <div style="font-size:0.68rem;color:var(--text-muted);padding:0.28rem 0.65rem;background:rgba(163,177,198,0.06);border:1px solid rgba(163,177,198,0.2);border-radius:6px;">★ Supervisor bagi Doktor Pahang (Selain Bentong) & Op. Balok = Supervisor Balok (HQ)</div>
+            <div style="font-size:0.68rem;color:var(--text-muted);padding:0.28rem 0.65rem;background:rgba(163,177,198,0.06);border:1px solid rgba(163,177,198,0.2);border-radius:6px;">★ Supervisor bagi Doktor Pahang (Semua Cawangan) & Op. Balok = Supervisor Balok (HQ)</div>
           </div>
 
           <section class="glass-card fade-in" style="padding:0;overflow:hidden;border:1px solid rgba(163,177,198,0.3);">
@@ -9718,7 +9704,7 @@ function renderView() {
                         { key:'terengganu',       grp:'Semua Kakitangan',          scope:'Terengganu',                     gColor:'#0d9488' },
                         { key:'pahang_lain',      grp:'Semua Kakitangan',          scope:'Pahang (Selain Balok)',           gColor:'#3b82f6' },
                         { key:'admin_balok',      grp:'Kakitangan Admin',          scope:'Balok (HQ)',                     gColor:'#0ea5e9' },
-                        { key:'doctor_pahang',    grp:'Doktor',                    scope:'Pahang (Selain Bentong)',         gColor:'#d97706' },
+                        { key:'doctor_pahang',    grp:'Doktor',                    scope:'Pahang (Semua Cawangan)',         gColor:'#d97706' },
                         { key:'operation_balok',  grp:'Kakitangan Operasi',        scope:'Balok (HQ)',                     gColor:'#10b981' },
                         { key:'xray_sono_balok',  grp:'Juru X-Ray / Sonographer', scope:'Balok (HQ)',                     gColor:'#ec4899' },
                         { key:'juru_audio_balok', grp:'Juru Audio',               scope:'Balok (HQ)',                     gColor:'#0d9488' },
@@ -10349,7 +10335,7 @@ function renderView() {
                     { key:'terengganu',       label:'Semua Kakitangan',  sub:'Terengganu',             color:'#0d9488', bg:'rgba(13,148,136,0.04)'  },
                     { key:'pahang_lain',      label:'Semua Kakitangan',  sub:'Pahang (Selain Balok)',   color:'#3b82f6', bg:'rgba(59,130,246,0.04)'  },
                     { key:'admin_balok',      label:'Kakitangan Admin',  sub:'Balok (HQ)',              color:'#0ea5e9', bg:'rgba(14,165,233,0.04)'  },
-                    { key:'doctor_pahang',    label:'Doktor',            sub:'Pahang (Selain Bentong)', color:'#d97706', bg:'rgba(217,119,6,0.04)'  },
+                    { key:'doctor_pahang',    label:'Doktor',            sub:'Pahang (Semua Cawangan)', color:'#d97706', bg:'rgba(217,119,6,0.04)'  },
                     { key:'operation_balok',  label:'Kakitangan Operasi',sub:'Balok (HQ)',             color:'#10b981', bg:'rgba(16,185,129,0.04)'  },
                     { key:'xray_sono_balok',  label:'Juru X-Ray / Sono', sub:'Balok (HQ)',             color:'#ec4899', bg:'rgba(236,72,153,0.04)'  },
                     { key:'juru_audio_balok', label:'Juru Audio',        sub:'Balok (HQ)',             color:'#0d9488', bg:'rgba(13,148,136,0.04)'  },

@@ -330,8 +330,8 @@ const children = [
   makeTable(
     ['Kategori', 'Cawangan', 'Pelulus Peringkat 1'],
     [
-      ['Doktor', 'Pahang (kecuali MCKIP & Bentong)', 'Supervisor — Balok HQ'],
-      ['Doktor', 'MCKIP / Bentong', 'HOD / PIC_HOD cawangan sendiri'],
+      ['Doktor', 'Pahang (semua cawangan)', 'Supervisor — Balok HQ'],
+      ['Doktor', 'Terengganu', 'Doctor PIC cawangan sendiri'],
       ['Doktor', 'Terengganu & lain', 'HOD / PIC_HOD cawangan sendiri'],
       ['Staff Admin', 'Semua cawangan', 'HOD klinik sendiri (jika tiada HOD → PIC)'],
       ['Staff Operasi', 'Balok HQ', 'Supervisor — Balok HQ'],

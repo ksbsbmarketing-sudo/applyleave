@@ -40,10 +40,10 @@ export function getStaffGroup(s, branches) {
   if (isBalok && s.category === "Admin Staff") return "admin_balok";
   if (isTerengganu) return "terengganu";
 
-  // Doctors in Pahang EXCEPT Bentong & MCKIP → Supervisor Balok (HQ) → HR, not HOD
-  if (s.category === "Doctor" && branchObj && branchObj.state === "Pahang"
-      && branchObj.daerah !== "Bentong"
-      && s.branch !== "Klinik Syed Badaruddin MCKIP") {
+  // Doctors in ALL Pahang branches → Supervisor Balok (HQ) → HR, not HOD.
+  // The Bentong & MCKIP carve-outs were removed (2026-08-03): the Doctor PIC at
+  // those branches had no P1 approver of their own, so their leave stalled.
+  if (s.category === "Doctor" && branchObj && branchObj.state === "Pahang") {
     return "doctor_pahang";
   }
 
