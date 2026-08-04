@@ -2,9 +2,6 @@ import './style.css'
 import { countLeaveDays } from './leaveDays.js';
 import { recordBalances, computeElOverflow, computeCMEEntitlement } from './leaveBalance.js';
 import { computeYearEndRollover, buildStaffRolloverPatch, CF_CAP } from './yearEnd.js';
-import { loadSectionState, toggleSection, saveSectionState, isOpen as isMsgSectionOpen } from './msgSections.js';
-import { applyEmoticons } from './emoticons.js';
-import { PRESENCE_STATUSES, DEFAULT_STATUS, getStatusMeta, resolveStatus, isVisibleToOthers, normalizeMood } from './presenceStatus.js';
 import { formatPersonName } from './nameFormat.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { Chart, registerables } from 'chart.js';
@@ -453,17 +450,7 @@ window.setView = function(v) {
       selectedLeaveType = 'AL';
       applyHalfDay = false;
   }
-  // Always reset messenger to rooms list when navigating away OR navigating into it
-  if (messengerMsgUnsub) { messengerMsgUnsub(); messengerMsgUnsub = null; }
-  messengerRoomId = null;
-  messengerMessages = [];
-  messengerView = 'rooms';
-  messengerFileObj = null;
   inboxSelected.clear(); // pilihan checkbox inbox tidak kekal antara navigasi
-  // Presence hanya berjalan semasa Messenger dibuka — di luar itu ia membakar
-  // kuota Spark untuk ciri yang tidak sedang dilihat oleh sesiapa.
-  if (v === 'messenger') window.initPresence();
-  else if (presenceUnsub || presenceHeartbeatInterval) window.stopPresence();
   view = v;
   render();
 };
@@ -614,67 +601,6 @@ let applyHalfDay = false;
 let mobileMenuOpen = false;
 const showLocum2Set = new Set();
 
-// ── Messenger State ──────────────────────────────────────────
-let messengerRoomId = null;
-let messengerRoomName = '';
-let messengerRoomType = 'group';
-let messengerMessages = [];
-let messengerMsgUnsub = null;
-let messengerFileObj = null;
-let messengerView = 'rooms'; // 'rooms' | 'chat'
-let messengerTab = 'chat';   // left-panel tab: 'chat' (recent DMs+groups) | 'kumpulan' (all group rooms)
-let messengerNewChatOpen = false; // "+" staff-picker overlay for starting a new DM
-let messengerSending = false;
-let messengerRoomLastMsg = {};
-let messengerRoomsUnsub = null;
-let messengerUnreadRooms = new Set(); // tracks which leave id has 2nd locum row visible
-let onlineUsers = {}; // { [ic]: { name, branch, role, lastSeen } }
-let presenceUnsub = null;
-let presenceHeartbeatInterval = null;
-// Selang denyut presence. Setiap denyut = 1 tulisan + 1 bacaan bagi setiap klien
-// yang bersambung, jadi angka ini terikat terus kepada kuota harian Spark.
-const PRESENCE_HEARTBEAT_MS = 3 * 60 * 1000;
-let msgToasts = []; // [{ id, roomId, roomName, senderName, preview, isDM, createdAt, timer }]
-// Messenger accordion (collapsible sections) — persisted per device.
-let msgSections = loadSectionState(typeof localStorage !== 'undefined' ? localStorage : null);
-// Yahoo-Messenger-style presence status + mood, persisted per device.
-let myStatus = (typeof localStorage !== 'undefined' && localStorage.getItem('ksb_msg_status')) || DEFAULT_STATUS;
-let myStatusMsg = (typeof localStorage !== 'undefined' && localStorage.getItem('ksb_msg_mood')) || '';
-let messengerRoomsInitialLoad = true;
-let msgNewMsgUnsub = null;
-// BUZZ (DM only): effects fire for buzzes newer than when the room opened, once each.
-let buzzListenStart = 0;
-let processedBuzzIds = new Set();
-let lastBuzzSentAt = 0; // client rate-limit timestamp
-
-// Synthesize the classic Yahoo buzz tone via Web Audio (no audio file needed).
-function playBuzz() {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = 'square';
-    o.frequency.setValueAtTime(110, ctx.currentTime);
-    o.frequency.linearRampToValueAtTime(70, ctx.currentTime + 0.3);
-    g.gain.setValueAtTime(0.22, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-    o.connect(g); g.connect(ctx.destination);
-    o.start(); o.stop(ctx.currentTime + 0.5);
-  } catch (e) { /* audio unavailable — ignore */ }
-}
-
-// Shake the open chat window and play the buzz sound.
-function triggerBuzzEffect() {
-  playBuzz();
-  const el = document.querySelector('.msg-chat-panel');
-  if (!el) return;
-  el.classList.remove('buzz-shake');
-  void el.offsetWidth; // reflow so the animation restarts
-  el.classList.add('buzz-shake');
-  setTimeout(() => el.classList.remove('buzz-shake'), 800);
-}
 const leaveCategories = [
     { id: 'AL', name: 'Annual Leave (AL)', entitlement: 14, icon: 'icon-al', color: '#3b82f6', description: 'Cuti Tahunan mengikut pro-rata bulan bekerja.' },
     { id: 'MC', name: 'Medical Leave (MC)', entitlement: 14, icon: 'icon-mc', color: '#10b981', description: 'Cuti Sakit dengan Sijil Sakit (MC) yang sah.' },
@@ -801,7 +727,7 @@ const HELP_FAQ = [
   },
   { id:'contact-hr', cat:'Akaun', keywords:['hubungi','hr','admin','bantuan','contact'],
     q:'Macam mana hubungi HR/Admin?',
-    a:'Anda boleh hubungi HR/Admin melalui <strong>Messenger</strong> dalam app ini, atau melalui nombor telefon rasmi yang disediakan oleh klinik.' }
+    a:'Anda boleh hubungi HR/Admin melalui nombor telefon rasmi yang disediakan oleh klinik.' }
 ];
 
 function helpSearch(query) {
@@ -868,79 +794,79 @@ window.renderHelpWidget = renderHelpWidget;
 
 window.rbacMatrix = {
     super_admin: {
-        dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: true, messenger: true, inbox: true,
+        dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: true, inbox: true,
         manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: true, manage_reports: true, manage_routing: true, manage_access: true, manage_roles_categories: true, manage_holidays: true, manage_policy: true,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
     },
     admin: {
-        dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: true, manage_reports: true, manage_routing: true, manage_access: true, manage_roles_categories: true, manage_holidays: true, manage_policy: true,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
     },
     hr: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: true, manage_holidays: true, manage_policy: true,
         report_kuantan_only: true, report_own_branch_only: false, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
     },
     hod_cawangan: {
-        dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: true, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: true, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: false
     },
     hod_balok: {
-        dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: true, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: true, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: false
     },
     doctor_pic: {
-        dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: false
     },
     supervisor: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
     },
     team_leader: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: false, os_balok: true, os_pahang: false, locum_records: false
     },
     staff: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
     },
     juru_xray: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
     },
     sonographer: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
     },
     juru_audio: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
     },
     pemandu: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, messenger: true, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
         can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
@@ -3614,11 +3540,7 @@ async function initData() {
           duplicateSessionDetected = false;
           sessionKickHandled = false;
           startSessionListener(savedIC, savedSID);
-          window.initMessengerRooms();
           window.initInbox();
-          // initPresence() SENGAJA tidak dipanggil di sini — ia bermula bila
-          // pengguna membuka Messenger (setView). Lihat komen di initPresence.
-          window.startNewMessageListener();
           window.requestNotifPermission();
           startReminderScheduler();
           const defaultView = window.rbacMatrix[user.role]?.dashboard ? 'dashboard' : 'leave-form';
@@ -4275,10 +4197,7 @@ function renderLogin() {
       device: navigator.userAgent.slice(0, 150)
     }).then(() => startSessionListener(user.ic, currentSessionId));
     window.logSystemActivity("Logged into system");
-    window.initMessengerRooms();
     window.initInbox();
-    // initPresence() bermula bila Messenger dibuka, bukan pada log masuk.
-    window.startNewMessageListener();
     window.requestNotifPermission();
     startReminderScheduler();
     view = 'dashboard';
@@ -4593,10 +4512,6 @@ window.logout = function() {
   localStorage.removeItem('ksb_logged_in_ic');
   localStorage.removeItem('ksb_logged_in_sid');
   if (sessionUnsubscribe) { sessionUnsubscribe(); sessionUnsubscribe = null; }
-  if (messengerMsgUnsub) { messengerMsgUnsub(); messengerMsgUnsub = null; }
-  if (messengerRoomsUnsub) { messengerRoomsUnsub(); messengerRoomsUnsub = null; }
-  window.stopPresence();
-  window.stopNewMessageListener();
   stopReminderScheduler();
   user = null;
   currentSessionId = null;
@@ -4611,128 +4526,12 @@ window.logout = function() {
   analyticsBranchFilter = 'SEMUA';
   analyticsRankModal = null;
   branchDashboardMonth = 0;
-  messengerRoomId = null;
-  messengerMessages = [];
-  messengerRoomLastMsg = {};
-  messengerUnreadRooms = new Set();
-  messengerView = 'rooms';
-  messengerFileObj = null;
-  msgToasts.forEach(t => { if (t.timer) clearTimeout(t.timer); });
-  msgToasts = [];
   view = 'login';
   render();
   signOut(auth).catch(() => {}).finally(() => window.location.reload());
 };
 
-// ============================================================
-// MESSENGER MODULE
-// ============================================================
-
-function safeBranchId(branchName) {
-  return 'branch_' + (branchName || '').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40);
-}
-
-function getDMRoomId(ic1, ic2) {
-  return 'dm_' + [ic1, ic2].sort().join('__');
-}
-
-// ── Presence ──────────────────────────────────────────────
-// Presence hidup HANYA semasa Messenger dibuka (lihat setView), bukan sepanjang
-// sesi. Sebabnya kuota: setiap denyut ialah satu tulisan, dan pendengar di bawah
-// menolak setiap tulisan itu kepada SETIAP klien yang bersambung — satu bacaan
-// setiap satu. Pada denyut 30s dahulu, 10 staf yang membuka app sepanjang hari
-// sudah melebihi had bacaan harian Spark, walaupun tiada siapa guna Messenger.
-//
-// Dipanggil semula setiap kali masuk Messenger, jadi ia MESTI idempotent —
-// tanpa membersihkan interval lama, setiap kali masuk akan menambah satu denyut
-// selari.
-window.initPresence = async function() {
-  if (!user) return;
-  if (presenceHeartbeatInterval) { clearInterval(presenceHeartbeatInterval); presenceHeartbeatInterval = null; }
-  const presRef = doc(db, 'user_presence', user.ic);
-  const writeOnline = () => setDoc(presRef, {
-    ic: user.ic, name: user.name,
-    branch: user.branch || '', role: user.role || '',
-    online: true, lastSeen: Date.now(),
-    status: myStatus, statusMsg: myStatusMsg
-  }, { merge: true });
-
-  await writeOnline();
-
-  // Mark offline on tab close / navigation away
-  window.addEventListener('beforeunload', () => {
-    setDoc(presRef, { online: false, lastSeen: Date.now() }, { merge: true });
-  });
-
-  // Denyut setiap 3 minit. ONLINE_WINDOW_MS dalam presenceStatus.js (7 minit)
-  // mesti kekal lebih panjang daripada ini, jika tidak pengguna berkelip offline.
-  presenceHeartbeatInterval = setInterval(writeOnline, PRESENCE_HEARTBEAT_MS);
-
-  // Listen for all presence changes
-  if (presenceUnsub) { presenceUnsub(); presenceUnsub = null; }
-  presenceUnsub = onSnapshot(collection(db, 'user_presence'), (snap) => {
-    const now = Date.now();
-    onlineUsers = {};
-    snap.docs.forEach(d => {
-      const data = d.data();
-      // Visible to others = online + fresh + not invisible (status-aware).
-      if (isVisibleToOthers(data, now)) {
-        onlineUsers[data.ic] = data;
-      }
-    });
-    if (view === 'messenger') render();
-  });
-};
-
-// Set my own presence status (Available/Sibuk/Away/Invisible). Persists locally
-// and pushes to Firestore immediately so others see it without waiting a beat.
-window.setMyStatus = async function(status) {
-  if (!getStatusMeta(status) || status !== getStatusMeta(status).id) return;
-  myStatus = status;
-  try { localStorage.setItem('ksb_msg_status', status); } catch (_) {}
-  if (user) {
-    try { await setDoc(doc(db, 'user_presence', user.ic), { status, online: true, lastSeen: Date.now() }, { merge: true }); } catch (_) {}
-  }
-  render();
-};
-
-// Set my mood / status message (free text under my name).
-window.setMyMood = async function(text) {
-  myStatusMsg = normalizeMood(text);
-  try { localStorage.setItem('ksb_msg_mood', myStatusMsg); } catch (_) {}
-  if (user) {
-    try { await setDoc(doc(db, 'user_presence', user.ic), { statusMsg: myStatusMsg, lastSeen: Date.now() }, { merge: true }); } catch (_) {}
-  }
-  render();
-};
-
-window.stopPresence = async function() {
-  if (presenceHeartbeatInterval) { clearInterval(presenceHeartbeatInterval); presenceHeartbeatInterval = null; }
-  if (presenceUnsub) { presenceUnsub(); presenceUnsub = null; }
-  if (user) {
-    try { await setDoc(doc(db, 'user_presence', user.ic), { online: false, lastSeen: Date.now() }, { merge: true }); } catch(e) {}
-  }
-  onlineUsers = {};
-};
-// ────────────────────────────────────────────────────────────
-
-// ── Bunyi notifikasi mesej (Web Audio API, tanpa fail audio) ──
-function playMsgSound() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.15);
-    gain.gain.setValueAtTime(0.25, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.35);
-  } catch(e) {}
-}
+// ── Inbox (notifikasi dalam aplikasi) ────────────────────────
 
 // ── Minta kebenaran Browser Notification ──
 window.requestNotifPermission = function() {
@@ -4861,338 +4660,14 @@ window.initInbox = function() {
   });
 };
 
-// ── Tunjuk Browser Notification (muncul walaupun tab tidak aktif) ──
-function showBrowserNotif(senderName, roomName, text, roomId, roomType) {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  if (document.visibilityState === 'visible') return; // sudah nampak toast, tak perlu double
-  const title = roomType === 'dm' ? `💬 ${senderName}` : `💬 ${senderName} @ ${roomName}`;
-  const preview = text.length > 100 ? text.slice(0, 100) + '…' : text;
-  const notif = new Notification(title, {
-    body: preview,
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    tag: roomId, // grupkan notif dari room yang sama
-    renotify: true,
-  });
-  notif.onclick = function() {
-    window.focus();
-    notif.close();
-    window.setView('messenger');
-    render();
-  };
+// ── Shared UI helpers ────────────────────────────────────────
+
+function escapeHtml(str) {
+  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// New-message toasts are now derived from the per-room metadata listener in
-// initMessengerRooms (fireToasts). That avoids any global message query, so a
-// DM between two other people can never reach this client. These remain as
-// no-ops so existing call sites keep working.
-window.startNewMessageListener = function() {};
-window.stopNewMessageListener = function() {
-  if (msgNewMsgUnsub) { msgNewMsgUnsub(); msgNewMsgUnsub = null; }
-};
-// ─────────────────────────────────────────────────────────────────────
-
-function showMsgToast(roomId, roomName, roomType, senderName, text) {
-  const existingTimer = (msgToasts.find(t => t.roomId === roomId) || {}).timer;
-  if (existingTimer) clearTimeout(existingTimer);
-  msgToasts = msgToasts.filter(t => t.roomId !== roomId);
-
-  const id = Date.now() + '_' + Math.random().toString(36).slice(2);
-  const preview = text.length > 70 ? text.slice(0, 70) + '…' : text;
-  const isDM = roomType === 'dm';
-  const createdAt = Date.now();
-
-  const toast = { id, roomId, roomName, roomType, senderName, preview, isDM, createdAt };
-  msgToasts.unshift(toast);
-  if (msgToasts.length > 3) msgToasts = msgToasts.slice(0, 3);
-
-  toast.timer = setTimeout(() => {
-    msgToasts = msgToasts.filter(t => t.id !== id);
-    render();
-  }, 6000);
-
-  render(); // toast is now part of render output
-}
-
-function renderActiveToasts() {
-  if (msgToasts.length === 0) return '';
-  const now = Date.now();
-  return `<div style="position:fixed;bottom:1.25rem;right:1.25rem;z-index:99999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;max-width:320px;width:calc(100vw - 2.5rem);">
-    ${msgToasts.map(t => {
-      const elapsedS = (now - t.createdAt) / 1000;
-      const remainingS = Math.max(0.1, 6 - elapsedS);
-      const isNew = elapsedS < 0.4;
-      return `
-      <div class="msg-toast" onclick="window.openMsgToast('${t.roomId}','${t.roomName.replace(/'/g,"\\'")}','${t.roomType}','${t.id}')" style="pointer-events:all;${isNew ? '' : 'animation:none;'}">
-        <div class="msg-toast-avatar">${(t.senderName||'?')[0].toUpperCase()}</div>
-        <div class="msg-toast-body">
-          ${t.isDM ? '' : `<div style="font-size:0.65rem;color:rgba(255,255,255,0.65);margin-bottom:0.15rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"># ${t.roomName}</div>`}
-          <div class="msg-toast-sender">${t.senderName}</div>
-          <div class="msg-toast-text">${t.preview}</div>
-        </div>
-        <button class="msg-toast-close" onclick="event.stopPropagation();window.dismissMsgToast('${t.id}')">×</button>
-        <div class="msg-toast-bar" style="animation-duration:${remainingS.toFixed(1)}s;"></div>
-      </div>`;
-    }).join('')}
-  </div>`;
-}
-
-window.openMsgToast = function(roomId, roomName, roomType, toastId) {
-  window.dismissMsgToast(toastId);
-  window.setView('messenger');
-  if (roomType === 'dm') {
-    const otherIc = roomId.replace('dm_','').split('__').find(ic => ic !== (user ? user.ic : ''));
-    if (otherIc) {
-      const s = staffList.find(st => st.ic === otherIc);
-      window.openDM(otherIc, s ? s.name : roomName);
-    }
-  } else {
-    window.openRoom(roomId, roomName, roomType);
-  }
-};
-
-window.dismissMsgToast = function(id) {
-  const t = msgToasts.find(x => x.id === id);
-  if (t && t.timer) clearTimeout(t.timer);
-  msgToasts = msgToasts.filter(x => x.id !== id);
-  render();
-};
-
-// The set of room ids THIS user may access: public group rooms + a DM room with
-// every other active staff. Firestore rules authorise these by roomId, and we
-// query them by documentId() so no global read of other people's DMs happens.
-const MSG_ROLE_ROOM_IDS = ['role_doktor','role_admin_staff','role_operation_staff','role_management','role_hod','role_supervisor'];
-function myMessengerRoomIds() {
-  const ids = ['all_ksb', ...MSG_ROLE_ROOM_IDS];
-  branches.forEach(b => ids.push(safeBranchId(b.name)));
-  staffList
-    .filter(s => s.ic !== user.ic && !s.inactive && s.role !== 'super_admin')
-    .forEach(s => ids.push(getDMRoomId(user.ic, s.ic)));
-  return [...new Set(ids)];
-}
-
-window.initMessengerRooms = function() {
-  messengerRoomsInitialLoad = true;
-  if (messengerRoomsUnsub) { messengerRoomsUnsub(); messengerRoomsUnsub = null; }
-  if (!user) return;
-
-  // Listen ONLY to rooms I can access, by document id (chunked — Firestore 'in'
-  // allows max 30 ids per query). New-message toasts are derived from these room
-  // metadata changes, so there is no global message query at all.
-  const ids = myMessengerRoomIds();
-  const chunks = [];
-  for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30));
-  const caches = chunks.map(() => ({}));
-  const seenTs = {};       // roomId -> last lastTimestamp we've toasted on
-  let baselined = false;   // skip toasts on the very first snapshot batch
-
-  const rebuild = () => {
-    messengerRoomLastMsg = {};
-    caches.forEach(c => Object.values(c).forEach(data => { messengerRoomLastMsg[data.id] = data; }));
-    Object.values(messengerRoomLastMsg).forEach(data => {
-      const lastSeen = parseInt(localStorage.getItem(`msg_seen_${user.ic}_${data.id}`) || '0');
-      if (data.lastTimestamp && data.lastTimestamp > lastSeen && data.lastSenderIC !== user.ic) {
-        messengerUnreadRooms.add(data.id);
-      } else {
-        messengerUnreadRooms.delete(data.id);
-      }
-    });
-    messengerRoomsInitialLoad = false;
-    render();
-  };
-
-  const fireToasts = () => {
-    Object.values(messengerRoomLastMsg).forEach(data => {
-      const rid = data.id;
-      if (!data.lastTimestamp) return;
-      const prev = seenTs[rid] || 0;
-      if (baselined && data.lastTimestamp > prev && data.lastSenderIC && data.lastSenderIC !== user.ic) {
-        const roomType = data.type || (rid.startsWith('dm_') ? 'dm' : 'group');
-        const roomName = roomType === 'dm' ? (data.lastSenderName || 'Mesej') : (data.name || data.lastSenderName || '');
-        const text = data.lastMessage || '📎 Mesej';
-        playMsgSound();
-        showMsgToast(rid, roomName, roomType, data.lastSenderName || '', text);
-        showBrowserNotif(data.lastSenderName || '', roomName, text, rid, roomType);
-      }
-      seenTs[rid] = Math.max(prev, data.lastTimestamp || 0);
-    });
-    baselined = true;
-  };
-
-  const unsubs = chunks.map((chunk, idx) => onSnapshot(
-    query(collection(db, 'messenger_rooms'), where(documentId(), 'in', chunk)),
-    snap => {
-      caches[idx] = {};
-      snap.docs.forEach(d => { caches[idx][d.id] = { id: d.id, ...d.data() }; });
-      rebuild();
-      fireToasts();
-    },
-    e => console.warn('Rooms chunk listener:', e)
-  ));
-  messengerRoomsUnsub = () => unsubs.forEach(u => u());
-};
-
-window.openRoom = function(roomId, roomName, type) {
-  if (messengerMsgUnsub) { messengerMsgUnsub(); messengerMsgUnsub = null; }
-  messengerRoomId = roomId;
-  messengerRoomName = roomName;
-  messengerRoomType = type || 'group';
-  messengerMessages = [];
-  messengerView = 'chat';
-  messengerFileObj = null;
-
-  localStorage.setItem(`msg_seen_${user.ic}_${roomId}`, Date.now().toString());
-  messengerUnreadRooms.delete(roomId);
-
-  const roomRef = doc(db, 'messenger_rooms', roomId);
-  getDoc(roomRef).then(snap => {
-    if (!snap.exists()) {
-      setDoc(roomRef, { id: roomId, name: roomName, type: messengerRoomType, lastMessage: '', lastTimestamp: 0, lastSenderName: '', lastSenderIC: '' });
-    }
-  });
-
-  // Reset BUZZ tracking for this room; only buzzes arriving after now fire effects.
-  buzzListenStart = Date.now();
-  processedBuzzIds = new Set();
-
-  const q = query(collection(db, 'messenger_messages'), where('roomId', '==', roomId));
-  messengerMsgUnsub = onSnapshot(q, (snap) => {
-    messengerMessages = snap.docs.map(d => d.data()).sort((a, b) => a.timestamp - b.timestamp);
-    localStorage.setItem(`msg_seen_${user.ic}_${roomId}`, Date.now().toString());
-    messengerUnreadRooms.delete(roomId);
-    // Detect freshly-arrived buzzes (not history) and fire shake + sound once each.
-    const freshBuzz = messengerMessages.some(m =>
-      m.type === 'buzz' && m.timestamp > buzzListenStart && !processedBuzzIds.has(m.id));
-    messengerMessages.forEach(m => { if (m.type === 'buzz') processedBuzzIds.add(m.id); });
-    if (view === 'messenger') {
-      render();
-      requestAnimationFrame(() => {
-        const area = document.getElementById('msg-chat-area');
-        if (area) area.scrollTop = area.scrollHeight;
-        if (freshBuzz) triggerBuzzEffect();
-      });
-    }
-  });
-
-  render();
-  requestAnimationFrame(() => {
-    const area = document.getElementById('msg-chat-area');
-    if (area) area.scrollTop = area.scrollHeight;
-    const inp = document.getElementById('msg-text-input');
-    if (inp) inp.focus();
-  });
-};
-
-window.openDM = function(targetIC, targetName) {
-  window.openRoom(getDMRoomId(user.ic, targetIC), targetName, 'dm');
-};
-
-window.backToRooms = function() {
-  messengerView = 'rooms';
-  render();
-};
-
-window.handleMessengerFile = function(input) {
-  if (!input.files || !input.files[0]) return;
-  const file = input.files[0];
-  if (file.size > 10 * 1024 * 1024) {
-    alert('Saiz fail terlalu besar. Had maksimum: 10MB');
-    input.value = '';
-    return;
-  }
-  messengerFileObj = { file, name: file.name, type: file.type, size: file.size };
-  render();
-};
-
-window.cancelMessengerFile = function() {
-  messengerFileObj = null;
-  const inp = document.getElementById('msg-file-input');
-  if (inp) inp.value = '';
-  render();
-};
-
-window.sendMessage = async function(e) {
-  if (e) e.preventDefault();
-  if (messengerSending) return;
-  const textEl = document.getElementById('msg-text-input');
-  const text = (textEl ? textEl.value : '').trim();
-  if (!text && !messengerFileObj) return;
-  if (!messengerRoomId) return;
-
-  messengerSending = true;
-  render();
-
-  try {
-    let fileUrl = null, fileName = null, fileType = null, fileSize = null;
-    if (messengerFileObj) {
-      // Lampiran messenger ke Cloudinary (Firebase Storage tidak diaktifkan — perlu Blaze).
-      // `auto` kesan sendiri gambar / PDF / fail lain (raw spt doc/xls). secure_url disimpan
-      // pada mesej dan dibuka melalui pautan fail dalam chat.
-      const _mfd = new FormData();
-      _mfd.append('file', messengerFileObj.file);
-      _mfd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-      _mfd.append('folder', `messenger/${messengerRoomId}`);
-      const _mresp = await fetch(
-        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`,
-        { method: 'POST', body: _mfd }
-      );
-      const _mdata = await _mresp.json().catch(() => ({}));
-      if (!_mresp.ok || !_mdata.secure_url) {
-        throw new Error((_mdata.error && _mdata.error.message) || ('Cloudinary HTTP ' + _mresp.status));
-      }
-      fileUrl = _mdata.secure_url;
-      fileName = messengerFileObj.name;
-      fileType = messengerFileObj.type;
-      fileSize = messengerFileObj.size;
-    }
-    const msgId = Date.now().toString() + '_' + Math.random().toString(36).substr(2, 6);
-    await setDoc(doc(db, 'messenger_messages', msgId), {
-      roomId: messengerRoomId, id: msgId,
-      senderIC: user.ic, senderName: user.name, senderBranch: user.branch || '',
-      text: text || '', fileUrl: fileUrl || null, fileName: fileName || null,
-      fileType: fileType || null, fileSize: fileSize || null, timestamp: Date.now()
-    });
-    await setDoc(doc(db, 'messenger_rooms', messengerRoomId), {
-      id: messengerRoomId, name: messengerRoomName, type: messengerRoomType,
-      lastMessage: fileUrl ? `📎 ${fileName}` : text,
-      lastTimestamp: Date.now(), lastSenderName: user.name, lastSenderIC: user.ic
-    }, { merge: true });
-    messengerFileObj = null;
-    const fi = document.getElementById('msg-file-input');
-    if (fi) fi.value = '';
-    if (textEl) textEl.value = '';
-  } catch(err) {
-    console.error('Send message failed:', err);
-    alert('Gagal menghantar mesej. Sila cuba lagi.');
-  }
-  messengerSending = false;
-};
-
-window.sendBuzz = async function() {
-  if (!messengerRoomId || messengerRoomType !== 'dm') return;
-  const now = Date.now();
-  if (now - lastBuzzSentAt < 2000) return; // rate limit: 1 buzz / 2s
-  lastBuzzSentAt = now;
-  try {
-    const msgId = now.toString() + '_' + Math.random().toString(36).substr(2, 6);
-    await setDoc(doc(db, 'messenger_messages', msgId), {
-      roomId: messengerRoomId, id: msgId, type: 'buzz',
-      senderIC: user.ic, senderName: user.name, senderBranch: user.branch || '',
-      text: '', timestamp: now
-    });
-    await setDoc(doc(db, 'messenger_rooms', messengerRoomId), {
-      id: messengerRoomId, name: messengerRoomName, type: messengerRoomType,
-      lastMessage: '🐝 BUZZ!', lastTimestamp: now,
-      lastSenderName: user.name, lastSenderIC: user.ic
-    }, { merge: true });
-  } catch (err) {
-    console.error('Send buzz failed:', err);
-  }
-};
-
-// Upload a profile photo to Cloudinary and save its URL on the staff doc so it
-// shows across the messenger (buddy list, chat, bubbles). Used by both the
-// Messenger avatar click and the Settings profile form.
+// Upload a profile photo to Cloudinary and save its URL on the staff doc.
+// Used by the profile form in Tetapan.
 window.uploadProfilePhoto = async function(input) {
   if (!input || !input.files || !input.files[0]) return;
   const file = input.files[0];
@@ -5226,458 +4701,6 @@ window.uploadProfilePhoto = async function(input) {
   }
 };
 
-window.deleteMessage = async function(msgId) {
-  if (!confirm('Padam mesej ini?')) return;
-  try { await deleteDoc(doc(db, 'messenger_messages', msgId)); }
-  catch(err) { alert('Gagal memadam mesej.'); }
-};
-
-// Live-filter whichever list is currently shown (Chat, Kumpulan, or the "+"
-// new-chat picker) by name — no re-render, so search box keeps focus.
-window.filterMsgStaff = function(q) {
-  const query = (q || '').toLowerCase().trim();
-  document.querySelectorAll('#msg-list-body .msg-room-item').forEach(item => {
-    const name = item.dataset.search || item.dataset.staffName || '';
-    item.style.display = (!query || name.includes(query)) ? '' : 'none';
-  });
-};
-
-window.setMessengerTab = function(tab) {
-  messengerTab = tab;
-  messengerNewChatOpen = false;
-  render();
-};
-window.openNewChat = function() { messengerNewChatOpen = true; render(); };
-window.closeNewChat = function() { messengerNewChatOpen = false; render(); };
-
-function formatMsgTime(ts) {
-  if (!ts) return '';
-  const d = new Date(ts), now = new Date();
-  const diffDays = Math.floor((now - d) / 86400000);
-  const time = d.toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' });
-  if (diffDays === 0) return time;
-  if (diffDays === 1) return 'Semalam ' + time;
-  return d.toLocaleDateString('ms-MY', { day: '2-digit', month: 'short' }) + ' ' + time;
-}
-
-function formatFileSize(bytes) {
-  if (!bytes) return '';
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-}
-
-function getFileIcon(fileType, fileName) {
-  const t = (fileType || '').toLowerCase(), n = (fileName || '').toLowerCase();
-  if (t.startsWith('image/')) return '🖼️';
-  if (t === 'application/pdf' || n.endsWith('.pdf')) return '📄';
-  if (t.includes('word') || n.endsWith('.doc') || n.endsWith('.docx')) return '📝';
-  if (t.includes('excel') || t.includes('spreadsheet') || n.endsWith('.xls') || n.endsWith('.xlsx')) return '📊';
-  if (t.startsWith('video/')) return '🎥';
-  if (t.startsWith('audio/')) return '🎵';
-  return '📎';
-}
-
-function escapeHtml(str) {
-  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// Look up a staff member's uploaded profile photo URL by IC (from staffList).
-function getStaffPhoto(ic) {
-  if (!ic) return '';
-  const s = staffList.find(x => x.ic === ic);
-  return (s && s.photoUrl) || '';
-}
-
-// Avatar contents: uploaded photo if present, else the name's first initial.
-function avatarInner(name, photoUrl) {
-  if (photoUrl) {
-    return `<img src="${photoUrl}" alt="${escapeHtml(name || '')}" class="msg-avatar-img" loading="lazy">`;
-  }
-  return escapeHtml(((name || '?')[0] || '?'));
-}
-
-function renderMessageBubble(msg) {
-  const isOwn = msg.senderIC === user.ic;
-  if (msg.type === 'buzz') {
-    const line = isOwn ? '[System]: You just sent a BUZZ!' : '[System]: You received a BUZZ!';
-    return `<div class="msg-buzz-system">🐝 ${line}</div>`;
-  }
-  const isImage = msg.fileType && msg.fileType.startsWith('image/');
-  return `
-    <div class="msg-bubble-row ${isOwn ? 'own' : 'other'}">
-      ${!isOwn ? `<div class="msg-avatar">${avatarInner(msg.senderName, getStaffPhoto(msg.senderIC))}</div>` : ''}
-      <div class="msg-bubble-wrap">
-        ${!isOwn && messengerRoomType !== 'dm' ? `<div class="msg-sender-name">${msg.senderName}${msg.senderBranch ? ` · <span style="color:var(--text-muted);font-size:0.7rem;">${msg.senderBranch}</span>` : ''}</div>` : ''}
-        <div class="msg-bubble ${isOwn ? 'own' : 'other'}">
-          ${msg.text ? `<div class="msg-text">${escapeHtml(applyEmoticons(msg.text))}</div>` : ''}
-          ${msg.fileUrl ? (isImage ?
-            `<a href="${msg.fileUrl}" target="_blank" rel="noopener"><img src="${msg.fileUrl}" class="msg-img" alt="${msg.fileName || 'image'}" loading="lazy"></a>` :
-            `<a href="${msg.fileUrl}" target="_blank" rel="noopener" class="msg-file-link">
-              <span class="msg-file-icon">${getFileIcon(msg.fileType, msg.fileName)}</span>
-              <div class="msg-file-info">
-                <div class="msg-file-name">${msg.fileName || 'Fail'}</div>
-                <div class="msg-file-size">${formatFileSize(msg.fileSize)} · Tekan untuk muat turun</div>
-              </div>
-            </a>`) : ''}
-        </div>
-        <div class="msg-time ${isOwn ? 'own' : ''}">
-          ${formatMsgTime(msg.timestamp)}
-          ${isOwn ? `<button class="msg-delete-btn" onclick="window.deleteMessage('${msg.id}')" title="Padam">×</button>` : ''}
-        </div>
-      </div>
-      ${isOwn ? `<div class="msg-avatar own">${avatarInner(user.name, user.photoUrl)}</div>` : ''}
-    </div>`;
-}
-
-function getRoomSubtitle(type) {
-  if (type === 'dm') return 'Mesej Peribadi';
-  if (type === 'branch') return 'Kumpulan Cawangan';
-  if (type === 'role') return 'Kumpulan Peranan';
-  return 'Kumpulan Semua Staf';
-}
-
-function getRoomHeaderIcon(type, name) {
-  if (type === 'group') return '🏥';
-  if (type === 'branch') return '🏢';
-  if (type === 'role') return '👥';
-  return (name || '?')[0];
-}
-
-function renderRoomItem(room) {
-  const last = messengerRoomLastMsg[room.id] || {};
-  const isUnread = messengerUnreadRooms.has(room.id);
-  const isActive = messengerRoomId === room.id;
-  const preview = last.lastMessage ? `${last.lastSenderName || ''}: ${last.lastMessage}` : room.subtitle;
-  return `
-  <div class="msg-room-item ${isActive ? 'active' : ''}" data-search="${(room.name||'').toLowerCase()}" onclick="window.openRoom('${room.id}','${room.name.replace(/'/g,"\\'")}','${room.type}')">
-    <div class="msg-room-icon-circle" style="${room.iconBg || 'background:linear-gradient(135deg,var(--primary),var(--secondary));'}">${room.icon}</div>
-    <div class="msg-room-info">
-      <div class="msg-room-name">${room.name}${isUnread ? '<span class="msg-unread-dot"></span>' : ''}</div>
-      <div class="msg-room-last">${preview}</div>
-    </div>
-    ${last.lastTimestamp ? `<div class="msg-room-time">${formatMsgTime(last.lastTimestamp)}</div>` : ''}
-  </div>`;
-}
-
-// Short, human role label for the buddy list secondary line (avoids repeating
-// the full branch name on every row).
-function shortRoleLabel(role) {
-  const map = {
-    staff: 'Staf', doctor: 'Doktor', doctor_pic: 'Doktor',
-    hod_cawangan: 'HOD', hod_balok: 'HOD', supervisor: 'Supervisor',
-    team_leader: 'Ketua Pasukan', juru_xray: 'Juru X-Ray',
-    sonographer: 'Sonografer', juru_audio: 'Juru Audio',
-    admin: 'Admin', hr: 'HR', super_admin: 'Super Admin',
-  };
-  if (map[role]) return map[role];
-  return (role || 'Staf').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
-// Clickable accordion header for a messenger rooms section. `count` optional.
-// `accent` colours the count badge (defaults to muted). Chevron points down
-// when open, right when collapsed.
-function msgSectionHeader(key, label, count, accent) {
-  const open = isMsgSectionOpen(msgSections, key);
-  const badge = (count !== undefined && count !== null)
-    ? `<span class="msg-section-count" ${accent ? `style="background:${accent.bg};color:${accent.fg};"` : ''}>${count}</span>`
-    : '';
-  return `<button type="button" class="msg-section-toggle" aria-expanded="${open}" onclick="window.toggleMsgSection('${key}')">
-    <svg class="msg-section-chev${open ? ' open' : ''}" id="msg-section-chev-${key}" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"></polyline></svg>
-    <span class="msg-section-toggle-label">${label}</span>${badge}
-  </button>`;
-}
-
-// Toggle a section open/closed without a full re-render (keeps search box focus
-// & scroll position), then persist the new state.
-window.toggleMsgSection = function(key) {
-  msgSections = toggleSection(msgSections, key);
-  saveSectionState(localStorage, msgSections);
-  const open = isMsgSectionOpen(msgSections, key);
-  const body = document.getElementById('msg-section-body-' + key);
-  const chev = document.getElementById('msg-section-chev-' + key);
-  if (body) body.style.display = open ? '' : 'none';
-  if (chev) {
-    chev.classList.toggle('open', open);
-    const btn = chev.closest('.msg-section-toggle');
-    if (btn) btn.setAttribute('aria-expanded', String(open));
-  }
-};
-
-function renderMessengerView() {
-  // Safety: if no room is open, always show rooms list
-  if (!messengerRoomId) messengerView = 'rooms';
-
-  const myMeta = getStatusMeta(myStatus);
-
-  const otherStaff = staffList.filter(s => s.ic !== user.ic && !s.inactive && s.role !== 'super_admin')
-    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-
-  // One DM contact row (Yahoo-Messenger buddy style). Shared by the WhatsApp-style
-  // "Perbualan Terkini" section and the full "Mesej Terus" directory below so the
-  // markup never drifts between the two.
-  const renderDMRow = (s) => {
-    const dmId = getDMRoomId(user.ic, s.ic);
-    const last = messengerRoomLastMsg[dmId] || {};
-    const isUnread = messengerUnreadRooms.has(dmId);
-    const isActive = messengerRoomId === dmId;
-    const pres = onlineUsers[s.ic];
-    const isOnline = !!pres;
-    const sm = isOnline ? resolveStatus(pres) : null;
-    // online → status label / mood; offline → last msg preview or short role.
-    const statusLine = isOnline
-      ? `<span style="color:${sm.color};font-weight:600;">${sm.dot} ${pres.statusMsg ? pres.statusMsg : sm.label}</span>`
-      : (last.lastMessage || shortRoleLabel(s.role));
-    return `
-    <div class="msg-room-item ${isActive ? 'active' : ''} ${isOnline ? '' : 'msg-room-offline'}" data-search="${(s.name||'').toLowerCase()}" data-staff-name="${(s.name||'').toLowerCase()}" onclick="window.openDM('${s.ic}','${s.name.replace(/'/g,"\\'")}')">
-      <div style="position:relative;flex-shrink:0;">
-        <div class="msg-room-avatar">${avatarInner(s.name, s.photoUrl)}</div>
-        ${isOnline ? `<span class="msg-online-dot" style="background:${sm.color};box-shadow:0 0 0 1px ${sm.color}55;"></span>` : ''}
-      </div>
-      <div class="msg-room-info">
-        <div class="msg-room-name">${s.name}${isUnread ? '<span class="msg-unread-dot"></span>' : ''}</div>
-        <div class="msg-room-last">${statusLine}</div>
-      </div>
-      ${last.lastTimestamp ? `<div class="msg-room-time">${formatMsgTime(last.lastTimestamp)}</div>` : ''}
-    </div>`;
-  };
-
-  const dmUnread = s => messengerUnreadRooms.has(getDMRoomId(user.ic, s.ic));
-
-  // Full staff directory for the "+" new-chat picker: unread first, else A→Z.
-  const dmDirectory = otherStaff
-    .slice()
-    .sort((a, b) => (dmUnread(b) - dmUnread(a)) || (a.name || '').localeCompare(b.name || ''));
-
-  const allKsbRoom = { id: 'all_ksb', name: 'Semua Staf KSB', type: 'group', icon: '🏥', iconBg: 'background:linear-gradient(135deg,var(--primary),var(--secondary));', subtitle: 'Semua kakitangan KSB' };
-  const branchRooms = branches.map(b => ({
-    id: safeBranchId(b.name),
-    name: b.name,
-    type: 'branch',
-    icon: '🏢',
-    iconBg: 'background:linear-gradient(135deg,#0891b2,#0e7490);',
-    subtitle: b.state || 'Cawangan'
-  }));
-  const roleRooms = [
-    { id: 'role_doktor',          name: 'Semua Doktor',      type: 'role', icon: '👨‍⚕️', iconBg: 'background:linear-gradient(135deg,#059669,#047857);', subtitle: 'Kumpulan Doktor KSB' },
-    { id: 'role_admin_staff',     name: 'Staff Admin',       type: 'role', icon: '💼',   iconBg: 'background:linear-gradient(135deg,#7c3aed,#6d28d9);', subtitle: 'Kumpulan Staff Admin' },
-    { id: 'role_operation_staff', name: 'Staff Operasi',     type: 'role', icon: '⚙️',   iconBg: 'background:linear-gradient(135deg,#d97706,#b45309);', subtitle: 'Kumpulan Staff Operasi' },
-    { id: 'role_management',      name: 'Management',        type: 'role', icon: '👑',   iconBg: 'background:linear-gradient(135deg,#dc2626,#b91c1c);', subtitle: 'Admin, HR & Super Admin' },
-    { id: 'role_hod',             name: 'HOD & PIC HOD',     type: 'role', icon: '🏅',   iconBg: 'background:linear-gradient(135deg,#4361ee,#3451d1);', subtitle: 'Head of Department' },
-    { id: 'role_supervisor',      name: 'Supervisor',        type: 'role', icon: '👔',   iconBg: 'background:linear-gradient(135deg,#0891b2,#0e7490);', subtitle: 'Kumpulan Supervisor' },
-  ];
-  const groupRooms = [allKsbRoom, ...branchRooms, ...roleRooms];
-  const groupMetaById = {};
-  groupRooms.forEach(r => { groupMetaById[r.id] = r; });
-
-  // "Chat" tab = every room with activity (DMs + group rooms), unread first then
-  // most-recent, so a new message always surfaces at the very top (WhatsApp-style).
-  const chatItems = Object.values(messengerRoomLastMsg)
-    .filter(d => d.lastTimestamp > 0)
-    .map(d => {
-      if (String(d.id).startsWith('dm_')) {
-        const otherIc = d.id.replace('dm_', '').split('__').find(ic => ic !== user.ic);
-        const s = staffList.find(st => st.ic === otherIc && !st.inactive && st.role !== 'super_admin');
-        return s ? { type: 'dm', s, d } : null;
-      }
-      const g = groupMetaById[d.id];
-      return g ? { type: 'group', g, d } : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => {
-      const ua = messengerUnreadRooms.has(a.d.id) ? 1 : 0;
-      const ub = messengerUnreadRooms.has(b.d.id) ? 1 : 0;
-      return (ub - ua) || (b.d.lastTimestamp - a.d.lastTimestamp);
-    });
-
-  const chatListHtml = chatItems.length
-    ? chatItems.map(it => it.type === 'dm' ? renderDMRow(it.s) : renderRoomItem(it.g)).join('')
-    : `<div class="msg-empty">Belum ada perbualan.<br>Tekan <b>+</b> untuk mula mesej baharu.</div>`;
-  const kumpulanListHtml = groupRooms.map(renderRoomItem).join('');
-  const totalUnread = messengerUnreadRooms.size;
-
-  // "Sedang Aktif" strip: everyone online right now (Messenger/Instagram-style
-  // horizontal avatars), so you can see & DM online staff even if you have never
-  // chatted with them. Shown at the top of the Chat tab only.
-  const onlineOthers = Object.values(onlineUsers).filter(u => u.ic !== user.ic && u.role !== 'super_admin');
-  const activeNowHtml = onlineOthers.length ? `
-    <div class="msg-active-now">
-      ${onlineOthers.map(u => {
-        const st = staffList.find(x => x.ic === u.ic) || {};
-        const cm = resolveStatus(u);
-        const firstName = (u.name || '?').split(' ')[0];
-        const title = `${(u.name || '').replace(/"/g,'&quot;')} — ${cm.label}${u.statusMsg ? ': ' + u.statusMsg.replace(/"/g,'&quot;') : ''}`;
-        return `<button class="msg-active-item" title="${title}" onclick="window.openDM('${u.ic}','${(u.name||'').replace(/'/g,"\\'")}')">
-          <span class="msg-active-avatar">${avatarInner(u.name, st.photoUrl)}<span class="msg-active-dot" style="background:${cm.color};"></span></span>
-          <span class="msg-active-name">${firstName}</span>
-        </button>`;
-      }).join('')}
-    </div>` : '';
-
-  // Compact "me" bar (avatar + status + mood) — replaces the old status card.
-  const meBar = `
-    <div class="msg-me-bar">
-      <div class="msg-mystatus-avatar" title="Tukar gambar profil" style="cursor:pointer;"
-           onclick="document.getElementById('msg-avatar-upload').click()">
-        ${avatarInner(user.name, user.photoUrl)}
-        <span class="msg-status-dot" style="background:${myMeta.color};"></span>
-        <span class="msg-avatar-cam">📷</span>
-      </div>
-      <input type="file" id="msg-avatar-upload" accept="image/*" style="display:none;" onchange="window.uploadProfilePhoto(this)">
-      <div class="msg-mystatus-info">
-        <div class="msg-mystatus-name">${user.name}</div>
-        <div class="msg-me-statusline">
-          <select class="msg-mystatus-select" title="Tukar status" style="color:${myMeta.color};background-color:${myMeta.color}1a;" onchange="window.setMyStatus(this.value)">
-            ${PRESENCE_STATUSES.map(s => `<option value="${s.id}" ${s.id === myStatus ? 'selected' : ''}>${s.dot} ${s.label}</option>`).join('')}
-          </select>
-          <input class="msg-mystatus-mood" type="text" maxlength="60"
-            value="${(myStatusMsg || '').replace(/"/g,'&quot;')}"
-            placeholder="✎ Set mesej status…"
-            onchange="window.setMyMood(this.value)"
-            onkeydown="if(event.key==='Enter')this.blur();">
-        </div>
-      </div>
-    </div>`;
-
-  const searchBar = `
-    <div class="msg-search">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-      <input type="text" placeholder="Cari…" id="msg-staff-search" oninput="window.filterMsgStaff(this.value)" autocomplete="off">
-    </div>`;
-
-  return `
-  <div class="messenger-layout">
-    <!-- Rooms panel -->
-    <div class="msg-rooms-panel ${messengerView === 'chat' ? 'msg-hide-mobile' : ''}">
-      ${meBar}
-
-      ${messengerNewChatOpen ? `
-        <div class="msg-tabs-bar">
-          <button class="msg-icon-btn" title="Kembali" onclick="window.closeNewChat()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
-          </button>
-          <span class="msg-newchat-title">Mesej Baharu</span>
-        </div>
-      ` : `
-        <div class="msg-tabs-bar">
-          <div class="msg-tabs">
-            <button class="msg-tab ${messengerTab === 'chat' ? 'active' : ''}" onclick="window.setMessengerTab('chat')">Chat${totalUnread ? `<span class="msg-tab-badge">${totalUnread}</span>` : ''}</button>
-            <button class="msg-tab ${messengerTab === 'kumpulan' ? 'active' : ''}" onclick="window.setMessengerTab('kumpulan')">Kumpulan</button>
-          </div>
-          <button class="msg-icon-btn msg-newchat-btn" title="Mesej baharu" onclick="window.openNewChat()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-          </button>
-        </div>
-      `}
-
-      ${searchBar}
-
-      <div class="msg-rooms-scroll">
-        ${(!messengerNewChatOpen && messengerTab === 'chat') ? activeNowHtml : ''}
-        <div id="msg-list-body">
-          ${messengerNewChatOpen
-            ? dmDirectory.map(renderDMRow).join('')
-            : (messengerTab === 'chat' ? chatListHtml : kumpulanListHtml)}
-        </div>
-      </div>
-    </div>
-
-    <!-- Chat panel -->
-    <div class="msg-chat-panel ${messengerView === 'rooms' ? 'msg-hide-mobile' : ''}">
-      ${messengerRoomId ? `
-        <div class="msg-chat-header">
-          <button class="msg-back-btn" onclick="window.backToRooms()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
-          </button>
-          <div style="position:relative;flex-shrink:0;">
-            <div style="width:38px;height:38px;border-radius:50%;overflow:hidden;background:linear-gradient(135deg,var(--primary),var(--secondary));display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700;color:white;">
-              ${(function() {
-                if (messengerRoomType === 'dm') {
-                  const otherIc = messengerRoomId.replace('dm_','').split('__').find(ic => ic !== user.ic);
-                  const photo = getStaffPhoto(otherIc);
-                  if (photo) return `<img src="${photo}" alt="${escapeHtml(messengerRoomName || '')}" class="msg-avatar-img" loading="lazy">`;
-                }
-                return getRoomHeaderIcon(messengerRoomType, messengerRoomName);
-              })()}
-            </div>
-            ${(function() {
-              if (messengerRoomType !== 'dm') return '';
-              const dmOtherIc = messengerRoomId.replace('dm_','').split('__').find(ic => ic !== user.ic);
-              const p = dmOtherIc && onlineUsers[dmOtherIc];
-              if (!p) return '';
-              const cm = resolveStatus(p);
-              return `<span class="msg-online-dot" style="width:13px;height:13px;bottom:0;right:0;background:${cm.color};box-shadow:0 0 0 1px ${cm.color}55;"></span>`;
-            })()}
-          </div>
-          <div>
-            <div class="msg-chat-title">${messengerRoomName}</div>
-            <div class="msg-chat-subtitle">
-              ${(function() {
-                if (messengerRoomType === 'dm') {
-                  const dmOtherIc = messengerRoomId.replace('dm_','').split('__').find(ic => ic !== user.ic);
-                  const p = dmOtherIc && onlineUsers[dmOtherIc];
-                  if (p) {
-                    const cm = resolveStatus(p);
-                    const mood = p.statusMsg ? ` · ${escapeHtml(p.statusMsg)}` : '';
-                    return `<span style="color:${cm.color};font-weight:600;font-size:0.75rem;">${cm.dot} ${cm.label}${mood}</span>`;
-                  }
-                }
-                return getRoomSubtitle(messengerRoomType);
-              })()}
-            </div>
-          </div>
-        </div>
-
-        <div class="msg-chat-area" id="msg-chat-area">
-          ${messengerMessages.length === 0 ? `
-            <div style="text-align:center;padding:3rem 1rem;color:var(--text-muted);">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.25;margin-bottom:1rem;display:block;margin-left:auto;margin-right:auto;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-              <div style="font-size:0.9rem;">Belum ada mesej. Mulakan perbualan!</div>
-            </div>
-          ` : messengerMessages.map(renderMessageBubble).join('')}
-        </div>
-
-        ${messengerFileObj ? `
-          <div class="msg-file-preview">
-            <span style="font-size:1.4rem;">${getFileIcon(messengerFileObj.type, messengerFileObj.name)}</span>
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:0.85rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${messengerFileObj.name}</div>
-              <div style="font-size:0.72rem;color:var(--text-muted);">${formatFileSize(messengerFileObj.size)}</div>
-            </div>
-            <button onclick="window.cancelMessengerFile()" style="background:rgba(220,38,38,0.1);border:none;color:var(--danger);width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1;">×</button>
-          </div>
-        ` : ''}
-
-        <form class="msg-input-area" onsubmit="window.sendMessage(event)">
-          <label class="msg-file-btn" for="msg-file-input" title="Lampirkan fail (maks 10MB)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
-            <input type="file" id="msg-file-input" style="display:none;"
-              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
-              onchange="window.handleMessengerFile(this)">
-          </label>
-          <input type="text" id="msg-text-input" class="msg-text-field"
-            placeholder="Tulis mesej..." autocomplete="off"
-            ${messengerSending ? 'disabled' : ''}>
-          ${messengerRoomType === 'dm' ? `
-          <button type="button" class="msg-buzz-btn" title="Hantar BUZZ!" onclick="window.sendBuzz()">BUZZ</button>
-          ` : ''}
-          <button type="submit" class="msg-send-btn" ${messengerSending ? 'disabled' : ''}>
-            ${messengerSending ?
-              `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:msgSpin 0.8s linear infinite;"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>` :
-              `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`}
-          </button>
-        </form>
-      ` : `
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:3rem;text-align:center;color:var(--text-muted);">
-          <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8" style="opacity:0.15;margin-bottom:1.5rem;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-          <h3 style="font-size:1.1rem;color:var(--text-soft);margin-bottom:0.5rem;font-family:'Outfit',sans-serif;">Pilih perbualan</h3>
-          <p style="font-size:0.85rem;max-width:260px;line-height:1.6;">Pilih kumpulan atau staf dari senarai untuk mula menghantar mesej</p>
-        </div>
-      `}
-    </div>
-  </div>`;
-}
-
 function renderDashboard() {
   app.innerHTML = `
     <!-- Sesi berganda kini dikendali oleh auto-logout (handleDuplicateSessionKick), bukan banner. -->
@@ -5694,7 +4717,6 @@ function renderDashboard() {
             ${rbac.dashboard ? `<div class="fab-item" onclick="window.setView('dashboard'); window.toggleMobileMenu(false)">Dashboard</div>` : ''}
             ${rbac.leave_request ? `<div class="fab-item" onclick="window.setView('leave-form'); window.toggleMobileMenu(false)">Borang Cuti</div>` : ''}
             ${rbac.management || rbac.manage_pending ? `<div class="fab-item" onclick="window.setView('management'); window.toggleMobileMenu(false)">Management</div>` : ''}
-            ${rbac.messenger !== false ? `<div class="fab-item" onclick="window.setView('messenger'); window.toggleMobileMenu(false)">Messenger${messengerUnreadRooms.size > 0 ? ' 🔴' : ''}</div>` : ''}
             ${rbac.inbox ? `<div class="fab-item" onclick="window.setView('inbox'); window.toggleMobileMenu(false)">Inbox${inboxNotifs.filter(n=>!n.read).length > 0 ? ' 🔴' : ''}</div>` : ''}
             <div class="fab-item" onclick="window.setView('settings'); window.toggleMobileMenu(false)">Settings</div>
             <div class="fab-item logout" onclick="window.logout()">Log Keluar</div>
@@ -5721,7 +4743,6 @@ function renderDashboard() {
               ${dashboardRbac.dashboard ? `<div class="nav-item ${view === 'dashboard' ? 'active' : ''}" onclick="window.setView('dashboard')"><i data-lucide="layout-dashboard" width="18" height="18"></i> Dashboard</div>` : ''}
               ${dashboardRbac.leave_request ? `<div class="nav-item ${view === 'leave-form' ? 'active' : ''}" onclick="window.setView('leave-form')"><i data-lucide="calendar-plus" width="18" height="18"></i> Borang Cuti</div>` : ''}
               ${(dashboardRbac.management || dashboardRbac.manage_pending || dashboardRbac.manage_staff || dashboardRbac.manage_branches || dashboardRbac.manage_audit || dashboardRbac.manage_login_audit || dashboardRbac.manage_reports || dashboardRbac.manage_access) ? `<div class="nav-item ${view === 'management' ? 'active' : ''}" onclick="window.setView('management')"><i data-lucide="shield-check" width="18" height="18"></i> Management</div>` : ''}
-              ${dashboardRbac.messenger !== false ? `<div class="nav-item ${view === 'messenger' ? 'active' : ''}" onclick="window.setView('messenger')" style="position:relative;"><i data-lucide="message-circle" width="18" height="18"></i> Messenger${messengerUnreadRooms.size > 0 ? `<span style="position:absolute;top:4px;right:6px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:var(--danger);color:#fff;font-size:0.6rem;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1;">${messengerUnreadRooms.size}</span>` : ''}</div>` : ''}
               ${dashboardRbac.inbox ? (() => { const inboxUnread = inboxNotifs.filter(n => !n.read).length; return `<div class="nav-item ${view === 'inbox' ? 'active' : ''}" onclick="window.setView('inbox')" style="position:relative;"><i data-lucide="inbox" width="18" height="18"></i> Inbox${inboxUnread > 0 ? `<span style="position:absolute;top:4px;right:6px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:var(--danger);color:#fff;font-size:0.6rem;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1;">${inboxUnread}</span>` : ''}</div>`; })() : ''}
               ${dashboardRbac.policy ? `<div class="nav-item ${view === 'policy' ? 'active' : ''}" onclick="window.setView('policy')"><i data-lucide="book-open" width="18" height="18"></i> Polisi</div>` : ''}
               ${dashboardRbac.settings ? `<div class="nav-item ${view === 'settings' ? 'active' : ''}" onclick="window.setView('settings')"><i data-lucide="settings-2" width="18" height="18"></i> Tetapan</div>` : ''}
@@ -5751,7 +4772,6 @@ function renderDashboard() {
     ${renderAddStaffModal()}
     ${renderFirstLoginModal()}
     ${renderPhoneReminderModal()}
-    ${renderActiveToasts()}
   `;
 
   // Logout Listener
@@ -6946,9 +5966,6 @@ function renderPersonalDashboard() {
 
 function renderView() {
   switch (view) {
-    case 'messenger':
-      return renderMessengerView();
-
     case 'dashboard':
       const finalRKey = window.rbacMatrix[user.role] ? user.role : 'staff';
       const dashboardRbac = window.rbacMatrix[finalRKey];

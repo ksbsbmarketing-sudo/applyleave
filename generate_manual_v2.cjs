@@ -300,10 +300,9 @@ function localBase64(filePath, mime) {
   <div class="toc-entry sub"><span>4.5 Notifikasi WhatsApp Automatik</span><span>12</span></div>
   <div class="toc-entry main"><span>5. Pengurusan (HR &amp; Admin)</span><span>13</span></div>
   <div class="toc-entry main"><span>6. Tetapan &amp; Konfigurasi</span><span>15</span></div>
-  <div class="toc-entry main"><span>7. Messenger Dalaman</span><span>17</span></div>
-  <div class="toc-entry main"><span>8. Dasar Cuti (Polisi)</span><span>18</span></div>
-  <div class="toc-entry main"><span>9. Soalan Lazim (FAQ)</span><span>19</span></div>
-  <div class="toc-entry main"><span>10. Hubungi Admin</span><span>20</span></div>
+  <div class="toc-entry main"><span>7. Dasar Cuti (Polisi)</span><span>18</span></div>
+  <div class="toc-entry main"><span>8. Soalan Lazim (FAQ)</span><span>19</span></div>
+  <div class="toc-entry main"><span>9. Hubungi Admin</span><span>20</span></div>
 </div>
 
 <!-- ═══════════════════════════════════════════ BAB 1 ═══ -->
@@ -712,31 +711,9 @@ function localBase64(filePath, mime) {
 
 <!-- ═══════════════════════════════════════════ BAB 7 ═══ -->
 <div class="page chapter-break">
-  <h1 class="chapter">7. Messenger Dalaman</h1>
-  <h2 class="section">7.1 Jenis Bilik Sembang</h2>
-  <table>
-    <tr><th>Jenis</th><th>Penerangan</th></tr>
-    <tr><td>Mesej Terus (DM)</td><td>Perbualan peribadi antara dua kakitangan.</td></tr>
-    <tr><td>Kumpulan Cawangan</td><td>Bilik sembang untuk semua kakitangan di sesebuah cawangan.</td></tr>
-    <tr><td>Kumpulan Peranan</td><td>Bilik sembang khusus untuk kumpulan peranan (cth: Staff Admin, Doctor).</td></tr>
-    <tr><td>Bilik Am</td><td>Bilik sembang umum untuk semua kakitangan KSB.</td></tr>
-  </table>
-  <h2 class="section">7.2 Ciri Messenger</h2>
-  <ul>
-    <li><strong>Hantar mesej teks</strong> — Taip dan tekan Enter atau butang Hantar.</li>
-    <li><strong>Kongsikan fail</strong> — Klik ikon klip kertas untuk lampirkan gambar, PDF, atau fail lain.</li>
-    <li><strong>Penunjuk dalam talian</strong> — Tanda hijau menunjukkan pengguna sedang aktif.</li>
-    <li><strong>Notifikasi Toast</strong> — Mesej baru dipaparkan sebagai pop-up walau anda di mana-mana bahagian sistem.</li>
-    <li><strong>Bilangan mesej belum baca</strong> — Lencana merah pada ikon Messenger.</li>
-  </ul>
-  <div class="info-box">💡 Tekan <strong>Enter</strong> untuk hantar. Tekan <strong>Shift+Enter</strong> untuk baris baru dalam mesej.</div>
-</div>
+  <h1 class="chapter">7. Dasar Cuti (Polisi)</h1>
 
-<!-- ═══════════════════════════════════════════ BAB 8 ═══ -->
-<div class="page chapter-break">
-  <h1 class="chapter">8. Dasar Cuti (Polisi)</h1>
-
-  <h2 class="section">8.1 Annual Leave (AL)</h2>
+  <h2 class="section">7.1 Annual Leave (AL)</h2>
   <table>
     <tr><th>Perkara</th><th>Peraturan</th></tr>
     <tr><td>Kelayakan Admin/Operation</td><td>14 hari setahun</td></tr>
@@ -747,7 +724,7 @@ function localBase64(filePath, mime) {
     <tr><td>Cuti Separuh Hari</td><td>Dibenarkan (dikira 0.5 hari)</td></tr>
   </table>
 
-  <h2 class="section">8.2 Medical Leave (MC)</h2>
+  <h2 class="section">7.2 Medical Leave (MC)</h2>
   <ul>
     <li>Kelayakan: <strong>14 hari</strong> setahun.</li>
     <li>Diluluskan <strong>automatik</strong> — tiada kelulusan HOD/HR diperlukan.</li>
@@ -755,14 +732,14 @@ function localBase64(filePath, mime) {
     <li>MC lebih 2 hari berturut-turut: maklumkan HOD dan HR.</li>
   </ul>
 
-  <h2 class="section">8.3 Cuti Kecemasan (EL)</h2>
+  <h2 class="section">7.3 Cuti Kecemasan (EL)</h2>
   <table>
     <tr><th>Jenis EL</th><th>Kelayakan</th><th>Catatan</th></tr>
     <tr><td>EL (Compassionate/Ehsan)</td><td>3 hari</td><td>Kematian ahli keluarga terdekat. Percuma — tidak tolak dari AL.</td></tr>
     <tr><td>EL_EMG (Kecemasan Am)</td><td>Fleksibel</td><td>Ditolak dari baki Annual Leave (AL).</td></tr>
   </table>
 
-  <h2 class="section">8.4 Cuti Lain</h2>
+  <h2 class="section">7.4 Cuti Lain</h2>
   <ul>
     <li><strong>Hospitalisasi (HL):</strong> Maksimum 60 hari. Memerlukan surat pengesahan wad.</li>
     <li><strong>Cuti Bersalin (ML):</strong> 98 hari untuk kakitangan wanita.</li>
@@ -772,9 +749,9 @@ function localBase64(filePath, mime) {
   </ul>
 </div>
 
-<!-- ═══════════════════════════════════════════ BAB 9 ═══ -->
+<!-- ═══════════════════════════════════════════ BAB 8 ═══ -->
 <div class="page chapter-break">
-  <h1 class="chapter">9. Soalan Lazim (FAQ)</h1>
+  <h1 class="chapter">8. Soalan Lazim (FAQ)</h1>
 
   <h3 class="subsection">S: Saya tidak nampak nama saya dalam senarai drop-down. Apa perlu buat?</h3>
   <p>J: Pastikan anda memilih <em>cawangan</em> yang betul terlebih dahulu. Jika masih tidak muncul, hubungi HR/Admin untuk memastikan profil anda telah didaftarkan.</p>
@@ -804,16 +781,16 @@ function localBase64(filePath, mime) {
   <p>J: Ya. Buka pelayar, pergi ke URL sistem, dan pilih "Tambah ke Skrin Utama" untuk pengalaman seperti aplikasi mudah alih.</p>
 </div>
 
-<!-- ═══════════════════════════════════════════ BAB 10 ═══ -->
+<!-- ═══════════════════════════════════════════ BAB 9 ═══ -->
 <div class="page chapter-break">
-  <h1 class="chapter">10. Hubungi Admin</h1>
+  <h1 class="chapter">9. Hubungi Admin</h1>
   <table>
     <tr><th>Perkara</th><th>Tindakan</th></tr>
     <tr><td>Masalah log masuk / kata laluan</td><td>Hubungi HR atau Admin cawangan anda</td></tr>
     <tr><td>Ralat dalam rekod cuti</td><td>Hubungi HR untuk semakan dan pembetulan</td></tr>
     <tr><td>Notifikasi WhatsApp bermasalah</td><td>Hubungi Super Admin untuk semak token Fonnte</td></tr>
     <tr><td>Permintaan ciri baru / bug report</td><td>Hubungi pembangun sistem secara terus</td></tr>
-    <tr><td>Akses tambahan / tukar peranan</td><td>Hubungi Super Admin melalui Messenger atau WhatsApp</td></tr>
+    <tr><td>Akses tambahan / tukar peranan</td><td>Hubungi Super Admin melalui WhatsApp</td></tr>
   </table>
 
   <h2 class="section">Maklumat Sistem</h2>

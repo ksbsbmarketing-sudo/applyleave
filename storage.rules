@@ -12,7 +12,7 @@ service firebase.storage {
 
     // Leave proof files (MC / Cuti Ehsan / Cuti Kecemasan).
     // Path written by the app: leave-proofs/{ic}/{timestamp}_{filename}
-    // - Any signed-in user may write (mirrors the working messenger rule).
+    // - Any signed-in user may write.
     // - Any signed-in user may read (HR views proofs in Master Logs).
     // - Limit: 10 MB, images or PDF only (covers iPhone HEIC via image/*).
     //
@@ -27,14 +27,6 @@ service firebase.storage {
       allow write: if signedIn()
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*|application/pdf');
-    }
-
-    // Messenger media (photos / files shared in chat).
-    // Path written by the app: messenger/{roomId}/{timestamp}_{filename}
-    match /messenger/{roomId}/{fileName} {
-      allow read: if signedIn();
-      allow write: if signedIn()
-        && request.resource.size < 25 * 1024 * 1024;
     }
 
     // Everything else: denied.

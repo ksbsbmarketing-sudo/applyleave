@@ -108,7 +108,7 @@ async function waitForApp(page) {
     shots.pending = await screenshot(page, 'Management — Pending');
 
     // ── 7. Staff Tab ────────────────────────────────────────────────────────
-    console.log('\n[7/9] Pengurusan Staf');
+    console.log('\n[7/8] Pengurusan Staf');
     await page.evaluate(() => window.setManageTab && window.setManageTab('staff'));
     await delay(1200);
     shots.staff = await screenshot(page, 'Staff Management');
@@ -137,22 +137,10 @@ async function waitForApp(page) {
     }
 
     // ── 8. Branches Tab ─────────────────────────────────────────────────────
-    console.log('\n[8/9] Pengurusan Cawangan');
+    console.log('\n[8/8] Pengurusan Cawangan');
     await page.evaluate(() => window.setManageTab && window.setManageTab('branches'));
     await delay(1000);
     shots.branches = await screenshot(page, 'Branch Management');
-
-    // ── 9. Messenger ─────────────────────────────────────────────────────────
-    console.log('\n[9/9] Messenger');
-    await page.evaluate(() => window.setView && window.setView('messenger'));
-    await delay(1500);
-    await waitForApp(page);
-    shots.messenger = await screenshot(page, 'Messenger — Senarai Perbualan');
-
-    // Open All KSB room
-    await page.evaluate(() => window.openRoom && window.openRoom('all_ksb', 'Semua Staf KSB', 'group'));
-    await delay(1000);
-    shots.messengerChat = await screenshot(page, 'Messenger — Ruangan Chat');
 
   } catch (err) {
     console.error('❌ Error semasa screenshot:', err.message);
@@ -508,7 +496,7 @@ async function waitForApp(page) {
     Sistem Pengurusan Cuti Digital bagi semua staf KSB — merangkumi permohonan cuti,
     aliran kelulusan <strong style="color:#fbbf24;">dua atau tiga peringkat</strong> (termasuk Team Leader untuk staf Balok),
     pengurusan staf & cawangan, laporan, notifikasi WhatsApp automatik,
-    <strong style="color:#7dd3fc;">Messenger dalaman</strong>, rekod locum, kawalan akses RBAC penuh,
+    rekod locum, kawalan akses RBAC penuh,
     serta <strong style="color:#86efac;">peringatan automatik</strong> untuk kelulusan tertangguh.
     Kini menyokong peranan paramedik: <strong style="color:#f9a8d4;">Juru X-Ray, Sonographer &amp; Juru Audio</strong>.
   </p>
@@ -549,25 +537,24 @@ async function waitForApp(page) {
   <div class="toc-item"><span class="num">15</span><span class="title">Polisi Cuti &amp; Soalan Lazim</span></div>
 
   <div class="toc-section-label">Komunikasi</div>
-  <div class="toc-item"><span class="num">16</span><span class="title">Messenger — Mesej &amp; Perkongsian Fail</span></div>
-  <div class="toc-item"><span class="num">17</span><span class="title">Peringatan Automatik WhatsApp — Kelulusan Tertangguh</span></div>
+  <div class="toc-item"><span class="num">16</span><span class="title">Peringatan Automatik WhatsApp — Kelulusan Tertangguh</span></div>
 
   <div class="toc-section-label">Pentadbiran Lanjutan</div>
-  <div class="toc-item"><span class="num">18</span><span class="title">Permohonan Pendaftaran Staf Baru</span></div>
-  <div class="toc-item"><span class="num">19</span><span class="title">Log Masuk Audit (Login Security)</span></div>
-  <div class="toc-item"><span class="num">20</span><span class="title">Rekod Locum</span></div>
-  <div class="toc-item"><span class="num">21</span><span class="title">Matrix Laluan Kelulusan (Routing)</span></div>
-  <div class="toc-item"><span class="num">22</span><span class="title">Kawalan Akses RBAC</span></div>
-  <div class="toc-item"><span class="num">23</span><span class="title">Pengurusan Peranan &amp; Kategori</span></div>
+  <div class="toc-item"><span class="num">17</span><span class="title">Permohonan Pendaftaran Staf Baru</span></div>
+  <div class="toc-item"><span class="num">18</span><span class="title">Log Masuk Audit (Login Security)</span></div>
+  <div class="toc-item"><span class="num">19</span><span class="title">Rekod Locum</span></div>
+  <div class="toc-item"><span class="num">20</span><span class="title">Matrix Laluan Kelulusan (Routing)</span></div>
+  <div class="toc-item"><span class="num">21</span><span class="title">Kawalan Akses RBAC</span></div>
+  <div class="toc-item"><span class="num">22</span><span class="title">Pengurusan Peranan &amp; Kategori</span></div>
 
   <div class="toc-section-label">Peranan Baru</div>
-  <div class="toc-item"><span class="num">24</span><span class="title">Peranan Paramedik — Juru X-Ray, Sonographer &amp; Juru Audio</span></div>
+  <div class="toc-item"><span class="num">23</span><span class="title">Peranan Paramedik — Juru X-Ray, Sonographer &amp; Juru Audio</span></div>
 
   <div class="toc-section-label">Keselamatan</div>
-  <div class="toc-item"><span class="num">25</span><span class="title">Amaran Log Masuk Pertama &amp; Tukar Kata Laluan</span></div>
+  <div class="toc-item"><span class="num">24</span><span class="title">Amaran Log Masuk Pertama &amp; Tukar Kata Laluan</span></div>
 
   <div class="toc-section-label">Notifikasi Dalaman</div>
-  <div class="toc-item"><span class="num">26</span><span class="title">Inbox — Notifikasi Dalam Aplikasi</span></div>
+  <div class="toc-item"><span class="num">25</span><span class="title">Inbox — Notifikasi Dalam Aplikasi</span></div>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════ SEC 1 -->
@@ -685,19 +672,18 @@ async function waitForApp(page) {
         <th class="center">Urus Staf</th>
         <th class="center">Laporan</th>
         <th class="center">Audit</th>
-        <th class="center">Messenger</th>
         <th class="center">RBAC</th>
       </tr>
     </thead>
     <tbody>
-      <tr><td><span class="badge badge-purple">Super Admin</span></td><td class="center">Analisa</td><td class="center">✓</td><td class="center">✓ (Semua)</td><td class="center">✓</td><td class="center">✓</td><td class="center">✓</td><td class="center">✓</td><td class="center">✓</td></tr>
-      <tr><td><span class="badge badge-blue">Admin</span></td><td class="center">Analisa</td><td class="center">✓</td><td class="center">✓ (Semua)</td><td class="center">✓</td><td class="center">✓</td><td class="center">✓</td><td class="center">✓</td><td class="center">—</td></tr>
-      <tr><td><span class="badge badge-green">HR</span></td><td class="center">Staff</td><td class="center">✓</td><td class="center">✓ (Semua)</td><td class="center">✓</td><td class="center">—</td><td class="center">—</td><td class="center">✓</td><td class="center">—</td></tr>
-      <tr><td><span class="badge badge-amber">HOD</span></td><td class="center">Staff</td><td class="center">✓</td><td class="center">✓ (Ptgkt 1)</td><td class="center">—</td><td class="center">—</td><td class="center">—</td><td class="center">✓</td><td class="center">—</td></tr>
-      <tr><td><span class="badge badge-amber">PIC/HOD</span></td><td class="center">Staff</td><td class="center">✓</td><td class="center">✓ (Ptgkt 1)</td><td class="center">—</td><td class="center">—</td><td class="center">—</td><td class="center">✓</td><td class="center">—</td></tr>
-      <tr><td><span class="badge badge-amber">Supervisor</span></td><td class="center">Staff</td><td class="center">✓</td><td class="center">✓ (Ptgkt 1)</td><td class="center">—</td><td class="center">—</td><td class="center">—</td><td class="center">✓</td><td class="center">—</td></tr>
-      <tr><td><span class="badge badge-red">Team Leader</span></td><td class="center">Staff</td><td class="center">✓</td><td class="center">✓ (Ptgkt 0)</td><td class="center">—</td><td class="center">—</td><td class="center">—</td><td class="center">✓</td><td class="center">—</td></tr>
-      <tr><td><span class="badge badge-gray">Staff</span></td><td class="center">Staff</td><td class="center">✓</td><td class="center">—</td><td class="center">—</td><td class="center">—</td><td class="center">—</td><td class="center">✓</td><td class="center">—</td></tr>
+      <tr><td><span class="badge badge-purple">Super Admin</span></td><td class="center">Analisa</td><td class="center">✓</td><td class="center">✓ (Semua)</td><td class="center">✓</td><td class="center">✓</td><td class="center">✓</td><td class="center">✓</td></tr>
+      <tr><td><span class="badge badge-blue">Admin</span></td><td class="center">Analisa</td><td class="center">✓</td><td class="center">✓ (Semua)</td><td class="center">✓</td><td class="center">✓</td><td class="center">✓</td><td class="center">—</td></tr>
+      <tr><td><span class="badge badge-green">HR</span></td><td class="center">Staff</td><td class="center">✓</td><td class="center">✓ (Semua)</td><td class="center">✓</td><td class="center">—</td><td class="center">—</td><td class="center">—</td></tr>
+      <tr><td><span class="badge badge-amber">HOD</span></td><td class="center">Staff</td><td class="center">✓</td><td class="center">✓ (Ptgkt 1)</td><td class="center">—</td><td class="center">—</td><td class="center">—</td><td class="center">—</td></tr>
+      <tr><td><span class="badge badge-amber">PIC/HOD</span></td><td class="center">Staff</td><td class="center">✓</td><td class="center">✓ (Ptgkt 1)</td><td class="center">—</td><td class="center">—</td><td class="center">—</td><td class="center">—</td></tr>
+      <tr><td><span class="badge badge-amber">Supervisor</span></td><td class="center">Staff</td><td class="center">✓</td><td class="center">✓ (Ptgkt 1)</td><td class="center">—</td><td class="center">—</td><td class="center">—</td><td class="center">—</td></tr>
+      <tr><td><span class="badge badge-red">Team Leader</span></td><td class="center">Staff</td><td class="center">✓</td><td class="center">✓ (Ptgkt 0)</td><td class="center">—</td><td class="center">—</td><td class="center">—</td><td class="center">—</td></tr>
+      <tr><td><span class="badge badge-gray">Staff</span></td><td class="center">Staff</td><td class="center">✓</td><td class="center">—</td><td class="center">—</td><td class="center">—</td><td class="center">—</td><td class="center">—</td></tr>
     </tbody>
   </table>
 
@@ -1272,102 +1258,6 @@ async function waitForApp(page) {
 <div class="section">
   <div class="section-header">
     <div class="section-num">16</div>
-    <div class="section-title">Messenger — Mesej & Perkongsian Fail</div>
-  </div>
-
-  <p><strong>Messenger</strong> adalah modul komunikasi dalaman KSB yang membolehkan semua staf menghantar mesej teks dan fail secara langsung dalam sistem — tanpa perlu menggunakan WhatsApp peribadi untuk urusan kerja.</p>
-
-  <div class="callout success">
-    <span class="callout-icon">💬</span>
-    <div>Messenger boleh diakses oleh <strong>semua peranan</strong> — dari Staff biasa hingga Super Admin. Tidak memerlukan sebarang tetapan tambahan.</div>
-  </div>
-
-  ${imgTag(shots.messenger, 'Messenger — Panel Senarai Perbualan')}
-
-  <h3>Cara Membuka Messenger</h3>
-  <div class="steps">
-    <div class="step"><div class="step-num">1</div><div class="step-body">Klik ikon <strong>Messenger</strong> dalam menu navigasi sebelah kiri (atau FAB menu pada telefon)</div></div>
-    <div class="step"><div class="step-num">2</div><div class="step-body">Pilih mana-mana kumpulan atau staf dari senarai di sebelah kiri</div></div>
-    <div class="step"><div class="step-num">3</div><div class="step-body">Taip mesej dan tekan ikon hantar, atau lampirkan fail</div></div>
-  </div>
-
-  <h3>Jenis Perbualan</h3>
-  <table>
-    <thead><tr><th>Jenis</th><th>Nama</th><th>Penerangan</th></tr></thead>
-    <tbody>
-      <tr><td>🏥 Umum</td><td>Semua Staf KSB</td><td>Kumpulan global — semua staf dari semua cawangan boleh menghantar dan membaca mesej</td></tr>
-      <tr><td>🏢 Mengikut Cawangan</td><td>Nama cawangan</td><td>Satu kumpulan bagi setiap cawangan (12 cawangan) — mesej khusus untuk staf cawangan tersebut</td></tr>
-      <tr><td>👥 Mengikut Peranan</td><td>Doktor / Staff Admin / Staff Operasi / Management / HOD & PIC / Supervisor</td><td>Kumpulan berasaskan peranan — untuk perbincangan sesama kumpulan yang sama</td></tr>
-      <tr><td>💬 Mesej Terus</td><td>Nama staf</td><td>Perbualan peribadi antara dua orang staf — hanya dua pihak yang boleh lihat</td></tr>
-    </tbody>
-  </table>
-
-  <h3>Kumpulan Mengikut Peranan</h3>
-  <table>
-    <thead><tr><th>Kumpulan</th><th>Sesuai Untuk</th></tr></thead>
-    <tbody>
-      <tr><td>👨‍⚕️ Semua Doktor</td><td>Perbincangan klinikal, jadual locum, maklumat perubatan</td></tr>
-      <tr><td>💼 Staff Admin</td><td>Urusan pentadbiran, borang, bil dan kerani</td></tr>
-      <tr><td>⚙️ Staff Operasi</td><td>Operasi harian, logistik dan sokongan klinik</td></tr>
-      <tr><td>👑 Management</td><td>Admin, HR dan Super Admin — perbincangan pengurusan</td></tr>
-      <tr><td>🏅 HOD & PIC HOD</td><td>Ketua-ketua jabatan merentas cawangan</td></tr>
-      <tr><td>👔 Supervisor</td><td>Penyelia-penyelia klinik</td></tr>
-    </tbody>
-  </table>
-
-  ${imgTag(shots.messengerChat, 'Messenger — Ruangan Chat dengan Mesej')}
-
-  <h3>Menghantar Mesej</h3>
-  <div class="steps">
-    <div class="step"><div class="step-num">1</div><div class="step-body">Taip mesej dalam kotak teks di bahagian bawah</div></div>
-    <div class="step"><div class="step-num">2</div><div class="step-body">Tekan <strong>Enter</strong> atau ikon hantar (➤) untuk menghantar</div></div>
-  </div>
-
-  <h3>Menghantar Fail</h3>
-  <div class="steps">
-    <div class="step"><div class="step-num">1</div><div class="step-body">Tekan ikon klip 📎 di sebelah kiri kotak mesej</div></div>
-    <div class="step"><div class="step-num">2</div><div class="step-body">Pilih fail dari peranti anda — pratonton fail akan terpapar</div></div>
-    <div class="step"><div class="step-num">3</div><div class="step-body">Tambah teks jika perlu, kemudian tekan hantar</div></div>
-  </div>
-
-  <h3>Jenis Fail yang Disokong</h3>
-  <table>
-    <thead><tr><th>Jenis</th><th>Format</th><th>Paparan</th></tr></thead>
-    <tbody>
-      <tr><td>Gambar</td><td>JPG, PNG, GIF, WebP</td><td>Dipaparkan terus sebagai imej dalam perbualan</td></tr>
-      <tr><td>Dokumen PDF</td><td>.pdf</td><td>Pautan muat turun dengan ikon PDF</td></tr>
-      <tr><td>Word</td><td>.doc, .docx</td><td>Pautan muat turun dengan ikon dokumen</td></tr>
-      <tr><td>Excel</td><td>.xls, .xlsx</td><td>Pautan muat turun dengan ikon hamparan</td></tr>
-      <tr><td>PowerPoint</td><td>.ppt, .pptx</td><td>Pautan muat turun dengan ikon pembentangan</td></tr>
-      <tr><td>Teks / CSV</td><td>.txt, .csv</td><td>Pautan muat turun</td></tr>
-    </tbody>
-  </table>
-
-  <div class="callout warning">
-    <span class="callout-icon">📏</span>
-    <div><strong>Had saiz fail:</strong> Maksimum <strong>10MB</strong> setiap fail. Fail disimpan selamat di Firebase Storage dan boleh dimuat turun bila-bila masa.</div>
-  </div>
-
-  <h3>Ciri-Ciri Lain</h3>
-  <ul>
-    <li><strong>Mesej Masa Nyata</strong> — mesej terpapar serta-merta tanpa perlu refresh halaman</li>
-    <li><strong>Tanda Belum Baca</strong> — titik merah pada ikon Messenger dan senarai perbualan menunjukkan mesej baru</li>
-    <li><strong>Cari Staf</strong> — gunakan kotak carian dalam seksyen "Mesej Terus" untuk mencari staf dengan cepat</li>
-    <li><strong>Padam Mesej</strong> — tatal pada mesej anda sendiri untuk memaparkan butang padam (×)</li>
-    <li><strong>Pratonton Fail</strong> — fail yang dipilih akan dipaparkan sebelum dihantar</li>
-    <li><strong>Mesej Terakhir</strong> — senarai kumpulan memaparkan pratonton mesej terkini dan masa</li>
-  </ul>
-
-  <div class="callout info">
-    <span class="callout-icon">📱</span>
-    <div><strong>Pada telefon:</strong> Panel senarai dan panel chat bertukar ganti. Tekan nama kumpulan untuk buka chat, tekan anak panah kiri (←) untuk kembali ke senarai.</div>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════ SEC 17 -->
-<div class="section">
-  <div class="section-header">
-    <div class="section-num">17</div>
     <div class="section-title">Peringatan Automatik WhatsApp — Kelulusan Tertangguh</div>
   </div>
 
@@ -1481,10 +1371,10 @@ async function waitForApp(page) {
   </p>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════ SEC 18 -->
+<!-- ═══════════════════════════════════════════════════════════ SEC 17 -->
 <div class="section">
   <div class="section-header">
-    <div class="section-num">18</div>
+    <div class="section-num">17</div>
     <div class="section-title">Permohonan Pendaftaran Staf Baru</div>
   </div>
 
@@ -1531,10 +1421,10 @@ async function waitForApp(page) {
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════ SEC 19 -->
+<!-- ═══════════════════════════════════════════════════════════ SEC 18 -->
 <div class="section">
   <div class="section-header">
-    <div class="section-num">19</div>
+    <div class="section-num">18</div>
     <div class="section-title">Log Masuk Audit (Login Security)</div>
   </div>
 
@@ -1571,10 +1461,10 @@ async function waitForApp(page) {
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════ SEC 20 -->
+<!-- ═══════════════════════════════════════════════════════════ SEC 19 -->
 <div class="section">
   <div class="section-header">
-    <div class="section-num">20</div>
+    <div class="section-num">19</div>
     <div class="section-title">Rekod Locum</div>
   </div>
 
@@ -1606,10 +1496,10 @@ async function waitForApp(page) {
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════ SEC 21 -->
+<!-- ═══════════════════════════════════════════════════════════ SEC 20 -->
 <div class="section">
   <div class="section-header">
-    <div class="section-num">21</div>
+    <div class="section-num">20</div>
     <div class="section-title">Matrix Laluan Kelulusan (Routing)</div>
   </div>
 
@@ -1649,10 +1539,10 @@ async function waitForApp(page) {
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════ SEC 22 -->
+<!-- ═══════════════════════════════════════════════════════════ SEC 21 -->
 <div class="section">
   <div class="section-header">
-    <div class="section-num">22</div>
+    <div class="section-num">21</div>
     <div class="section-title">Kawalan Akses RBAC</div>
   </div>
 
@@ -1679,10 +1569,10 @@ async function waitForApp(page) {
   <p>Tekan butang <strong>"Reset Lalai"</strong> untuk mengembalikan semua kebenaran kepada nilai asal sistem. Tindakan ini tidak boleh dibatalkan — sila pastikan perubahan yang perlu disimpan dahulu sebelum reset.</p>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════ SEC 23 -->
+<!-- ═══════════════════════════════════════════════════════════ SEC 22 -->
 <div class="section">
   <div class="section-header">
-    <div class="section-num">23</div>
+    <div class="section-num">22</div>
     <div class="section-title">Pengurusan Peranan &amp; Kategori</div>
   </div>
 
@@ -1727,10 +1617,10 @@ async function waitForApp(page) {
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════ SEC 24 -->
+<!-- ═══════════════════════════════════════════════════════════ SEC 23 -->
 <div class="section">
   <div class="section-header">
-    <div class="section-num">24</div>
+    <div class="section-num">23</div>
     <div class="section-title">Peranan Paramedik — Juru X-Ray, Sonographer &amp; Juru Audio</div>
   </div>
 
@@ -1769,7 +1659,6 @@ async function waitForApp(page) {
       <tr><td>Mohon Cuti</td><td class="center">✓</td><td class="center">✓</td><td class="center">✓</td></tr>
       <tr><td>Polisi Cuti</td><td class="center">✓</td><td class="center">✓</td><td class="center">✓</td></tr>
       <tr><td>Tetapan Akaun</td><td class="center">✓</td><td class="center">✓</td><td class="center">✓</td></tr>
-      <tr><td>Messenger</td><td class="center">✓</td><td class="center">✓</td><td class="center">✓</td></tr>
       <tr><td>Luluskan Cuti</td><td class="center">—</td><td class="center">—</td><td class="center">—</td></tr>
       <tr><td>Pengurusan Staf</td><td class="center">—</td><td class="center">—</td><td class="center">—</td></tr>
     </tbody>
@@ -1789,10 +1678,10 @@ async function waitForApp(page) {
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════ SEC 25 -->
+<!-- ═══════════════════════════════════════════════════════════ SEC 24 -->
 <div class="section">
   <div class="section-header">
-    <div class="section-num">25</div>
+    <div class="section-num">24</div>
     <div class="section-title">Amaran Log Masuk Pertama &amp; Tukar Kata Laluan</div>
   </div>
 
@@ -1831,10 +1720,10 @@ async function waitForApp(page) {
 
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════ SEC 26 -->
+<!-- ═══════════════════════════════════════════════════════════ SEC 25 -->
 <div class="section">
   <div class="section-header">
-    <div class="section-num">26</div>
+    <div class="section-num">25</div>
     <div class="section-title">Inbox — Notifikasi Dalam Aplikasi</div>
   </div>
 

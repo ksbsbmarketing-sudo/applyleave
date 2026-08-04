@@ -66,6 +66,22 @@ Fail ini ~11,857 baris dan mengandungi ~188 rujukan Messenger. Buang:
 
 Pindahkan kedua-duanya ke bahagian utiliti am sebelum blok Messenger dibuang.
 
+> **PENTING — ditemui semasa pelaksanaan:** sepanduk komen `MESSENGER MODULE`
+> menipu. Keseluruhan **modul Inbox** duduk di dalam julat baris itu walaupun ia
+> tiada kaitan langsung dengan Messenger. Sepuluh fungsi ini MESTI dikekalkan:
+> `requestNotifPermission`, `addNotification`, `notifyApproversInbox`,
+> `markNotifRead`, `markAllNotifsRead`, `toggleNotifSelect`,
+> `toggleSelectAllNotifs`, `deleteSelectedNotifs`, `showInboxBrowserNotif`,
+> `initInbox`.
+>
+> `window.addNotification` sahaja dipanggil dari 7 tempat dalam aliran cuti.
+> Memadam blok itu secara buta memecahkan log masuk sepenuhnya
+> (`window.initInbox is not a function`). Jangan percaya sempadan komen —
+> sahkan setiap takrif dalam julat yang dibuang terhadap rujukan yang tinggal.
+>
+> `playMsgSound()` pula memang milik Messenger (dipanggil hanya oleh toast
+> mesej), jadi ia dibuang.
+
 **e. Titik integrasi**
 - `setView()` (baris ~456–466): buang reset keadaan messenger + panggilan
   `initPresence()`/`stopPresence()`
@@ -123,7 +139,14 @@ match /user_presence/{id}        { ... }
 Buang `match /messenger/{roomId}/{fileName}` (baris ~33–34) dan kemas kini komen
 baris 15 yang merujuk "messenger rule".
 
-### 6. `generate_manual_pdf.cjs`
+### 6. `generate_manual_v2.cjs`
+
+Ditemui semasa pelaksanaan — penjana manual **kedua** dengan babnya sendiri.
+Buang BAB 7 (Messenger Dalaman), nombor semula BAB 8–10 → 7–9 berserta seksyen
+8.x–10.x, dan tukar baris "Hubungi Super Admin melalui Messenger atau WhatsApp"
+kepada WhatsApp sahaja.
+
+### 7. `generate_manual_pdf.cjs`
 
 Buang ~17 rujukan Messenger: langkah screenshot yang menavigasi ke tab Messenger
 dan bab manual yang menerangkannya. Tanpa ini penjana akan tergantung atau gagal
