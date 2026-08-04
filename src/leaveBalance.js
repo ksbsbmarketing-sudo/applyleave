@@ -48,6 +48,28 @@ export function computeElOverflow({ entEL, usedPre = 0, usedSys = 0, pelarasan =
   return Math.max(0, total - num(entEL));
 }
 
+// Leave types whose balance follows Formula B:
+//   Baki = Jumlah − Guna Sebelum Sistem − Guna Dalam Sistem − Pelarasan HR
+// backed by the HR-entered fields {type}_used_pre, {type}_used_sys_adj and
+// {type}_pelarasan on the staff doc.
+//
+// SINGLE SOURCE OF TRUTH. This list previously lived in three separate places in
+// main.js — the getLeaveStats gate, the HR save loop, and the choice of which
+// blocks the edit modal renders. CME was added to the app but reached none of
+// them, so days used before the system existed silently could not be recorded.
+// Add a type here and all three follow; do not re-inline the list.
+export const FORMULA_B_TYPES = Object.freeze(['AL', 'MC', 'EL', 'CME']);
+
+export function usesFormulaB(type) {
+  return typeof type === 'string' && FORMULA_B_TYPES.includes(type);
+}
+
+// The Formula B arithmetic itself. `overflow` covers the EL-spillover days that
+// AL absorbs; every other type passes 0. Never returns a negative balance.
+export function formulaBBalance({ ent, usedPre = 0, usedSys = 0, pelarasan = 0, overflow = 0 } = {}) {
+  return Math.max(0, num(ent) - num(usedPre) - num(usedSys) - num(pelarasan) - num(overflow));
+}
+
 // CME (Continuing Medical Education) is doctors-only, default 5 days/year. An explicit
 // ent_CME (including 0) is an HR override and always wins; otherwise doctors get 5 and
 // everyone else 0. Consumed by getLeaveStats('CME') and the HR modal.

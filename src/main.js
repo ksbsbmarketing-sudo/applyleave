@@ -1,6 +1,6 @@
 import './style.css'
 import { countLeaveDays } from './leaveDays.js';
-import { recordBalances, computeElOverflow, computeCMEEntitlement } from './leaveBalance.js';
+import { recordBalances, computeElOverflow, computeCMEEntitlement, FORMULA_B_TYPES, usesFormulaB, formulaBBalance } from './leaveBalance.js';
 import { computeYearEndRollover, buildStaffRolloverPatch, CF_CAP } from './yearEnd.js';
 import { deriveLoginBranches } from './loginBranches.js';
 import { formatPersonName } from './nameFormat.js';
@@ -4458,11 +4458,12 @@ window.getLeaveStats = function(staff, type, year) {
       : (leaveCategories.find(c => c.id === type)?.entitlement || 0);
   }
 
-  // Formula B (AL/MC/EL): Baki = Jumlah − Guna Sebelum Sistem − Guna Dalam Sistem − Pelarasan HR.
+  // Formula B: Baki = Jumlah − Guna Sebelum Sistem − Guna Dalam Sistem − Pelarasan HR.
   // "Guna Dalam Sistem" = rekod diluluskan (mod AUTO) ATAU nilai manual HR (mod manual).
   // Medan {jenis}_used_pre, {jenis}_used_sys_adj, {jenis}_pelarasan diisi HR (lalai 0).
+  // Jenis yang terpakai: FORMULA_B_TYPES dalam leaveBalance.js — jangan senarai semula di sini.
   let usedPre = 0, pelarasan = 0, usedSysAdj = 0;
-  if (type === 'AL' || type === 'MC' || type === 'EL') {
+  if (usesFormulaB(type)) {
     const p = type.toLowerCase();
     usedPre    = parseFloat(staff[`${p}_used_pre`]     || 0);
     pelarasan  = parseFloat(staff[`${p}_pelarasan`]    || 0);
@@ -4500,7 +4501,7 @@ window.getLeaveStats = function(staff, type, year) {
     adj: pelarasan,
     ent: ent,
     elOverflow: elOverflow,
-    bal: Math.max(0, ent - usedPre - usedSys - pelarasan - elOverflow)
+    bal: formulaBBalance({ ent, usedPre, usedSys, pelarasan, overflow: elOverflow })
   };
 };
 
@@ -5130,7 +5131,8 @@ function renderDashboard() {
                   });
 
                   // Formula B: simpan "Guna Sebelum Sistem", "Guna Sistem (Tambahan HR)" & "Pelarasan HR".
-                  ['al', 'mc', 'el'].forEach(p => {
+                  // Jenis diambil dari FORMULA_B_TYPES supaya ia tidak lari dari getLeaveStats.
+                  FORMULA_B_TYPES.map(t => t.toLowerCase()).forEach(p => {
                       const preEl = document.getElementById(`${p}-used-pre-input`);
                       const sysAdjEl = document.getElementById(`${p}-sys-adj-input`);
                       const pelEl = document.getElementById(`${p}-pelarasan-input`);
@@ -10321,32 +10323,9 @@ function renderModal() {
 
           ${_leaveBreakdownHTML('mc', 'MC', 'MC — Cuti Sakit', window.getEntitlementMC(staff), '#10b981')}
           ${_leaveBreakdownHTML('el', 'EL', 'EL — Cuti Ehsan', 3, '#f59e0b')}
-          ${(() => {
-            if (staff.category !== 'Doctor') return ''; // doctors only
-            const _cmeEnt = window.getEntitlementCME(staff);
-            const _cmeSys = _modalSysUsed('CME');
-            const _cmeBal = Math.max(0, _cmeEnt - _cmeSys);
-            const _lbl = 'font-size:0.75rem;margin-bottom:0.5rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;';
-            return `
-      <div style="margin-top:1.75rem;padding-top:1.5rem;border-top:1px solid rgba(163,177,198,0.15);">
-        <div style="font-size:0.7rem;text-transform:uppercase;color:#8b5cf6;font-weight:700;letter-spacing:1px;margin-bottom:1rem;">CME — Cuti Pendidikan Perubatan (Doktor)</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;">
-          <div style="display:flex;flex-direction:column;">
-            <label style="${_lbl}color:var(--text-muted);">Peruntukan Setahun</label>
-            <input type="number" id="ent-CME" class="neu-inset" min="0" step="0.5" value="${_cmeEnt}" oninput="window._recalcLeaveBalance('cme')" style="border-left:3px solid #8b5cf6;">
-          </div>
-          <div style="display:flex;flex-direction:column;">
-            <label style="${_lbl}color:#ef4444;">Guna Dalam Sistem</label>
-            <input type="number" id="cme-sys-used-display" class="neu-inset" disabled value="${_cmeSys.toFixed(1)}" data-used="${_cmeSys}" style="border-left:3px solid #ef4444;color:#ef4444;font-weight:700;opacity:1;cursor:default;">
-            <span style="font-size:0.68rem;color:var(--text-muted);margin-top:0.35rem;">Auto dari rekod CME diluluskan (tahun ini)</span>
-          </div>
-          <div style="display:flex;flex-direction:column;">
-            <label style="${_lbl}color:#10b981;">Baki CME</label>
-            <input type="number" id="cme-balance-display" class="neu-inset" disabled value="${_cmeBal.toFixed(1)}" style="border-left:3px solid #10b981;font-weight:800;color:#10b981;opacity:1;cursor:default;">
-          </div>
-        </div>
-      </div>`;
-          })()}
+          ${staff.category === 'Doctor'
+            ? _leaveBreakdownHTML('cme', 'CME', 'CME — Cuti Pendidikan Perubatan (Doktor)', window.getEntitlementCME(staff), '#8b5cf6')
+            : '' /* CME is doctors-only */}
 
           <!-- Grid cuti lain (AL/MC/EL ada breakdown sendiri di atas) -->
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem 2rem; border-top: 1px solid rgba(163,177,198,0.15); padding-top: 1.5rem;">
