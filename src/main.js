@@ -2,6 +2,7 @@ import './style.css'
 import { countLeaveDays } from './leaveDays.js';
 import { recordBalances, computeElOverflow, computeCMEEntitlement } from './leaveBalance.js';
 import { computeYearEndRollover, buildStaffRolloverPatch, CF_CAP } from './yearEnd.js';
+import { deriveLoginBranches } from './loginBranches.js';
 import { formatPersonName } from './nameFormat.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { Chart, registerables } from 'chart.js';
@@ -3730,9 +3731,15 @@ console.log('[SYSTEM] Version 2.1.0 - Inbox bulk actions + calendar-day leave + 
         console.log('[AUTH] Anonymous bootstrap OK:', auth.currentUser && auth.currentUser.uid);
       }
       await loadDirectory();
+      // MUST re-render: the login branch dropdown is derived from directoryList
+      // (see src/loginBranches.js), and the first paint happened before this
+      // resolved. Without it the branch <select> stays empty and nobody can log
+      // in at all.
+      render();
     }
   } catch (e) {
     console.error('[AUTH] bootstrap failed:', e.code || e.message);
+    render();
   }
 })();
 
@@ -3971,8 +3978,14 @@ function renderLogin() {
     ? directoryList.filter(s => (s.branch || "").trim().toLowerCase() === normSelected && !s.inactive)
     : [];
 
-  console.log(`[DEBUG_LOGIN] Branch: "${selectedLoginBranch}", Total: ${directoryList.length}, Filtered: ${filteredStaff.length}`);
-  
+  // Branch options come from the directory, NOT from `branches` — the login screen
+  // runs on an anonymous session and firestore.rules denies it the branches
+  // collection, so `branches` is still the hardcoded seed array at this point.
+  // It serves only as an ordering hint. See src/loginBranches.js.
+  const loginBranches = deriveLoginBranches(directoryList, branches);
+
+  console.log(`[DEBUG_LOGIN] Branch: "${selectedLoginBranch}", Total: ${directoryList.length}, Filtered: ${filteredStaff.length}, Branches: ${loginBranches.length}`);
+
   app.innerHTML = `
     <div class="auth-container">
       <div class="glass-pane auth-card fade-in">
@@ -3996,8 +4009,8 @@ function renderLogin() {
           <div class="form-group">
             <label>Cawangan (Branch)</label>
             <select id="login-branch" class="neu-inset" style="width: 100%; appearance: none; cursor: pointer; color-scheme: light; font-weight: 600;" onchange="window.setLoginBranch(this.value)" required>
-              <option value="" disabled ${!selectedLoginBranch ? 'selected' : ''}>-- Pilih Cawangan --</option>
-              ${branches.map(b => `<option value="${b.name}" ${selectedLoginBranch === b.name ? 'selected' : ''}>${b.name}</option>`).join('')}
+              <option value="" disabled ${!selectedLoginBranch ? 'selected' : ''}>${loginBranches.length ? '-- Pilih Cawangan --' : '-- Memuatkan senarai cawangan... --'}</option>
+              ${loginBranches.map(name => `<option value="${name}" ${selectedLoginBranch === name ? 'selected' : ''}>${name}</option>`).join('')}
             </select>
           </div>
 
