@@ -5434,7 +5434,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
         ${[
           {type:'AL',    label:'Annual Leave',    short:'AL',  grad:'linear-gradient(135deg,#3b82f6,#6366f1)', glow:'rgba(59,130,246,0.3)',  icon:'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'},
           {type:'MC',    label:'Medical Leave',   short:'MC',  grad:'linear-gradient(135deg,#059669,#10b981)', glow:'rgba(16,185,129,0.3)',  icon:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'},
-          {type:'EL_EMG',label:'Emergency Leave', short:'EL',  grad:'linear-gradient(135deg,#dc2626,#f97316)', glow:'rgba(239,68,68,0.3)',   icon:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'},
+          {type:'EL_EMG',label:'Cuti Kecemasan', short:'EMG', grad:'linear-gradient(135deg,#dc2626,#f97316)', glow:'rgba(239,68,68,0.3)',   icon:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'},
         ].map(cat => {
           const ranked = rankLeaveUsers(filteredRecords, cat.type, analyticsCatFilter);
           const top3 = ranked.slice(0, 3);
@@ -5526,7 +5526,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
         const meta = {
           'AL':     { label:'Annual Leave',    grad:'linear-gradient(135deg,#3b82f6,#6366f1)', glow:'rgba(59,130,246,0.3)' },
           'MC':     { label:'Medical Leave',   grad:'linear-gradient(135deg,#059669,#10b981)', glow:'rgba(16,185,129,0.3)' },
-          'EL_EMG': { label:'Emergency Leave', grad:'linear-gradient(135deg,#dc2626,#f97316)', glow:'rgba(239,68,68,0.3)' },
+          'EL_EMG': { label:'Cuti Kecemasan', grad:'linear-gradient(135deg,#dc2626,#f97316)', glow:'rgba(239,68,68,0.3)' },
         }[analyticsRankModal] || { label:'Cuti', grad:'linear-gradient(135deg,#3b82f6,#6366f1)', glow:'rgba(59,130,246,0.3)' };
         const rows = rankLeaveUsers(filteredRecords, analyticsRankModal, analyticsCatFilter);
         const medals = ['🥇','🥈','🥉'];
@@ -5819,9 +5819,9 @@ function renderPersonalDashboard() {
   const otherLeaves = [
     { label: 'Hospitalisasi (HL)', stats: hlStats, color: '#06b6d4' },
     { label: 'Cuti Bersalin (ML)', stats: mlStats, color: '#ec4899' },
-    { label: 'Cuti Paterniti', stats: mlPlStats, color: '#6366f1' },
-    { label: 'Kecemasan Ehsan (EL)', stats: elStats, color: '#f59e0b' },
-    { label: 'Kecemasan Am (EL_EMG)', stats: elEmgStats, color: '#ef4444' },
+    { label: 'Cuti Paterniti (PL)', stats: mlPlStats, color: '#6366f1' },
+    { label: 'Cuti Ehsan', stats: elStats, color: '#f59e0b' },
+    { label: 'Cuti Kecemasan', stats: elEmgStats, color: '#ef4444' },
     { label: 'Latihan CME', stats: cmeStats, color: '#8b5cf6' },
   ].filter(o => o.stats.ent > 0);
 
