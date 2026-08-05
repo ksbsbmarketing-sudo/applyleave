@@ -78,6 +78,23 @@ service cloud.firestore {
     match /system_config/{id} { allow read: if signedIn(); allow write: if manageStaff(); }
     match /settings/{id}      { allow read: if signedIn(); allow write: if manageStaff(); }
 
+    // Public holidays are the one exception to the manageStaff-only config rule.
+    // The app lets a HOD Cawangan maintain their own state's holiday list
+    // (main.js `canEditTerengganu`), but no custom claim describes that right —
+    // the token carries only `ic`, `canApprove` and `manageStaff`. So the role is
+    // read straight off the staff document: a role change then takes effect on the
+    // next write with nothing to re-provision, which matters because onStaffWrite
+    // is not deployed. Costs one document read per save; holidays change twice a
+    // year. Grants are OR'd with the `config/{id}` rule above, so this widens
+    // access to THIS document only and cannot reach config/rolePermissions.
+    match /config/publicHolidays {
+      allow read: if signedIn();
+      allow write: if manageStaff()
+        || ( signedIn()
+             && exists(/databases/$(database)/documents/staff/$(myIC()))
+             && get(/databases/$(database)/documents/staff/$(myIC())).data.role == 'hod_cawangan' );
+    }
+
     match /sessions/{ic} {
       allow read: if signedIn();
       allow create, update: if signedIn() && myIC() == ic;

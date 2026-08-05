@@ -112,3 +112,48 @@ test("approver (canApprove only) cannot write config/rolePermissions; manageStaf
   const hr = ctxDb(hrAuth("HR1"));
   await assertSucceeds(setDoc(doc(hr, "config", "rolePermissions"), { supervisor: { canApprove: true, manageStaff: false } }));
 });
+
+// ── config/publicHolidays — HOD Cawangan ──────────────────────────────────────
+// The UI grants hod_cawangan the right to edit Terengganu public holidays
+// (main.js canEditTerengganu), but the blanket `config/{id}` rule requires
+// manageStaff, which hod_cawangan does not have. The save therefore always failed
+// with "Ralat menyimpan". There is no claim describing this permission, so the
+// rule reads the role off the staff doc — a role change then takes effect
+// immediately, with no re-provisioning (onStaffWrite is not deployed).
+
+const seedStaffRole = (ic, role) => testEnv.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), "staff", ic), { ic, role, name: "X" });
+});
+
+test("hod_cawangan can save public holidays", async () => {
+  await seedStaffRole("HOD1", "hod_cawangan");
+  const hod = ctxDb(staffAuth("HOD1"));
+  await assertSucceeds(setDoc(doc(hod, "config", "publicHolidays"),
+    { terengganu: [{ date: "2026-09-16", name: "Hari Malaysia" }] }, { merge: true }));
+});
+
+test("hod_cawangan gains NOTHING else under config/", async () => {
+  await seedStaffRole("HOD1", "hod_cawangan");
+  const hod = ctxDb(staffAuth("HOD1"));
+  await assertFails(setDoc(doc(hod, "config", "rolePermissions"), { staff: { canApprove: true } }));
+  await assertFails(setDoc(doc(hod, "config", "approvalRouting"), { operation_balok: { needs_tl: false } }));
+});
+
+test("an ordinary staff member still cannot save public holidays", async () => {
+  await seedStaffRole("S1", "staff");
+  const s = ctxDb(staffAuth("S1"));
+  await assertFails(setDoc(doc(s, "config", "publicHolidays"),
+    { terengganu: [{ date: "2026-09-16", name: "Hari Malaysia" }] }, { merge: true }));
+});
+
+test("a signed-in user with no staff doc cannot save public holidays", async () => {
+  const ghost = ctxDb(staffAuth("NOBODY"));
+  await assertFails(setDoc(doc(ghost, "config", "publicHolidays"),
+    { terengganu: [{ date: "2026-09-16", name: "Hari Malaysia" }] }, { merge: true }));
+});
+
+test("HR keeps full config write access", async () => {
+  const hr = ctxDb(hrAuth("HR1"));
+  await assertSucceeds(setDoc(doc(hr, "config", "publicHolidays"),
+    { pahang: [{ date: "2026-09-16", name: "Hari Malaysia" }] }, { merge: true }));
+});
