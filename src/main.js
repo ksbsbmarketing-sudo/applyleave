@@ -523,7 +523,8 @@ let policyContent = {
     { code:'AL',  name:'Annual Leave (Cuti Tahunan)' },
     { code:'MC',  name:'Medical Leave (Cuti Sakit)' },
     { code:'CME', name:'Continuing Medical Education' },
-    { code:'EL',  name:'Emergency Leave (Cuti Kecemasan)' },
+    { code:'EL',  name:'Compassionate Leave (Cuti Ehsan)' },
+    { code:'EMG', name:'Emergency Leave (Cuti Kecemasan)' },
     { code:'HL',  name:'Hospitalization Leave' },
     { code:'ML',  name:'Maternity Leave (Cuti Bersalin)' },
     { code:'PL',  name:'Paternity Leave (Cuti Isteri Bersalin)' },
@@ -653,6 +654,10 @@ const HELP_FAQ = [
   { id:'cme-submit', cat:'Cuti', keywords:['cme','latihan','kursus','seminar','doktor'],
     q:'Cuti CME (doktor) — macam mana?',
     a:'<strong>Cuti CME</strong> untuk <strong>doktor sahaja</strong>, maksimum <strong>5 hari setiap kalendar</strong>, khusus untuk kursus/seminar/latihan luaran berkaitan kerja. Perlu surat sokongan + pengesahan daripada Pengurus dan Ketua Jabatan (HOD).' },
+  { id:'ganti-submit', cat:'Cuti', keywords:['cuti ganti','ganti','replacement','rl','mesyuarat','meeting','doktor'],
+    q:'Cuti Ganti (doktor) — apa itu & macam mana mohon?',
+    a:'<strong>Cuti Ganti</strong> ialah cuti gantian untuk <strong>doktor sahaja</strong>, selepas menghadiri <strong>mesyuarat doktor</strong>. Ia <strong>tiada kuota tetap</strong> — hari diambil direkod dan dilaporkan, tetapi tiada baki tahunan. Mohon seperti biasa melalui <em>Mohon Cuti</em> → pilih <strong>Cuti Ganti</strong>; <strong>polisi notis awal tidak terpakai</strong> kerana cuti ini dituntut selepas mesyuarat berlangsung.',
+    action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
   { id:'locum-info', cat:'Cuti', keywords:['locum','ganti','doktor locum','penggantian'],
     q:'Maklumat Locum untuk doktor',
     a:'Untuk doktor, maklumat <strong>Locum</strong> (nama, tarikh, masa penggantian) boleh diisi untuk rujukan. Ia biasanya dilengkapkan oleh HOD/Supervisor sebelum meluluskan, dan <strong>tidak diwajibkan</strong> untuk meluluskan permohonan.' },
@@ -2133,6 +2138,7 @@ window.printLeave = function(id) {
         <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 11px; font-weight: bold;">
             <span>[ ${record.type === 'AL' ? 'X' : ' '} ] CUTI TAHUNAN</span>
             <span>[ ${record.type === 'CME' ? 'X' : ' '} ] CUTI CME</span>
+            <span>[ ${record.type === 'RL' ? 'X' : ' '} ] CUTI GANTI</span>
             <span>[ ${record.type === 'ML' ? 'X' : ' '} ] CUTI BERSALIN</span>
             <span>[ ${record.type === 'EL' ? 'X' : ' '} ] CUTI EHSAN</span>
             <span>[ ${record.type === 'UL' ? 'X' : ' '} ] TANPA GAJI</span>
