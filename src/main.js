@@ -3234,7 +3234,7 @@ window.generateJenisCutiReport = function() {
     }
   });
   const activeTypes = typeSet.filter(t => typeTotals[t].d > 0);
-  const typeColors = { AL:'#3b82f6', MC:'#10b981', EL:'#f59e0b', EL_EMG:'#ef4444', UP:'#94a3b8', HL:'#06b6d4', ML:'#ec4899', ML_PL:'#6366f1', CME:'#8b5cf6' };
+  const typeColors = { AL:'#3b82f6', MC:'#10b981', EL:'#f59e0b', EL_EMG:'#ef4444', UP:'#94a3b8', HL:'#06b6d4', ML:'#ec4899', ML_PL:'#6366f1', CME:'#8b5cf6', RL:'#14b8a6' };
   const printHTML = `
   <div id="print-container" style="font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff;">
     ${window.printHeaderHTML({ isReport: true, branch: jenisCutiBranch, title: 'LAPORAN RINGKASAN MENGIKUT JENIS CUTI', meta: [{ label: 'Tahun', value: jenisCutiYear === 'SEMUA' ? 'Semua' : jenisCutiYear }, { label: 'Jana', value: new Date().toLocaleDateString('ms-MY',{day:'2-digit',month:'long',year:'numeric'}) }] })}
@@ -3243,7 +3243,7 @@ window.generateJenisCutiReport = function() {
         const c = typeColors[t]||'#64748b';
         const cat = leaveCategories.find(x=>x.id===t);
         return `<div style="padding:8px 14px;background:${c}18;border:1px solid ${c}44;border-radius:8px;min-width:80px;">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${c};">${t}</div>
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${c};">${leaveTypeShort(t)}</div>
           <div style="font-size:20px;font-weight:800;color:${c};">${typeTotals[t].d.toFixed(1)}</div>
           <div style="font-size:9px;color:#718096;">${typeTotals[t].n} rekod</div>
         </div>`;
@@ -8173,7 +8173,7 @@ function renderView() {
               }
             });
             const activeTypes = typeSet.filter(t => typeTotals[t].d > 0);
-            const typeColorMap = { AL:'#3b82f6', MC:'#10b981', EL:'#f59e0b', EL_EMG:'#ef4444', UP:'#94a3b8', HL:'#06b6d4', ML:'#ec4899', ML_PL:'#6366f1', CME:'#8b5cf6' };
+            const typeColorMap = { AL:'#3b82f6', MC:'#10b981', EL:'#f59e0b', EL_EMG:'#ef4444', UP:'#94a3b8', HL:'#06b6d4', ML:'#ec4899', ML_PL:'#6366f1', CME:'#8b5cf6', RL:'#14b8a6' };
 
             return `
             <!-- Filter bar -->
@@ -8197,7 +8197,7 @@ function renderView() {
                 const c = typeColorMap[t]||'#64748b';
                 const cat = leaveCategories.find(x=>x.id===t);
                 return `<div style="padding:0.6rem 1rem;border-radius:10px;background:${c}14;border:1px solid ${c}35;min-width:90px;">
-                  <div style="font-size:0.65rem;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:${c};">${t}</div>
+                  <div style="font-size:0.65rem;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:${c};">${leaveTypeShort(t)}</div>
                   <div style="font-size:1.5rem;font-weight:800;color:${c};line-height:1.2;">${typeTotals[t].d.toFixed(1)}</div>
                   <div style="font-size:0.6rem;color:var(--text-muted);">${typeTotals[t].n} rekod</div>
                 </div>`;
@@ -8222,8 +8222,8 @@ function renderView() {
                         const c = typeColorMap[t]||'#64748b';
                         const cat = leaveCategories.find(x=>x.id===t);
                         return `<th style="padding:0.7rem 0.6rem;text-align:center;font-weight:700;font-size:0.67rem;color:${c};border-right:1px solid rgba(163,177,198,0.12);min-width:68px;" title="${cat?cat.name:t}">
-                          <div>${t}</div>
-                          <div style="font-size:0.58rem;font-weight:500;color:var(--text-muted);margin-top:0.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:68px;">${cat?cat.name.split(' ')[0]:''}</div>
+                          <div>${leaveTypeShort(t)}</div>
+                          <div style="font-size:0.58rem;font-weight:500;color:var(--text-muted);margin-top:0.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:68px;">${cat?cat.name:''}</div>
                         </th>`;
                       }).join('')}
                       <th style="padding:0.7rem 0.8rem;text-align:center;font-weight:700;font-size:0.72rem;color:var(--text);min-width:72px;background:rgba(163,177,198,0.06);">Jumlah</th>
@@ -8363,7 +8363,7 @@ function renderView() {
                 ${availBranchesForBalance.map(b=>`<option value="${b}" ${balanceReportBranch===b?'selected':''}>${b}</option>`).join('')}
               </select>
               <select class="neu-inset" style="padding:0.4rem 0.75rem;font-size:0.82rem;color-scheme:light;border-radius:8px;cursor:pointer;" onchange="window.setBalanceReportType(this.value)">
-                ${leaveCategories.map(c=>`<option value="${c.id}" ${balanceReportType===c.id?'selected':''}>${c.id} — ${c.name}</option>`).join('')}
+                ${leaveCategories.map(c=>`<option value="${c.id}" ${balanceReportType===c.id?'selected':''}>${leaveTypeShort(c.id)} — ${c.name}</option>`).join('')}
               </select>
               <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);font-weight:600;">${balanceRows.length} staf</div>
             </div>
