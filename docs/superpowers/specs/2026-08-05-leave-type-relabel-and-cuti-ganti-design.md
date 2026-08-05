@@ -54,9 +54,11 @@ Cuti Ehsan dalam jadual bersebelahan lajur.
   `RL — Replacement Leave (Cuti Ganti)` (`src/main.js:530`) walaupun jenis cuti itu
   tidak pernah wujud. Menggunakan `RL` menjadikan kod itu benar, bukan menambah kod
   ketiga untuk konsep yang sama.
-- **Doktor sahaja.** Ditapis dalam borang mohon dengan `user.category === 'Doctor'`,
-  mengikut corak yang sama seperti CME ditapis dalam modal Management Hub
-  (`src/main.js:10326`).
+- **Doktor sahaja, tambah `super_admin`.** Ditapis dalam borang mohon dengan
+  `user.category === 'Doctor' || user.role === 'super_admin'`, mengikut corak yang sama
+  seperti CME ditapis dalam modal Management Hub. `super_admin` disertakan atas
+  permintaan pengguna supaya jenis cuti ini kelihatan wujud dari akaun pentadbir tanpa
+  perlu meminjam akaun doktor untuk menyemaknya.
 - **Tiada kuota tetap.** `entitlement: 0`, dan `RL` **tidak** ditambah ke
   `FORMULA_B_TYPES`. Cuti ganti diperoleh selepas mesyuarat, bukan diperuntukkan awal
   tahun, jadi tiada baki untuk dihabiskan. Hari yang diambil direkod dan muncul dalam

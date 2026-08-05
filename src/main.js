@@ -6020,18 +6020,19 @@ function renderView() {
       const gender = isNaN(lastDigit) ? 'Female' : (lastDigit % 2 === 0 ? 'Female' : 'Male');
       
       // Safety check: ensure selectedLeaveType is valid for gender
-      // Cuti Ganti ialah cuti gantian selepas mesyuarat doktor — doktor sahaja,
-      // sama seperti CME. Kategori disemak, bukan peranan.
-      const isDoctorApplicant = user.category === 'Doctor';
+      // Cuti Ganti ialah cuti gantian selepas mesyuarat doktor — doktor sahaja.
+      // super_admin turut melihatnya walaupun bukan doktor, supaya jenis cuti ini
+      // kelihatan wujud dari akaun pentadbir tanpa perlu log masuk sebagai doktor.
+      const canApplyRL = user.category === 'Doctor' || user.role === 'super_admin';
 
       if (selectedLeaveType === 'ML' && gender === 'Male') selectedLeaveType = 'AL';
       if (selectedLeaveType === 'ML_PL' && gender === 'Female') selectedLeaveType = 'AL';
-      if (selectedLeaveType === 'RL' && !isDoctorApplicant) selectedLeaveType = 'AL';
+      if (selectedLeaveType === 'RL' && !canApplyRL) selectedLeaveType = 'AL';
 
       const filteredCategories = leaveCategories.filter(cat => {
           if (cat.id === 'ML') return gender === 'Female';
           if (cat.id === 'ML_PL') return gender === 'Male';
-          if (cat.id === 'RL') return isDoctorApplicant;
+          if (cat.id === 'RL') return canApplyRL;
           return true;
       });
 
