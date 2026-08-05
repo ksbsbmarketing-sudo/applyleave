@@ -793,13 +793,13 @@ async function waitForApp(page) {
   <table>
     <thead><tr><th>Kategori Staf</th><th>Notis Minimum</th><th>Dikecualikan</th></tr></thead>
     <tbody>
-      <tr><td>Staff Admin</td><td><strong>3 hari</strong> bekerja sebelum tarikh cuti</td><td>MC, EL, EL_EMG</td></tr>
-      <tr><td>Doktor, Staff Operasi &amp; lain</td><td><strong>7 hari</strong> bekerja sebelum tarikh cuti</td><td>MC, EL, EL_EMG</td></tr>
+      <tr><td>Staff Admin</td><td><strong>3 hari</strong> bekerja sebelum tarikh cuti</td><td>MC, EL, EMG</td></tr>
+      <tr><td>Doktor, Staff Operasi &amp; lain</td><td><strong>7 hari</strong> bekerja sebelum tarikh cuti</td><td>MC, EL, EMG</td></tr>
     </tbody>
   </table>
   <div class="callout warning">
     <span class="callout-icon">⏰</span>
-    <div>Permohonan AL yang tidak mematuhi notis minimum akan <strong>ditolak secara automatik</strong> oleh sistem semasa penghantaran. MC dan cuti kecemasan (EL / EL_EMG) dikecualikan daripada polisi ini.</div>
+    <div>Permohonan AL yang tidak mematuhi notis minimum akan <strong>ditolak secara automatik</strong> oleh sistem semasa penghantaran. MC dan cuti kecemasan (EL / EMG) dikecualikan daripada polisi ini.</div>
   </div>
 </div>
 
@@ -816,7 +816,8 @@ async function waitForApp(page) {
       <tr><td><strong>AL</strong></td><td>Annual Leave</td><td>8–16 hari</td><td>Cuti tahunan, dikira pro-rata ikut tempoh berkhidmat</td></tr>
       <tr><td><strong>MC</strong></td><td>Medical Leave</td><td>14 hari/tahun</td><td>Cuti sakit — wajib lampirkan sijil doktor</td></tr>
       <tr><td><strong>EL</strong></td><td>Emergency / Compassionate</td><td>3 hari</td><td>Kematian ahli keluarga terdekat</td></tr>
-      <tr><td><strong>EL_EMG</strong></td><td>Emergency (Non-Ehsan)</td><td>—</td><td>Kecemasan am (bukan kematian)</td></tr>
+      <tr><td><strong>EMG</strong></td><td>Cuti Kecemasan</td><td>—</td><td>Kecemasan am (bukan kematian)</td></tr>
+      <tr><td><strong>RL</strong></td><td>Cuti Ganti</td><td>—</td><td>Gantian selepas mesyuarat doktor (doktor sahaja)</td></tr>
       <tr><td><strong>UP</strong></td><td>Unpaid Leave (UL)</td><td>—</td><td>Cuti tanpa gaji selepas baki AL habis</td></tr>
       <tr><td><strong>HL</strong></td><td>Hospitalization</td><td>60 hari</td><td>Cuti wad / hospitalisasi dengan surat hospital</td></tr>
       <tr><td><strong>ML</strong></td><td>Maternity Leave</td><td>98 hari</td><td>Cuti bersalin untuk staf wanita</td></tr>

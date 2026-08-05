@@ -493,11 +493,12 @@ function localBase64(filePath, mime) {
     <tr><td><span class="badge b-blue">AL</span></td><td>Annual Leave (Cuti Tahunan)</td><td>14 – 25 hari*</td><td>Pro-rata mengikut bulan bekerja. Bawa lepas max 3 hari.</td></tr>
     <tr><td><span class="badge b-green">MC</span></td><td>Medical Leave (Cuti Sakit)</td><td>14 hari</td><td>Diluluskan automatik. Sijil MC mesti disertakan.</td></tr>
     <tr><td><span class="badge b-orange">EL</span></td><td>Emergency / Compassionate (Ehsan)</td><td>3 hari</td><td>Kematian ahli keluarga terdekat. Percuma — tidak tolak AL.</td></tr>
-    <tr><td><span class="badge b-red">EL_EMG</span></td><td>Emergency (Bukan Ehsan)</td><td>—</td><td>Kecemasan am. Ditolak dari AL.</td></tr>
+    <tr><td><span class="badge b-red">EMG</span></td><td>Cuti Kecemasan</td><td>—</td><td>Kecemasan am. Ditolak dari AL.</td></tr>
     <tr><td><span class="badge b-gray">UL</span></td><td>Unpaid Leave (Cuti Tanpa Gaji)</td><td>—</td><td>Setelah baki AL habis digunakan.</td></tr>
     <tr><td><span class="badge b-blue" style="background:#cffafe;color:#0e7490;">HL</span></td><td>Hospitalization (Cuti Wad)</td><td>60 hari</td><td>Rawatan wad / pembedahan.</td></tr>
     <tr><td><span class="badge b-pink">ML</span></td><td>Cuti Bersalin</td><td>98 hari</td><td>Kakitangan wanita sahaja.</td></tr>
-    <tr><td><span class="badge b-purple">ML_PL</span></td><td>Cuti Paterniti</td><td>7 hari</td><td>Kakitangan lelaki — isteri bersalin.</td></tr>
+    <tr><td><span class="badge b-purple">PL</span></td><td>Cuti Paterniti</td><td>7 hari</td><td>Kakitangan lelaki — isteri bersalin.</td></tr>
+    <tr><td><span class="badge b-purple">RL</span></td><td>Cuti Ganti</td><td>—</td><td>Doktor sahaja — gantian selepas mesyuarat doktor.</td></tr>
     <tr><td><span class="badge b-purple">CME</span></td><td>Latihan CME</td><td>5 hari</td><td>Pendidikan Perubatan Berterusan — Doktor sahaja.</td></tr>
   </table>
 
@@ -736,14 +737,15 @@ function localBase64(filePath, mime) {
   <table>
     <tr><th>Jenis EL</th><th>Kelayakan</th><th>Catatan</th></tr>
     <tr><td>EL (Compassionate/Ehsan)</td><td>3 hari</td><td>Kematian ahli keluarga terdekat. Percuma — tidak tolak dari AL.</td></tr>
-    <tr><td>EL_EMG (Kecemasan Am)</td><td>Fleksibel</td><td>Ditolak dari baki Annual Leave (AL).</td></tr>
+    <tr><td>EMG (Cuti Kecemasan)</td><td>Fleksibel</td><td>Ditolak dari baki Annual Leave (AL).</td></tr>
   </table>
 
   <h2 class="section">7.4 Cuti Lain</h2>
   <ul>
     <li><strong>Hospitalisasi (HL):</strong> Maksimum 60 hari. Memerlukan surat pengesahan wad.</li>
     <li><strong>Cuti Bersalin (ML):</strong> 98 hari untuk kakitangan wanita.</li>
-    <li><strong>Cuti Paterniti (ML_PL):</strong> 7 hari untuk kakitangan lelaki apabila isteri bersalin.</li>
+    <li><strong>Cuti Paterniti (PL):</strong> 7 hari untuk kakitangan lelaki apabila isteri bersalin.</li>
+    <li><strong>Cuti Ganti (RL):</strong> doktor sahaja — gantian selepas menghadiri mesyuarat doktor. Tiada kuota tetap.</li>
     <li><strong>CME:</strong> 5 hari untuk doktor bagi tujuan pendidikan perubatan berterusan.</li>
     <li><strong>Cuti Tanpa Gaji (UL):</strong> Setelah baki AL habis. Memerlukan kelulusan khas dari HR.</li>
   </ul>
@@ -774,8 +776,8 @@ function localBase64(filePath, mime) {
   <h3 class="subsection">S: Notifikasi WhatsApp tidak diterima. Apa masalahnya?</h3>
   <p>J: Semak dengan Admin bahawa token Fonnte masih aktif. Pastikan nombor WhatsApp anda didaftarkan dalam sistem. Admin boleh uji dari <em>Management → WhatsApp Settings</em>.</p>
 
-  <h3 class="subsection">S: Apa perbezaan EL (Ehsan) dan EL_EMG (Kecemasan)?</h3>
-  <p>J: <strong>EL Ehsan</strong> khusus untuk kematian ahli keluarga terdekat — percuma (tidak tolak AL), had 3 hari. <strong>EL_EMG</strong> untuk kecemasan am lain (kereta rosak, anak sakit) — ditolak dari baki AL.</p>
+  <h3 class="subsection">S: Apa perbezaan EL (Ehsan) dan EMG (Cuti Kecemasan)?</h3>
+  <p>J: <strong>EL Ehsan</strong> khusus untuk kematian ahli keluarga terdekat — percuma (tidak tolak AL), had 3 hari. <strong>EMG (Cuti Kecemasan)</strong> untuk kecemasan am lain (kereta rosak, anak sakit) — ditolak dari baki AL.</p>
 
   <h3 class="subsection">S: Bolehkah saya akses sistem dari telefon bimbit?</h3>
   <p>J: Ya. Buka pelayar, pergi ke URL sistem, dan pilih "Tambah ke Skrin Utama" untuk pengalaman seperti aplikasi mudah alih.</p>
