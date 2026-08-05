@@ -4870,8 +4870,8 @@ function renderDashboard() {
 
       const isAdmin = user.category === 'Admin Staff' || user.category === 'Admin' || user.role === 'admin' || user.role === 'super_admin';
 
-      // Cuti tak boleh dirancang (MC sakit, Kecemasan, Ehsan/kematian) + CME dikecualikan dari polisi notis awal (3/7 hari) — tetapi tetap perlu pelulus + bukti.
-      const _noticeExempt = ['MC', 'EL_EMG', 'EL', 'CME'].includes(selectedLeaveType);
+      // Cuti tak boleh dirancang (MC sakit, Kecemasan, Ehsan/kematian) + CME dan Cuti Ganti (dituntut selepas mesyuarat) dikecualikan dari polisi notis awal (3/7 hari) — tetapi tetap perlu pelulus + bukti.
+      const _noticeExempt = ['MC', 'EL_EMG', 'EL', 'CME', 'RL'].includes(selectedLeaveType);
       if (!_noticeExempt && !validateNotice(startDate, user.category)) {
         const minDays = isAdmin ? 3 : 7;
         alert(`Policy Violation: ${user.category} staff require at least ${minDays} days notice.`);
@@ -6014,12 +6014,18 @@ function renderView() {
       const gender = isNaN(lastDigit) ? 'Female' : (lastDigit % 2 === 0 ? 'Female' : 'Male');
       
       // Safety check: ensure selectedLeaveType is valid for gender
+      // Cuti Ganti ialah cuti gantian selepas mesyuarat doktor — doktor sahaja,
+      // sama seperti CME. Kategori disemak, bukan peranan.
+      const isDoctorApplicant = user.category === 'Doctor';
+
       if (selectedLeaveType === 'ML' && gender === 'Male') selectedLeaveType = 'AL';
       if (selectedLeaveType === 'ML_PL' && gender === 'Female') selectedLeaveType = 'AL';
+      if (selectedLeaveType === 'RL' && !isDoctorApplicant) selectedLeaveType = 'AL';
 
       const filteredCategories = leaveCategories.filter(cat => {
           if (cat.id === 'ML') return gender === 'Female';
           if (cat.id === 'ML_PL') return gender === 'Male';
+          if (cat.id === 'RL') return isDoctorApplicant;
           return true;
       });
 
@@ -6027,7 +6033,7 @@ function renderView() {
       const isAL = selectedLeaveType === 'AL';
       const isMC = selectedLeaveType === 'MC';
       const isEhsan = selectedLeaveType === 'EL';
-      const isNoticeExempt = ['MC', 'EL_EMG', 'EL', 'CME'].includes(selectedLeaveType);
+      const isNoticeExempt = ['MC', 'EL_EMG', 'EL', 'CME', 'RL'].includes(selectedLeaveType);
       const isEMG = selectedLeaveType === 'EL_EMG';
       const isHosp = selectedLeaveType === 'HL';
       
@@ -6050,11 +6056,12 @@ function renderView() {
         'ML':          '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>',
         'ML_PL':       '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>',
         'CME':         '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+        'RL':          '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
       };
       const leaveShort = {
         'AL':'Tahunan','MC':'Sakit','EL':'Ehsan','EL_EMG':'Kecemasan',
         'UP':'Tanpa Gaji','HL':'Hospital','ML':'Bersalin','ML_PL':'Paterniti',
-        'CME':'CME'
+        'CME':'CME','RL':'Ganti'
       };
       const selStats = window.getLeaveStats(user, selectedLeaveType);
       const selEnt   = selStats.ent;
