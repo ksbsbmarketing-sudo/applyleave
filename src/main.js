@@ -4,6 +4,7 @@ import { recordBalances, computeElOverflow, computeCMEEntitlement, FORMULA_B_TYP
 import { computeYearEndRollover, buildStaffRolloverPatch, CF_CAP } from './yearEnd.js';
 import { deriveLoginBranches } from './loginBranches.js';
 import { formatPersonName } from './nameFormat.js';
+import { LEAVE_CATEGORIES, LEAVE_TYPE_NAMES, leaveTypeName, leaveTypeShort } from './leaveTypes.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
@@ -602,24 +603,9 @@ let applyHalfDay = false;
 let mobileMenuOpen = false;
 const showLocum2Set = new Set();
 
-const leaveCategories = [
-    { id: 'AL', name: 'Annual Leave (AL)', entitlement: 14, icon: 'icon-al', color: '#3b82f6', description: 'Cuti Tahunan mengikut pro-rata bulan bekerja.' },
-    { id: 'MC', name: 'Medical Leave (MC)', entitlement: 14, icon: 'icon-mc', color: '#10b981', description: 'Cuti Sakit dengan Sijil Sakit (MC) yang sah.' },
-    { id: 'EL', name: 'Emergency/Compassionate (EL)', entitlement: 3, icon: 'icon-el', color: '#f59e0b', description: 'Cuti Kecemasan atau Ehsan (Kematian keluarga terdekat).' },
-    { id: 'EL_EMG', name: 'Emergency (Non-Ehsan)', entitlement: 0, icon: 'icon-emg', color: '#ef4444', description: 'Cuti Kecemasan Am (Bukan Kematian).' },
-    { id: 'UP', name: 'Unpaid Leave (UL)', entitlement: 0, icon: 'icon-ul', color: '#94a3b8', description: 'Cuti Tanpa Gaji (Setelah baki AL habis digunakan).' },
-    { id: 'HL', name: 'Hospitalization (HL)', entitlement: 60, icon: 'icon-hl', color: '#06b6d4', description: 'Cuti Wad/Hospitalisasi (Maksimum 60 hari).' },
-    { id: 'ML', name: 'Cuti Bersalin', entitlement: 98, icon: 'icon-ml', color: '#ec4899', description: 'Cuti Bersalin (98 hari) — kakitangan wanita.' },
-    { id: 'ML_PL', name: 'Cuti Paterniti', entitlement: 7, icon: 'icon-mlpl', color: '#6366f1', description: 'Cuti Bapa Isteri Bersalin (7 hari) — kakitangan lelaki.' },
-    { id: 'CME', name: 'Latihan CME', entitlement: 5, icon: 'icon-cme', color: '#8b5cf6', description: 'Cuti Pendidikan Perubatan Berterusan (Doktor sahaja).' }
-];
-
-// Full display names for leave-type codes (analytics legend, donut tooltip, etc.)
-// Derived from leaveCategories so it stays in sync; legacy codes added manually.
-const LEAVE_TYPE_NAMES = Object.fromEntries(leaveCategories.map(c => [c.id, c.name]));
-LEAVE_TYPE_NAMES.PL = 'Cuti Paterniti (PL)';
-LEAVE_TYPE_NAMES.CF = 'Cuti Bawa Ke Hadapan (CF)';
-function leaveTypeName(code) { return LEAVE_TYPE_NAMES[code] || code; }
+// Katalog jenis cuti + label paparan: src/leaveTypes.js (modul tulen, ada ujian).
+// Alias tempatan supaya ~15 tapak panggilan `leaveCategories` sedia ada kekal.
+const leaveCategories = LEAVE_CATEGORIES;
 
 // Year options for report/analytics dropdowns: every year present in `records`
 // (by Tarikh Mohon, r.id) UNION the current year, sorted newest-first. Always
