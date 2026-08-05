@@ -1,5 +1,5 @@
 import './style.css'
-import { countLeaveDays } from './leaveDays.js';
+import { countLeaveDays, weekendDaysForState } from './leaveDays.js';
 import { recordBalances, computeElOverflow, computeCMEEntitlement, FORMULA_B_TYPES, usesFormulaB, formulaBBalance } from './leaveBalance.js';
 import { computeYearEndRollover, buildStaffRolloverPatch, CF_CAP } from './yearEnd.js';
 import { deriveLoginBranches } from './loginBranches.js';
@@ -2246,13 +2246,20 @@ window.recalcEditLeaveDays = function() {
 const CALENDAR_DAY_LEAVE_TYPES = ['ML', 'ML_PL', 'HL'];
 
 // Chargeable leave-day count for a staff member over a date range.
-// Admin Staff (Mon–Fri) skip weekends + their state's public holidays; everyone
+// Admin Staff skip their zone's rest days + their state's public holidays; everyone
 // else counts all calendar days. Calendar-day leave types (ML/ML_PL/HL) ALWAYS
 // count calendar days regardless of category. Returns whole days (callers apply half-day).
+//
+// The rest days differ by zone — Pahang rests Sat+Sun, Terengganu rests Fri+Sat —
+// so the branch state drives BOTH the holiday list and the weekend. Use the branch's
+// own `state`, never window.scopeStateOfBranch(): Klinik Utama is physically in
+// Terengganu and keeps the Terengganu weekend, even though ROUTES_AS_PAHANG sends
+// its leave approvals through Balok HQ. Routing and geography are separate concerns.
 window.computeLeaveDays = function(startDate, endDate, staff, leaveType) {
   const isAdmin = !!staff && (staff.category === 'Admin Staff' || staff.category === 'Admin' || staff.leaveAsAdmin === true);
   const calendarOnly = CALENDAR_DAY_LEAVE_TYPES.includes(leaveType);
   let holidayDates = [];
+  let weekendDays = weekendDaysForState(null); // Pahang default
   if (isAdmin && !calendarOnly) {
     const branchObj = branches.find(b => b.name === (staff.branch || ''));
     const state = branchObj ? branchObj.state : null;
@@ -2260,8 +2267,9 @@ window.computeLeaveDays = function(startDate, endDate, staff, leaveType) {
                : state === 'Pahang'     ? publicHolidays.pahang
                : [];
     holidayDates = (list || []).map(h => h.date);
+    weekendDays = weekendDaysForState(state);
   }
-  return countLeaveDays(startDate, endDate, isAdmin, holidayDates, calendarOnly);
+  return countLeaveDays(startDate, endDate, isAdmin, holidayDates, calendarOnly, weekendDays);
 };
 
 // Auto-pulih tempoh cuti untuk rekod yang MASIH MENUNGGU sahaja.

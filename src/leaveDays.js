@@ -1,14 +1,36 @@
 // Pure leave-day counting. No Firebase/DOM dependencies so it is unit-testable.
 //
-// countLeaveDays(startDate, endDate, isAdminStaff, holidayDates, calendarOnly):
+// countLeaveDays(startDate, endDate, isAdminStaff, holidayDates, calendarOnly, weekendDays):
 //   - isAdminStaff false → inclusive calendar-day count (legacy behaviour)
-//   - isAdminStaff true  → only Mon–Fri days that are not public holidays
+//   - isAdminStaff true  → only working days that are not public holidays
 //   - holidayDates: array or Set of 'YYYY-MM-DD' strings (the staff's state holidays)
 //   - calendarOnly true  → always inclusive calendar-day count, even for admin staff.
 //       Used for statutory calendar-day entitlements (maternity/paternity/hospitalisation)
 //       which run as consecutive calendar days and must NOT skip weekends/holidays.
+//   - weekendDays: day numbers treated as rest days; see weekendDaysForState below.
+//       Defaults to Pahang (Sat+Sun), which is the majority of branches.
 //   - returns 0 when the range is invalid (end before start)
-export function countLeaveDays(startDate, endDate, isAdminStaff, holidayDates = [], calendarOnly = false) {
+
+// The working week is not the same in both zones the clinics operate in:
+//   Pahang     → rests Saturday + Sunday (works Mon–Fri)
+//   Terengganu → rests Friday + Saturday (works Sun–Thu)
+// This is geography, not administration: Klinik Utama sits in Terengganu and
+// keeps the Terengganu weekend even though ROUTES_AS_PAHANG sends its leave
+// approvals through Balok HQ. Resolve the zone from the branch's own `state`,
+// never from scopeStateOfBranch().
+const SUN = 0, FRI = 5, SAT = 6;
+export const WEEKEND_DAYS = Object.freeze({
+  Pahang: Object.freeze([SAT, SUN]),
+  Terengganu: Object.freeze([FRI, SAT]),
+});
+
+// Unknown or missing state falls back to Pahang rather than to "no weekend at
+// all", so a branch with an unset `state` still gets a five-day working week.
+export function weekendDaysForState(state) {
+  return WEEKEND_DAYS[state] || WEEKEND_DAYS.Pahang;
+}
+
+export function countLeaveDays(startDate, endDate, isAdminStaff, holidayDates = [], calendarOnly = false, weekendDays = WEEKEND_DAYS.Pahang) {
   const start = parseYMD(startDate);
   const end = parseYMD(endDate);
   if (!start || !end || end < start) return 0;
@@ -18,10 +40,11 @@ export function countLeaveDays(startDate, endDate, isAdminStaff, holidayDates = 
   }
 
   const holidays = holidayDates instanceof Set ? holidayDates : new Set(holidayDates);
+  const weekend = new Set(weekendDays);
   let count = 0;
   for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const day = d.getDay();               // 0=Sun … 6=Sat (local)
-    if (day === 0 || day === 6) continue; // weekend
+    const day = d.getDay();                // 0=Sun … 6=Sat (local)
+    if (weekend.has(day)) continue;        // rest day for this zone
     if (holidays.has(fmtYMD(d))) continue; // public holiday
     count++;
   }
