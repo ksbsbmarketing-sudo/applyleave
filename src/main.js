@@ -10326,11 +10326,13 @@ function renderModal() {
                <input type="number" id="ent-ML" class="neu-inset" value="${staff.ent_ML !== undefined ? staff.ent_ML : 98}">
             </div>
             <div style="display: flex; flex-direction: column;">
-               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">PL &mdash; Cuti Isteri Bersalin</label>
+               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">PL &mdash; Cuti Paterniti</label>
                <input type="number" id="ent-PL" class="neu-inset" value="${staff.ent_PL !== undefined ? staff.ent_PL : 7}">
             </div>
             <div style="display: flex; flex-direction: column;">
-               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">EL &mdash; Cuti Kecemasan</label>
+               <!-- EMG, bukan EL: medan ini menetapkan ent_EL_EMG (Cuti Kecemasan).
+                    Cuti Ehsan (EL) ada blok Formula B tersendiri di atas. -->
+               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">EMG &mdash; Cuti Kecemasan</label>
                <input type="number" id="ent-EL_EMG" class="neu-inset" value="${staff.ent_EL_EMG !== undefined ? staff.ent_EL_EMG : 0}">
             </div>
             <div style="display: flex; flex-direction: column;">
