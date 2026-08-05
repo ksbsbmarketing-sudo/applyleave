@@ -3258,7 +3258,7 @@ window.generateJenisCutiReport = function() {
       <thead>
         <tr style="background:#1e293b;color:#fff;">
           <th style="padding:8px 10px;text-align:left;min-width:150px;">CAWANGAN</th>
-          ${activeTypes.map(t => `<th style="padding:8px 6px;text-align:center;min-width:60px;">${t}</th>`).join('')}
+          ${activeTypes.map(t => `<th style="padding:8px 6px;text-align:center;min-width:60px;">${leaveTypeShort(t)}</th>`).join('')}
           <th style="padding:8px 10px;text-align:center;background:#374151;">JUMLAH</th>
         </tr>
       </thead>
@@ -8052,7 +8052,7 @@ function renderView() {
             </select>
             <select class="neu-inset" style="padding:0.4rem 0.75rem;font-size:0.82rem;color-scheme:light;border-radius:8px;cursor:pointer;" onchange="window.setApprovedReportType(this.value)">
               <option value="SEMUA" ${approvedReportType==='SEMUA'?'selected':''}>Semua Jenis</option>
-              ${availableTypes.map(t=>`<option value="${t}" ${approvedReportType===t?'selected':''}>${t}</option>`).join('')}
+              ${availableTypes.map(t=>`<option value="${t}" ${approvedReportType===t?'selected':''}>${leaveTypeShort(t)} — ${leaveTypeName(t)}</option>`).join('')}
             </select>
             <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);font-weight:600;">${approvedFiltered.length} rekod dijumpai${approvedReportMonth !== 'SEMUA' ? ' · bulan ikut Tarikh Cuti' : ''}</div>
           </div>
