@@ -1252,7 +1252,7 @@ window.printLocumForm = function(id) {
             <div class="content">
                 <div class="row"><div class="label">Doktor Bercuti:</div><div class="value">${(r.name || '').toUpperCase()}</div></div>
                 <div class="row"><div class="label">Cawangan:</div><div class="value">${r.branch}</div></div>
-                <div class="row"><div class="label">Jenis Cuti:</div><div class="value">${r.type}</div></div>
+                <div class="row"><div class="label">Jenis Cuti:</div><div class="value">${leaveTypeName(r.type)}</div></div>
                 <div class="row"><div class="label">Tempoh Cuti:</div><div class="value">${r.startDate} hingga ${r.endDate} (${r.days} Hari)</div></div>
                 <div style="height: 20px;"></div>
                 <div style="background: #f0f7ff; padding: 20px; border-radius: 8px; border: 1px solid #bfdbfe; margin-bottom: 16px;">
@@ -1302,7 +1302,7 @@ window.printAllLocum = function() {
                 return h > 0 ? h.toFixed(1) + ' jam' : '-';
             })();
             return `<tr>
-                <td>${r.name}</td><td>${r.branch}</td><td>${r.type}</td>
+                <td>${r.name}</td><td>${r.branch}</td><td>${leaveTypeName(r.type)}</td>
                 <td>${r.startDate}${r.startDate!==r.endDate?' → '+r.endDate:''}</td>
                 <td>${l.n}</td><td>${l.name}</td><td>${l.phone||'-'}</td>
                 <td>${l.date||'-'}</td><td>${l.ts||'-'} — ${l.te||'-'}</td><td>${hrs}</td>
@@ -2735,7 +2735,7 @@ window.generateBalanceReport = function(rows, branchName, leaveType, year) {
   const MONTHS = ['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ogo','Sep','Okt','Nov','Dis'];
   const printHTML = `
   <div id="print-container" style="font-family:Arial,sans-serif;padding:20px;color:#111;background:#fff;">
-    ${window.printHeaderHTML({ isReport: true, branch: branchName, title: 'LAPORAN BAKI CUTI BULANAN', meta: [{ label: 'Jenis', value: leaveType }, { label: 'Tahun', value: year }, { label: 'Jana', value: new Date().toLocaleString('ms-MY') }] })}
+    ${window.printHeaderHTML({ isReport: true, branch: branchName, title: 'LAPORAN BAKI CUTI BULANAN', meta: [{ label: 'Jenis', value: leaveTypeName(leaveType) }, { label: 'Tahun', value: year }, { label: 'Jana', value: new Date().toLocaleString('ms-MY') }] })}
     <table style="width:100%;border-collapse:collapse;font-size:9px;">
       <thead>
         <tr style="background:#7c3aed;color:#fff;">
@@ -2750,13 +2750,14 @@ window.generateBalanceReport = function(rows, branchName, leaveType, year) {
       <tbody>
         ${rows.map((r,i) => {
           const bal = r.entitlement - r.totalUsed;
+          const balPrint = Math.max(bal, 0);
           return `<tr style="border-bottom:1px solid #e2e8f0;background:${i%2===0?'#fff':'#faf5ff'};">
             <td style="padding:5px 8px;font-weight:700;font-size:9px;">${r.name}</td>
             <td style="padding:5px 8px;color:#6d28d9;font-size:8px;">${r.branch}</td>
             ${r.monthlyUsed.map(d=>`<td style="padding:5px 4px;text-align:center;${d>0?'font-weight:700;color:#059669;':''}">${d>0?d:''}</td>`).join('')}
             <td style="padding:5px 6px;text-align:center;font-weight:800;color:#7c3aed;">${r.totalUsed.toFixed(1)}</td>
             <td style="padding:5px 6px;text-align:center;font-weight:700;">${r.entitlement}</td>
-            <td style="padding:5px 6px;text-align:center;font-weight:800;${bal<=0?'color:#dc2626;':'color:#059669;'}">${bal.toFixed(1)}</td>
+            <td style="padding:5px 6px;text-align:center;font-weight:800;${bal<=0?'color:#dc2626;':'color:#059669;'}">${balPrint.toFixed(1)}</td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -2840,7 +2841,7 @@ window.generateApprovedReport = function() {
           <td style="padding:7px 10px;font-weight:700;">${r.startDate}${r.startDate!==r.endDate?'<br><span style="color:#718096;font-weight:400;font-size:10px;">s/d '+r.endDate+'</span>':''}</td>
           <td style="padding:7px 10px;font-weight:700;">${r.name}<br><span style="color:#718096;font-size:10px;">${r.ic}</span></td>
           <td style="padding:7px 10px;font-size:10px;color:#3b82f6;">${r.branch}</td>
-          <td style="padding:7px 10px;font-weight:700;color:#059669;">${r.type}</td>
+          <td style="padding:7px 10px;font-weight:700;color:#059669;">${leaveTypeName(r.type)}</td>
           <td style="padding:7px 10px;font-style:italic;color:#718096;">${(r.reason||'').substring(0,50)}</td>
           <td style="padding:7px 10px;font-weight:800;text-align:center;font-size:14px;">${r.days}</td>
         </tr>`).join('')}
@@ -3120,7 +3121,7 @@ window.generateAttendanceReport = function() {
     const cmeSt = isDoctor ? window.getLeaveStats(s, 'CME') : null;
     const al = ml['AL']||0, mc = ml['MC']||0;
     const el = (ml['EL']||0)+(ml['EL_EMG']||0), up = ml['UP']||0;
-    const last = isDoctor ? (ml['CME']||0) : ((ml['HL']||0)+(ml['ML']||0)+(ml['ML_PL']||0));
+    const last = isDoctor ? ((ml['CME']||0)+(ml['RL']||0)) : ((ml['HL']||0)+(ml['ML']||0)+(ml['ML_PL']||0));
     return `<tr style="border-bottom:1px solid #e2e8f0;background:${i%2===0?'#fff':'#f8fafc'};">
       <td style="padding:5px 8px;text-align:center;font-size:10px;color:#718096;">${i+1}</td>
       <td style="padding:5px 8px;font-size:11px;font-weight:600;">${s.name}</td>
@@ -3137,7 +3138,7 @@ window.generateAttendanceReport = function() {
 
   const renderSection = (title, arr, isDoctor) => {
     if (!arr.length) return '';
-    const lastHdr = isDoctor ? 'CME' : 'LL';
+    const lastHdr = isDoctor ? 'CME+RL' : 'LL';
     const lastColor = isDoctor ? '#7c3aed' : '#0891b2';
     return `
     <div style="margin-bottom:20px;">
@@ -3165,7 +3166,7 @@ window.generateAttendanceReport = function() {
             <td style="padding:7px 6px;text-align:center;font-size:11px;color:#059669;">${arr.reduce((s,x)=>s+(getMonthLeave(x.ic)['MC']||0),0).toFixed(1).replace('.0','')}</td>
             <td style="padding:7px 6px;text-align:center;font-size:11px;color:#d97706;">${arr.reduce((s,x)=>s+((getMonthLeave(x.ic)['EL']||0)+(getMonthLeave(x.ic)['EL_EMG']||0)),0).toFixed(1).replace('.0','')}</td>
             <td style="padding:7px 6px;text-align:center;">${arr.reduce((s,x)=>s+(getMonthLeave(x.ic)['UP']||0),0)||'-'}</td>
-            <td style="padding:7px 6px;text-align:center;">${isDoctor ? (arr.reduce((s,x)=>s+(getMonthLeave(x.ic)['CME']||0),0)||'-') : (arr.reduce((s,x)=>s+((getMonthLeave(x.ic)['HL']||0)+(getMonthLeave(x.ic)['ML']||0)+(getMonthLeave(x.ic)['ML_PL']||0)),0)||'-')}</td>
+            <td style="padding:7px 6px;text-align:center;">${isDoctor ? (arr.reduce((s,x)=>s+((getMonthLeave(x.ic)['CME']||0)+(getMonthLeave(x.ic)['RL']||0)),0)||'-') : (arr.reduce((s,x)=>s+((getMonthLeave(x.ic)['HL']||0)+(getMonthLeave(x.ic)['ML']||0)+(getMonthLeave(x.ic)['ML_PL']||0)),0)||'-')}</td>
             <td colspan="${isDoctor ? 3 : 2}"></td>
           </tr>
         </tfoot>
@@ -3247,7 +3248,6 @@ window.generateJenisCutiReport = function() {
     <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
       ${activeTypes.map(t => {
         const c = typeColors[t]||'#64748b';
-        const cat = leaveCategories.find(x=>x.id===t);
         return `<div style="padding:8px 14px;background:${c}18;border:1px solid ${c}44;border-radius:8px;min-width:80px;">
           <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${c};">${leaveTypeShort(t)}</div>
           <div style="font-size:20px;font-weight:800;color:${c};">${typeTotals[t].d.toFixed(1)}</div>
@@ -3328,7 +3328,7 @@ window.generateLeaveReport = function() {
               <tr style="border-bottom: 1px solid #e2e8f0;">
                   <td style="padding: 10px; font-weight: bold;">${r.startDate}<br><span style="color: #718096; font-weight: normal;">to ${r.endDate}</span></td>
                   <td style="padding: 10px; font-weight: bold;">${r.name}<br><span style="color: #3b82f6; font-size: 10px;">${r.branch}</span><br><span style="color: #718096; font-size: 10px;">${r.ic}</span></td>
-                  <td style="padding: 10px; font-weight: bold; color: #059669;">${r.type}</td>
+                  <td style="padding: 10px; font-weight: bold; color: #059669;">${leaveTypeName(r.type)}</td>
                   <td style="padding: 10px; font-style: italic;">${r.reason}</td>
                   <td style="padding: 10px; font-weight: bold; font-size: 14px;">${r.days}</td>
                   <td style="padding: 10px; font-weight: bold; text-transform: uppercase;">${r.status}</td>
@@ -5929,7 +5929,7 @@ function renderPersonalDashboard() {
                   ? '<tr><td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-muted);">Tiada rekod permohonan ditemui.</td></tr>'
                   : myRecords.slice(0, 5).map(act => `
                   <tr>
-                    <td style="font-weight: 700;">${act.type}</td>
+                    <td style="font-weight: 700;">${leaveTypeName(act.type)}</td>
                     <td style="color: var(--text-muted); font-size: 1rem;">${act.startDate} → ${act.endDate}</td>
                     <td style="font-weight: 600;">${act.days} Hari</td>
                     <td><span class="status-badge ${(act.status || '').toLowerCase()}">${act.status}</span></td>
@@ -6730,7 +6730,7 @@ function renderView() {
                     <div style="display:flex;align-items:center;gap:0.55rem;min-width:0;">
                       <div style="width:8px;height:8px;border-radius:50%;background:${catC ? catC.color : '#94a3b8'};flex-shrink:0;"></div>
                       <div style="min-width:0;">
-                        <div style="font-size:0.72rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${act.type} — ${act.days} hari</div>
+                        <div style="font-size:0.72rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${leaveTypeShort(act.type)} — ${act.days} hari</div>
                         <div style="font-size:0.62rem;color:var(--text-muted);">${act.startDate || ''}</div>
                       </div>
                     </div>
@@ -7106,7 +7106,7 @@ function renderView() {
                             Dimohon: ${req.id ? new Date(req.id).toLocaleString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
                         </div>
                      </div>
-                     <span style="color: ${req.typeColor}; background: rgba(163,177,198,0.2); padding: 0.25rem 0.75rem; border-radius: 12px; font-weight: 700; font-size: 0.8rem; border: 1px solid var(--border);">${req.type}</span>
+                     <span style="color: ${req.typeColor}; background: rgba(163,177,198,0.2); padding: 0.25rem 0.75rem; border-radius: 12px; font-weight: 700; font-size: 0.8rem; border: 1px solid var(--border);">${leaveTypeShort(req.type)}</span>
                   </div>
 
                   <div style="padding: 0.5rem 0.75rem; border-radius: 8px; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; ${showHODIndicator ? 'background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); color: var(--accent);' : showTLIndicator ? 'background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.3); color: #ca8a04;' : 'background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.25); color: #b45309;'}">
@@ -7559,7 +7559,7 @@ function renderView() {
                                   <div style="font-size: 0.65rem; color: var(--primary); text-transform: uppercase; font-weight: 600;">${r.branch}</div>
                               </td>
                               <td style="padding: 1.5rem 1rem; font-weight: 700; font-size: 1rem;">
-                                  ${r.days}d <span style="font-size: 0.6rem; background: rgba(59,130,246,0.1); color: ${r.typeColor}; padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid var(--border); vertical-align: top; margin-left: 4px;">${r.type}</span>
+                                  ${r.days}d <span style="font-size: 0.6rem; background: rgba(59,130,246,0.1); color: ${r.typeColor}; padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid var(--border); vertical-align: top; margin-left: 4px;">${leaveTypeShort(r.type)}</span>
                               </td>
                               <td style="padding: 1.5rem 1rem; font-size: 0.75rem; font-style: italic; color: var(--text-muted); max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                                   ${r.reason}
@@ -7673,7 +7673,7 @@ function renderView() {
                     <div style="font-weight:800;font-size:0.95rem;text-transform:uppercase;">${r.name}</div>
                     <div style="font-size:0.75rem;color:var(--primary);font-weight:600;margin-top:0.1rem;">${r.branch}</div>
                     <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.25rem;">
-                      Cuti: <strong>${r.type}</strong> &nbsp;|&nbsp; ${r.startDate}${r.startDate !== r.endDate ? ' → ' + r.endDate : ''} &nbsp;|&nbsp; ${r.days} hari
+                      Cuti: <strong>${leaveTypeName(r.type)}</strong> &nbsp;|&nbsp; ${r.startDate}${r.startDate !== r.endDate ? ' → ' + r.endDate : ''} &nbsp;|&nbsp; ${r.days} hari
                     </div>
                   </div>
                   <div style="display:flex;gap:0.5rem;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">
@@ -8030,7 +8030,7 @@ function renderView() {
                       <div style="font-size:0.65rem;color:var(--primary);text-transform:uppercase;font-weight:600;">${r.branch}</div>
                     </td>
                     <td style="padding:1.5rem 1rem;">
-                      <div style="font-size:0.65rem;font-weight:700;background:rgba(59,130,246,0.1);color:${r.typeColor||'var(--primary)'};padding:0.3rem 0.6rem;border-radius:4px;border:1px solid var(--border);display:inline-block;">${r.type}</div>
+                      <div style="font-size:0.65rem;font-weight:700;background:rgba(59,130,246,0.1);color:${r.typeColor||'var(--primary)'};padding:0.3rem 0.6rem;border-radius:4px;border:1px solid var(--border);display:inline-block;">${leaveTypeShort(r.type)}</div>
                     </td>
                     <td style="padding:1.5rem 1rem;font-size:0.75rem;font-style:italic;color:var(--text-muted);max-width:250px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.reason}</td>
                     <td style="padding:1.5rem 1rem;font-weight:700;font-size:1.1rem;">${r.days}</td>
@@ -8093,7 +8093,7 @@ function renderView() {
             <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
               ${Object.entries(typeBreakdown).sort((a,b)=>b[1]-a[1]).map(([type,days])=>`
                 <div style="padding:0.4rem 0.85rem;border-radius:20px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.15);display:flex;align-items:center;gap:0.5rem;">
-                  <span style="font-size:0.72rem;font-weight:800;color:var(--primary);">${type}</span>
+                  <span style="font-size:0.72rem;font-weight:800;color:var(--primary);">${leaveTypeShort(type)}</span>
                   <span style="font-size:0.68rem;color:var(--text-muted);">${days.toFixed(1)} hari</span>
                 </div>`).join('')}
             </div>
@@ -8131,7 +8131,7 @@ function renderView() {
                     </td>
                     <td style="padding:1.1rem 1rem;font-size:0.72rem;color:var(--primary);font-weight:600;">${r.branch}</td>
                     <td style="padding:1.1rem 1rem;">
-                      <span style="font-size:0.65rem;font-weight:700;background:rgba(5,150,105,0.1);color:#059669;padding:0.25rem 0.6rem;border-radius:4px;border:1px solid rgba(5,150,105,0.2);">${r.type}</span>
+                      <span style="font-size:0.65rem;font-weight:700;background:rgba(5,150,105,0.1);color:#059669;padding:0.25rem 0.6rem;border-radius:4px;border:1px solid rgba(5,150,105,0.2);">${leaveTypeShort(r.type)}</span>
                     </td>
                     <td style="padding:1.1rem 1rem;font-size:0.73rem;font-style:italic;color:var(--text-muted);max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.reason||'-'}</td>
                     <td style="padding:1.1rem 1rem;font-weight:800;font-size:1rem;text-align:center;color:#059669;">${r.days}</td>
@@ -8208,7 +8208,6 @@ function renderView() {
             <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1.25rem;">
               ${activeTypes.map(t => {
                 const c = typeColorMap[t]||'#64748b';
-                const cat = leaveCategories.find(x=>x.id===t);
                 return `<div style="padding:0.6rem 1rem;border-radius:10px;background:${c}14;border:1px solid ${c}35;min-width:90px;">
                   <div style="font-size:0.65rem;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:${c};">${leaveTypeShort(t)}</div>
                   <div style="font-size:1.5rem;font-weight:800;color:${c};line-height:1.2;">${typeTotals[t].d.toFixed(1)}</div>
@@ -8399,7 +8398,7 @@ function renderView() {
 
             <!-- Monthly usage heatmap row -->
             <div class="glass-card" style="padding:1rem 1.25rem;margin-bottom:1.25rem;">
-              <div style="font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:0.75rem;">Penggunaan Mengikut Bulan (${balanceReportType})</div>
+              <div style="font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:0.75rem;">Penggunaan Mengikut Bulan (${leaveTypeShort(balanceReportType)})</div>
               <div style="display:grid;grid-template-columns:repeat(12,1fr);gap:0.35rem;">
                 ${monthlyGrandTotal.map((total,i) => {
                   const maxVal = Math.max(...monthlyGrandTotal, 1);
@@ -8535,7 +8534,7 @@ function renderView() {
               const cmeSt = isDoctor ? window.getLeaveStats(s, 'CME') : null;
               const al = ml['AL']||0, mc = ml['MC']||0;
               const el = (ml['EL']||0)+(ml['EL_EMG']||0), up = ml['UP']||0;
-              const last = isDoctor ? (ml['CME']||0) : ((ml['HL']||0)+(ml['ML']||0)+(ml['ML_PL']||0));
+              const last = isDoctor ? ((ml['CME']||0)+(ml['RL']||0)) : ((ml['HL']||0)+(ml['ML']||0)+(ml['ML_PL']||0));
               const rowHasLeave = al||mc||el||up||last;
               return `<tr style="border-bottom:1px solid rgba(163,177,198,0.1);background:${idx%2===0?'transparent':'rgba(163,177,198,0.025)'};"
                 onmouseover="this.style.background='rgba(59,130,246,0.05)'" onmouseout="this.style.background='${idx%2===0?'transparent':'rgba(163,177,198,0.025)'}'">
@@ -8554,14 +8553,14 @@ function renderView() {
 
             const renderAttSection = (title, arr, isDoctor, color) => {
               if (!arr.length) return '';
-              const lastLabel = isDoctor ? 'CME' : 'LL';
+              const lastLabel = isDoctor ? 'CME+RL' : 'LL';
               const lastColor = isDoctor ? '#8b5cf6' : '#06b6d4';
               const totAL = arr.reduce((s,x)=>s+(getML(x.ic)['AL']||0),0);
               const totMC = arr.reduce((s,x)=>s+(getML(x.ic)['MC']||0),0);
               const totEL = arr.reduce((s,x)=>s+((getML(x.ic)['EL']||0)+(getML(x.ic)['EL_EMG']||0)),0);
               const totUP = arr.reduce((s,x)=>s+(getML(x.ic)['UP']||0),0);
               const totLast = isDoctor
-                ? arr.reduce((s,x)=>s+(getML(x.ic)['CME']||0),0)
+                ? arr.reduce((s,x)=>s+((getML(x.ic)['CME']||0)+(getML(x.ic)['RL']||0)),0)
                 : arr.reduce((s,x)=>s+((getML(x.ic)['HL']||0)+(getML(x.ic)['ML']||0)+(getML(x.ic)['ML_PL']||0)),0);
               return `
               <div style="margin-bottom:1.5rem;">
@@ -8579,7 +8578,7 @@ function renderView() {
                           <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:#10b981;min-width:42px;" title="Medical Certificate">MC</th>
                           <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:#f59e0b;min-width:42px;" title="Emergency Leave">EL</th>
                           <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:#94a3b8;min-width:42px;" title="Unpaid Leave">UPL</th>
-                          <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:${lastColor};min-width:42px;" title="${isDoctor?'CME':'Hospitalization/Bersalin/Lain-lain'}">${lastLabel}</th>
+                          <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:${lastColor};min-width:42px;" title="${isDoctor?'CME + Cuti Ganti (RL)':'Hospitalization/Bersalin/Lain-lain'}">${lastLabel}</th>
                           <th style="padding:0.55rem 0.75rem;text-align:center;font-size:0.6rem;font-weight:700;color:#3b82f6;border-left:1px solid rgba(163,177,198,0.2);min-width:72px;">Baki Cuti</th>
                           <th style="padding:0.55rem 0.75rem;text-align:center;font-size:0.6rem;font-weight:700;color:#10b981;min-width:62px;">Baki MC</th>
                           ${isDoctor ? `<th style="padding:0.55rem 0.75rem;text-align:center;font-size:0.6rem;font-weight:700;color:#8b5cf6;min-width:72px;">Baki CME</th>` : ''}

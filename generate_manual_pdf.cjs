@@ -793,13 +793,13 @@ async function waitForApp(page) {
   <table>
     <thead><tr><th>Kategori Staf</th><th>Notis Minimum</th><th>Dikecualikan</th></tr></thead>
     <tbody>
-      <tr><td>Staff Admin</td><td><strong>3 hari</strong> bekerja sebelum tarikh cuti</td><td>MC, EL, EMG</td></tr>
-      <tr><td>Doktor, Staff Operasi &amp; lain</td><td><strong>7 hari</strong> bekerja sebelum tarikh cuti</td><td>MC, EL, EMG</td></tr>
+      <tr><td>Staff Admin</td><td><strong>3 hari</strong> bekerja sebelum tarikh cuti</td><td>MC, EL, EMG, CME, Cuti Ganti (RL)</td></tr>
+      <tr><td>Doktor, Staff Operasi &amp; lain</td><td><strong>7 hari</strong> bekerja sebelum tarikh cuti</td><td>MC, EL, EMG, CME, Cuti Ganti (RL)</td></tr>
     </tbody>
   </table>
   <div class="callout warning">
     <span class="callout-icon">⏰</span>
-    <div>Permohonan AL yang tidak mematuhi notis minimum akan <strong>ditolak secara automatik</strong> oleh sistem semasa penghantaran. MC dan cuti kecemasan (EL / EMG) dikecualikan daripada polisi ini.</div>
+    <div>Permohonan AL yang tidak mematuhi notis minimum akan <strong>ditolak secara automatik</strong> oleh sistem semasa penghantaran. MC, cuti kecemasan (EL / EMG), CME dan Cuti Ganti (RL) dikecualikan daripada polisi ini.</div>
   </div>
 </div>
 
