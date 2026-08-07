@@ -2005,7 +2005,7 @@ window._recalcLeaveBalance = function(prefix) {
         elOv = computeElOverflow({ entEL: elEnt, usedPre: elPre, usedSys: autoSystemUsage ? elSysAuto : elSysManual, pelarasan: elPel });
         const noteEl = document.getElementById('al-el-overflow-note');
         if (noteEl) {
-            noteEl.textContent = elOv > 0 ? `− ${elOv.toFixed(1)} hari ditolak dari limpahan EL` : '';
+            noteEl.textContent = elOv > 0 ? `− ${elOv.toFixed(1)} hari ditolak dari limpahan Cuti Ehsan` : '';
             noteEl.style.display = elOv > 0 ? 'block' : 'none';
         }
     }
@@ -10139,7 +10139,9 @@ function renderModal() {
   const _modalAlBalance = Math.max(0, _modalTotalAL - _modalAlUsedPre - (autoSystemUsage ? _modalSysUsedAL : _modalAlUsedSysAdj) - _modalAlPelarasan - _modalElOverflow);
 
   // Helper HTML breakdown untuk MC & EL (tiada CF). prefix: 'mc'|'el'.
-  const _leaveBreakdownHTML = (prefix, typeId, title, annualDefault, accent) => {
+  // balanceLabel: what the "Baki … Sebenar" field calls this type. Defaults to the storage
+  // code, which reads fine for MC and CME. EL passes "Cuti Ehsan" — the bare code misleads.
+  const _leaveBreakdownHTML = (prefix, typeId, title, annualDefault, accent, balanceLabel = typeId) => {
     const sys = _modalSysUsed(typeId);
     const ann = (staff['ent_' + typeId] !== undefined && staff['ent_' + typeId] !== null) ? parseFloat(staff['ent_' + typeId]) : annualDefault;
     const pre = parseFloat(staff[prefix + '_used_pre'] || 0);
@@ -10166,7 +10168,7 @@ function renderModal() {
             <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Potongan pembetulan HR</span>
           </div>
           <div style="display: flex; flex-direction: column; grid-column: span 2;">
-            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #10b981; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Baki ${typeId} Sebenar</label>
+            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #10b981; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Baki ${balanceLabel} Sebenar</label>
             <input type="number" id="${prefix}-balance-display" class="neu-inset" disabled value="${bal.toFixed(1)}" style="border-left: 3px solid #10b981; font-weight:800; color:#10b981; opacity:1; cursor:default;">
             <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Peruntukan − Guna Sebelum − Guna Sistem − Pelarasan HR</span>
           </div>
@@ -10318,13 +10320,13 @@ function renderModal() {
                   value="${_modalAlBalance.toFixed(1)}"
                   style="border-left: 3px solid #10b981; font-weight: 800; color: #10b981; opacity: 1; cursor: default;">
                 <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Jumlah − Guna Sebelum − Guna Sistem − Pelarasan HR</span>
-                <span id="al-el-overflow-note" style="font-size: 0.68rem; color: #f59e0b; font-weight: 700; margin-top: 0.35rem; display: ${_modalElOverflow > 0 ? 'block' : 'none'};">${_modalElOverflow > 0 ? `− ${_modalElOverflow.toFixed(1)} hari ditolak dari limpahan EL` : ''}</span>
+                <span id="al-el-overflow-note" style="font-size: 0.68rem; color: #f59e0b; font-weight: 700; margin-top: 0.35rem; display: ${_modalElOverflow > 0 ? 'block' : 'none'};">${_modalElOverflow > 0 ? `− ${_modalElOverflow.toFixed(1)} hari ditolak dari limpahan Cuti Ehsan` : ''}</span>
               </div>
             </div>
           </div>
 
           ${_leaveBreakdownHTML('mc', 'MC', 'MC — Cuti Sakit', window.getEntitlementMC(staff), '#10b981')}
-          ${_leaveBreakdownHTML('el', 'EL', 'EL — Cuti Ehsan', 3, '#f59e0b')}
+          ${_leaveBreakdownHTML('el', 'EL', 'Cuti Ehsan (Kematian Keluarga Terdekat)', 3, '#f59e0b', 'Cuti Ehsan')}
           ${staff.category === 'Doctor'
             ? _leaveBreakdownHTML('cme', 'CME', 'CME — Cuti Pendidikan Perubatan (Doktor)', window.getEntitlementCME(staff), '#8b5cf6')
             : '' /* CME is doctors-only */}
