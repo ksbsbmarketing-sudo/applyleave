@@ -27,6 +27,7 @@ test('the three renamed types read as agreed', () => {
 });
 
 test('short codes never show the raw storage code', () => {
+  assert.strictEqual(leaveTypeShort('EL'), 'EHSAN');
   assert.strictEqual(leaveTypeShort('EL_EMG'), 'EMG');
   assert.strictEqual(leaveTypeShort('ML_PL'), 'PL');
 });

@@ -33,11 +33,13 @@ export function leaveTypeName(code) {
 }
 
 // Short codes for table headers and summary chips, where the full name does not fit.
-// EL_EMG becomes EMG rather than EL because Cuti Ehsan already owns EL and the two
-// sit in adjacent columns. Codes absent here are shown as-is.
+// EL becomes EHSAN because the bare letters read as "Emergency Leave" — EL is Cuti Ehsan
+// (bereavement); the general-emergency type is EL_EMG, shown as EMG. Codes absent here
+// are shown as-is.
 export const LEAVE_TYPE_SHORT = Object.freeze({
+  EL:     'EHSAN',
   EL_EMG: 'EMG',
-  ML_PL: 'PL',
+  ML_PL:  'PL',
 });
 
 export function leaveTypeShort(code) {
