@@ -3158,7 +3158,7 @@ window.generateAttendanceReport = function() {
             <th style="padding:7px 8px;text-align:left;font-size:10px;color:#64748b;">Nama</th>
             <th style="padding:7px 6px;text-align:center;font-size:10px;color:#3b82f6;">AL</th>
             <th style="padding:7px 6px;text-align:center;font-size:10px;color:#059669;">MC</th>
-            <th style="padding:7px 6px;text-align:center;font-size:10px;color:#d97706;">EL</th>
+            <th style="padding:7px 6px;text-align:center;font-size:10px;color:#d97706;">EHSAN+KEC</th>
             <th style="padding:7px 6px;text-align:center;font-size:10px;color:#64748b;">UPL</th>
             <th style="padding:7px 6px;text-align:center;font-size:10px;color:${lastColor};">${lastHdr}</th>
             <th style="padding:7px 8px;text-align:center;font-size:10px;color:#1d4ed8;border-left:1px solid #e2e8f0;">Baki Cuti</th>
@@ -4825,7 +4825,7 @@ function renderDashboard() {
           if (toAL > 0) {
               const alBal = window.getLeaveStats(user, 'AL').bal;
               leaveBreakdown = "\n*EL OVERFLOW*\nEL Bucket Used: " + fromEL.toFixed(1) + " days\nAnnual Leave (AL) Used: " + toAL.toFixed(1) + " days\n(EL bucket exhausted → overflow deducted from AL)";
-              let elMsg = "Notis: Baki EL anda tinggal " + elBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan ditolak " + fromEL.toFixed(1) + " hari dari EL dan " + toAL.toFixed(1) + " hari dari Cuti Tahunan (AL).";
+              let elMsg = "Notis: Baki Cuti Ehsan anda tinggal " + elBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan ditolak " + fromEL.toFixed(1) + " hari dari Cuti Ehsan dan " + toAL.toFixed(1) + " hari dari Cuti Tahunan (AL).";
               if (toAL > alBal) {
                   elMsg += "\n\n⚠️ Baki AL juga tidak mencukupi (baki AL: " + alBal.toFixed(2) + " hari).";
               }
@@ -8585,7 +8585,7 @@ function renderView() {
                           <th style="padding:0.55rem 0.75rem;text-align:left;font-size:0.6rem;font-weight:700;color:var(--text-muted);min-width:180px;">Nama</th>
                           <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:#3b82f6;min-width:42px;" title="Annual Leave">AL</th>
                           <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:#10b981;min-width:42px;" title="Medical Certificate">MC</th>
-                          <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:#f59e0b;min-width:42px;" title="Emergency Leave">EL</th>
+                          <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:#f59e0b;min-width:42px;" title="Cuti Ehsan + Cuti Kecemasan">EHSAN+KEC</th>
                           <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:#94a3b8;min-width:42px;" title="Unpaid Leave">UPL</th>
                           <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:${lastColor};min-width:42px;" title="${isDoctor?'CME + Cuti Ganti (RL)':'Hospitalization/Bersalin/Lain-lain'}">${lastLabel}</th>
                           <th style="padding:0.55rem 0.75rem;text-align:center;font-size:0.6rem;font-weight:700;color:#3b82f6;border-left:1px solid rgba(163,177,198,0.2);min-width:72px;">Baki Cuti</th>
