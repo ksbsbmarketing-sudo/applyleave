@@ -9823,12 +9823,12 @@ function renderView() {
                        </div>
 
                        <div class="neu-panel" style="border-left: 4px solid var(--danger); padding-left: 1.5rem;">
-                          <h3 style="font-size: 1rem; color: var(--danger); margin-bottom: 0.5rem;">3. Perbandingan: Cuti Kecemasan (EL) vs Cuti Ehsan</h3>
+                          <h3 style="font-size: 1rem; color: var(--danger); margin-bottom: 0.5rem;">3. Perbandingan: Cuti Kecemasan (EMG) vs Cuti Ehsan (EL)</h3>
                           <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted); margin-top: 1rem;">
                             <thead>
                                 <tr style="background: rgba(67,97,238,0.07); color: var(--text);">
                                     <th style="padding: 0.5rem; border: 1px solid var(--border);">Aspek</th>
-                                    <th style="padding: 0.5rem; border: 1px solid var(--border); color: var(--danger);">Cuti Kecemasan (EL)</th>
+                                    <th style="padding: 0.5rem; border: 1px solid var(--border); color: var(--danger);">Cuti Kecemasan (EMG)</th>
                                     <th style="padding: 0.5rem; border: 1px solid var(--border); color: var(--secondary);">Cuti Ehsan (Compassionate)</th>
                                 </tr>
                             </thead>
@@ -9841,7 +9841,7 @@ function renderView() {
                                 <tr>
                                     <td style="padding: 0.5rem; border: 1px solid var(--border);"><strong>Tolak Baki Cuti?</strong></td>
                                     <td style="padding: 0.5rem; border: 1px solid var(--border);">Ya. Ditolak dari Annual Leave (AL)</td>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);">Tambahan Percuma (Tanpa tolak AL)</td>
+                                    <td style="padding: 0.5rem; border: 1px solid var(--border);">Tambahan percuma untuk 3 hari pertama. Lebihan melebihi 3 hari ditolak dari AL.</td>
                                 </tr>
                                 <tr>
                                     <td style="padding: 0.5rem; border: 1px solid var(--border);"><strong>Had Limit</strong></td>
