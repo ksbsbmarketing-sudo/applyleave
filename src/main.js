@@ -805,7 +805,11 @@ window.rbacMatrix = {
     },
     hod_cawangan: {
         dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
-        manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: true, manage_policy: false,
+        // manage_staff mesti sepadan dengan config/rolePermissions.hod_cawangan.manageStaff.
+        // Butang di UI datang dari sini, tetapi Firestore rules percaya custom claim yang
+        // dijana dari config/rolePermissions — jadi kalau dua-dua tak sama, HOD nampak
+        // butang Simpan yang sentiasa gagal dengan "Missing or insufficient permissions".
+        manage_pending: false, manage_staff: true, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: true, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: true, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: false
     },
