@@ -2240,7 +2240,7 @@ window.editLeave = function(id) {
     if (!rec) return;
     const isAdminEditor = ['admin', 'hr', 'super_admin'].includes(user.role);
     const isOwner = rec.ic === user.ic;
-    const isApprover = window.canManageRequest(user, rec);
+    const isApprover = window.canManageRequest(user, rec) || window.canCorrectBranchLeave(user, rec);
     const finalized = ['APPROVED', 'REJECTED', 'CANCELLED'].includes(rec.status);
     // Staf/pelulus hanya boleh ubah semasa belum diluluskan muktamad; HR/Admin boleh bila-bila (pembetulan rekod).
     if (!isAdminEditor && finalized) { alert('Permohonan ini sudah selesai dan tidak boleh diubah.'); return; }
@@ -2610,7 +2610,7 @@ window.cancelLeave = async function(id) {
         return;
     }
 
-    if (!window.canManageRequest(user, req)) {
+    if (!window.canManageRequest(user, req) && !window.canCorrectBranchLeave(user, req)) {
         alert('Anda tidak mempunyai kebenaran untuk menguruskan cawangan/staf ini.');
         return;
     }
@@ -5189,7 +5189,7 @@ function renderDashboard() {
           if(rec) {
               const isAdminEditor = ['admin', 'hr', 'super_admin'].includes(user.role);
               const isOwner = rec.ic === user.ic;
-              const isApprover = window.canManageRequest(user, rec);
+              const isApprover = window.canManageRequest(user, rec) || window.canCorrectBranchLeave(user, rec);
               if (!isAdminEditor && ['APPROVED', 'REJECTED', 'CANCELLED'].includes(rec.status)) {
                   alert('Permohonan ini sudah selesai dan tidak boleh diubah.'); return;
               }
@@ -5823,6 +5823,40 @@ function renderBranchDashboard() {
           }
         </div>
       </section>
+
+      ${window.isBranchScopedHod(user) ? `
+      <section class="glass-card" style="padding:1rem 1.25rem;margin-top:1.5rem;">
+        <div style="font-size:0.72rem;text-transform:uppercase;color:var(--text-muted);font-weight:700;letter-spacing:0.5px;margin-bottom:0.75rem;">Rekod Cuti Cawangan</div>
+        <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+          <thead><tr style="text-align:left;color:var(--text-muted);font-size:0.72rem;text-transform:uppercase;">
+            <th style="padding:0.4rem 0.5rem;">Nama</th><th style="padding:0.4rem 0.5rem;">Jenis</th>
+            <th style="padding:0.4rem 0.5rem;">Tarikh</th><th style="padding:0.4rem 0.5rem;">Hari</th>
+            <th style="padding:0.4rem 0.5rem;">Status</th><th style="padding:0.4rem 0.5rem;">Tindakan</th>
+          </tr></thead>
+          <tbody>
+            ${branchRecords.length === 0
+              ? '<tr><td colspan="6" style="text-align:center;padding:1.5rem;color:var(--text-muted);">Tiada rekod cuti untuk cawangan ini.</td></tr>'
+              : branchRecords.map(r => `
+              <tr style="border-top:1px solid rgba(163,177,198,0.18);">
+                <td style="padding:0.45rem 0.5rem;font-weight:600;">${r.name || ''}</td>
+                <td style="padding:0.45rem 0.5rem;">${leaveTypeName(r.type)}</td>
+                <td style="padding:0.45rem 0.5rem;color:var(--text-muted);">${r.startDate} → ${r.endDate}</td>
+                <td style="padding:0.45rem 0.5rem;">${r.days}</td>
+                <td style="padding:0.45rem 0.5rem;"><span class="status-badge ${(r.status || '').toLowerCase()}">${r.status}</span></td>
+                <td style="padding:0.45rem 0.5rem;white-space:nowrap;">
+                  ${window.canCorrectBranchLeave(user, r) ? `
+                    ${!['APPROVED', 'REJECTED', 'CANCELLED'].includes(r.status)
+                      ? `<button class="neu-btn" onclick="window.editLeave(${r.id})" style="width:auto;padding:0.2rem 0.55rem;font-size:0.72rem;color:#60a5fa;">Edit</button>` : ''}
+                    ${r.status !== 'CANCELLED'
+                      ? `<button class="neu-btn" onclick="window.cancelLeave(${r.id})" style="width:auto;padding:0.2rem 0.55rem;font-size:0.72rem;color:#ef4444;">Batal</button>` : ''}
+                  ` : ''}
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        </div>
+      </section>` : ''}
 
     </div>
   `;
