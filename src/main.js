@@ -1061,6 +1061,23 @@ window.hrRecipientsForBranch = function(branchName) {
     });
 };
 
+// A HOD Cawangan sees and edits only their own branch. Deliberately NOT folded
+// into canManageRequest(): that function also gates the approve/reject controls,
+// and a HOD Cawangan is not an approver — leave still routes through Doctor PIC.
+window.isBranchScopedHod = function(u) {
+    return !!u && u.role === 'hod_cawangan';
+};
+
+// Correct/cancel rights for a HOD Cawangan over their own branch. Mirrors the
+// firestore.rules grant exactly: own branch, never their own record. Approval is
+// deliberately absent — the rules reject any status other than PENDING/CANCELLED.
+window.canCorrectBranchLeave = function(u, req) {
+    if (!u || !req) return false;
+    if (!window.isBranchScopedHod(u)) return false;
+    if (req.ic === u.ic) return false;
+    return req.branch === u.branch;
+};
+
 window.canManageRequest = function(user, req) {
     if (!user || !req) return false;
     if (['super_admin', 'admin'].includes(user.role)) return true;
@@ -6816,6 +6833,11 @@ function renderView() {
           const sBranch = branches.find(b => b.name === s.branch);
           return sBranch && window.scopeStateOfBranch(s.branch) === userStateScope;
       });
+      // A HOD Cawangan manages leave figures for their own branch only; the rules
+      // reject anything else, so do not list staff they cannot save.
+      if (window.isBranchScopedHod(user)) {
+          filteredStaff = filteredStaff.filter(s => s.branch === user.branch);
+      }
       if (manageBranchFilter !== 'All') {
           filteredStaff = filteredStaff.filter(s => s.branch === manageBranchFilter);
       }
@@ -6892,7 +6914,7 @@ function renderView() {
               + '</div>'
               // Edit + Delete buttons
               + '<button class="btn-logout" data-ic="' + staff.ic + '" onclick="window.setEditingStaff(this.dataset.ic)" style="flex-shrink:0;width:auto;padding:0.2rem 0.65rem;font-size:0.75rem;">Edit</button>'
-              + '<button class="btn-logout" data-ic="' + staff.ic + '" onclick="window.deleteStaff(this.dataset.ic)" style="flex-shrink:0;width:auto;padding:0.2rem 0.65rem;font-size:0.75rem;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);" title="Buang dari sistem">&#10005;</button>'
+              + (window.isBranchScopedHod(user) ? '' : '<button class="btn-logout" data-ic="' + staff.ic + '" onclick="window.deleteStaff(this.dataset.ic)" style="flex-shrink:0;width:auto;padding:0.2rem 0.65rem;font-size:0.75rem;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);" title="Buang dari sistem">&#10005;</button>')
               + '</div>';
           }).join('');
 
@@ -6968,7 +6990,7 @@ function renderView() {
             +   statCell('HL', hl.used, hl.ent, '#06b6d4')
             + '</div>'
             + '<button class="btn-logout" data-ic="' + staff.ic + '" onclick="window.setEditingStaff(this.dataset.ic)" style="flex-shrink:0;width:auto;padding:0.2rem 0.65rem;font-size:0.75rem;">Edit</button>'
-            + '<button class="btn-logout" data-ic="' + staff.ic + '" onclick="window.deleteStaff(this.dataset.ic)" style="flex-shrink:0;width:auto;padding:0.2rem 0.65rem;font-size:0.75rem;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);" title="Buang dari sistem">&#10005;</button>'
+            + (window.isBranchScopedHod(user) ? '' : '<button class="btn-logout" data-ic="' + staff.ic + '" onclick="window.deleteStaff(this.dataset.ic)" style="flex-shrink:0;width:auto;padding:0.2rem 0.65rem;font-size:0.75rem;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);" title="Buang dari sistem">&#10005;</button>')
             + '</div>';
         }).join('');
         return '<div style="margin-bottom:1.25rem;">'
@@ -8658,7 +8680,7 @@ function renderView() {
         ${managementTab === 'staff' ? `
         <header class="top-bar">
           <h1>Management Hub</h1>
-          <button class="btn-primary" onclick="window.openAddStaff()" style="width: auto; padding: 0.75rem 1.5rem;">+ Tambah Staf</button>
+          ${window.isBranchScopedHod(user) ? '' : `<button class="btn-primary" onclick="window.openAddStaff()" style="width: auto; padding: 0.75rem 1.5rem;">+ Tambah Staf</button>`}
         </header>
 
                 <section class="glass-card" style="padding: 1rem 1.25rem;">
