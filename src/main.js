@@ -10216,6 +10216,11 @@ function renderModal() {
         </div>
         
         <form id="edit-entitlement-form">
+          ${window.isBranchScopedHod(user) ? `
+          <div style="margin-bottom: 2rem; padding: 0.9rem 1.1rem; border-radius: 10px; background: rgba(56,189,248,0.07); border-left: 4px solid #38bdf8;">
+            <span style="font-size:0.78rem;font-weight:700;color:#38bdf8;">Anda boleh kemaskini baki &amp; kelayakan cuti sahaja.</span>
+            <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.25rem;line-height:1.4;">Peranan, cawangan, kategori, status akaun, telefon dan kata laluan diuruskan oleh HR/Admin.</div>
+          </div>` : `
           <div style="margin-bottom: 3rem; display: flex; flex-direction: column; gap: 1.5rem;">
               <div style="display: flex; flex-direction: column;">
                  <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.5rem;">
@@ -10288,7 +10293,7 @@ function renderModal() {
                     <span style="font-size: 0.7rem; color: var(--text-muted); line-height: 1.4; margin-top: 0.25rem;">Untuk Operation Staff yang bekerja Isnin–Jumaat sahaja. Jika di-tick: hari Sabtu/Ahad &amp; cuti umum TIDAK dikira dalam permohonan cuti, dan permohonan dihalakan ke HOD Balok (bukan Team Leader/Supervisor). Kategori kekal "Operation Staff" dalam laporan.</span>
                 </div>
              </label>
-          </div>
+          </div>`}
 
           <!-- Seksyen AL: Baki Tahun Lepas + Peruntukan Tahun Ini + Jumlah -->
           <div style="border-top: 1px solid rgba(163,177,198,0.25); padding-top: 2rem; margin-top: 1.5rem; margin-bottom: 1.5rem;">
