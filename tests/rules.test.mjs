@@ -205,3 +205,64 @@ test("ordinary staff cannot edit anyone's entitlements", async () => {
   await assertFails(updateDoc(doc(s, "staff", "SB"), { ent_AL: 99 }));
   await assertFails(updateDoc(doc(s, "staff", "SA"), { ent_AL: 99 }));
 });
+
+const seedBranchHodLeaves = () => testEnv.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, "leaves", "LA"), {
+    ic: "SA", name: "STAF A", branch: "Klinik A", type: "AL",
+    startDate: "2026-09-01", endDate: "2026-09-02", days: 2, reason: "cuti", status: "PENDING",
+  });
+  await setDoc(doc(db, "leaves", "LB"), {
+    ic: "SB", name: "STAF B", branch: "Klinik B", type: "AL",
+    startDate: "2026-09-01", endDate: "2026-09-02", days: 2, reason: "cuti", status: "PENDING",
+  });
+  await setDoc(doc(db, "leaves", "LOWN"), {
+    ic: "HODA", name: "HOD A", branch: "Klinik A", type: "AL",
+    startDate: "2026-09-05", endDate: "2026-09-06", days: 2, reason: "sendiri", status: "PENDING",
+  });
+});
+
+test("branch HOD can correct dates on an own-branch leave", async () => {
+  await seedBranchHodFixtures();
+  await seedBranchHodLeaves();
+  const hod = ctxDb(staffAuth("HODA"));
+  await assertSucceeds(updateDoc(doc(hod, "leaves", "LA"),
+    { startDate: "2026-09-03", endDate: "2026-09-04", days: 2, reason: "betulkan", status: "PENDING" }));
+});
+
+test("branch HOD can cancel an own-branch leave", async () => {
+  await seedBranchHodFixtures();
+  await seedBranchHodLeaves();
+  const hod = ctxDb(staffAuth("HODA"));
+  await assertSucceeds(updateDoc(doc(hod, "leaves", "LA"), { status: "CANCELLED" }));
+});
+
+test("branch HOD cannot approve a leave", async () => {
+  await seedBranchHodFixtures();
+  await seedBranchHodLeaves();
+  const hod = ctxDb(staffAuth("HODA"));
+  await assertFails(updateDoc(doc(hod, "leaves", "LA"), { status: "APPROVED" }));
+  await assertFails(updateDoc(doc(hod, "leaves", "LA"), { status: "HOD APPROVED" }));
+});
+
+test("branch HOD cannot touch a leave at another branch", async () => {
+  await seedBranchHodFixtures();
+  await seedBranchHodLeaves();
+  const hod = ctxDb(staffAuth("HODA"));
+  await assertFails(updateDoc(doc(hod, "leaves", "LB"), { status: "CANCELLED" }));
+});
+
+test("branch HOD cannot edit their own leave record", async () => {
+  await seedBranchHodFixtures();
+  await seedBranchHodLeaves();
+  const hod = ctxDb(staffAuth("HODA"));
+  await assertFails(updateDoc(doc(hod, "leaves", "LOWN"), { status: "CANCELLED" }));
+});
+
+test("branch HOD cannot reassign a leave to another person or branch", async () => {
+  await seedBranchHodFixtures();
+  await seedBranchHodLeaves();
+  const hod = ctxDb(staffAuth("HODA"));
+  await assertFails(updateDoc(doc(hod, "leaves", "LA"), { ic: "SB", status: "PENDING" }));
+  await assertFails(updateDoc(doc(hod, "leaves", "LA"), { branch: "Klinik B", status: "PENDING" }));
+});

@@ -93,7 +93,19 @@ service cloud.firestore {
              && request.resource.data.branch == resource.data.branch
              && request.resource.data.type == resource.data.type
              && request.resource.data.diff(resource.data).affectedKeys()
-                  .hasOnly(['startDate', 'endDate', 'reason', 'days', 'status']) );
+                  .hasOnly(['startDate', 'endDate', 'reason', 'days', 'status']) )
+        // A HOD Cawangan corrects and cancels leave for their own branch, but is NOT
+        // an approver — applications still route Staff → Doctor PIC → HR. The status
+        // allowlist is what enforces that: 'APPROVED' is unreachable here even if a
+        // future UI change offered the button. Their own record is excluded, matching
+        // the separation of duties in canManageRequest().
+        || ( isBranchHodOf(resource.data.branch)
+             && resource.data.ic != myIC()
+             && request.resource.data.status in ['PENDING', 'CANCELLED']
+             && request.resource.data.ic == resource.data.ic
+             && request.resource.data.branch == resource.data.branch
+             && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['startDate', 'endDate', 'reason', 'days', 'status', 'type']) );
       allow delete: if canApprove();
     }
 
