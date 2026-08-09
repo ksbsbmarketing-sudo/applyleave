@@ -157,3 +157,51 @@ test("HR keeps full config write access", async () => {
   await assertSucceeds(setDoc(doc(hr, "config", "publicHolidays"),
     { pahang: [{ date: "2026-09-16", name: "Hari Malaysia" }] }, { merge: true }));
 });
+
+// ── Branch-scoped HOD Cawangan ───────────────────────────────────────────────
+// hod_cawangan holds NO manageStaff claim. The right to edit leave data for
+// their OWN branch is granted by reading the caller's staff doc, the same way
+// config/publicHolidays does. The field allowlists are what stop role/branch
+// escalation, so every negative case below matters.
+
+const seedBranchHodFixtures = () => testEnv.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, "staff", "HODA"), { ic: "HODA", name: "HOD A", role: "hod_cawangan", branch: "Klinik A" });
+  await setDoc(doc(db, "staff", "HODB"), { ic: "HODB", name: "HOD B", role: "hod_cawangan", branch: "Klinik B" });
+  await setDoc(doc(db, "staff", "SA"), { ic: "SA", name: "STAF A", role: "staff", branch: "Klinik A", ent_AL: 14, ent_MC: 14, al_used_pre: 0 });
+  await setDoc(doc(db, "staff", "SB"), { ic: "SB", name: "STAF B", role: "staff", branch: "Klinik B", ent_AL: 14 });
+});
+
+test("branch HOD can edit leave entitlements for staff at own branch", async () => {
+  await seedBranchHodFixtures();
+  const hod = ctxDb(staffAuth("HODA"));
+  await assertSucceeds(updateDoc(doc(hod, "staff", "SA"), { ent_AL: 16, al_used_pre: 2, al_pelarasan: 1 }));
+});
+
+test("branch HOD cannot edit staff at another branch", async () => {
+  await seedBranchHodFixtures();
+  const hod = ctxDb(staffAuth("HODA"));
+  await assertFails(updateDoc(doc(hod, "staff", "SB"), { ent_AL: 16 }));
+});
+
+test("branch HOD cannot change role or branch of own-branch staff", async () => {
+  await seedBranchHodFixtures();
+  const hod = ctxDb(staffAuth("HODA"));
+  await assertFails(updateDoc(doc(hod, "staff", "SA"), { role: "admin" }));
+  await assertFails(updateDoc(doc(hod, "staff", "SA"), { branch: "Klinik B" }));
+  await assertFails(updateDoc(doc(hod, "staff", "SA"), { inactive: true }));
+  await assertFails(updateDoc(doc(hod, "staff", "SA"), { ent_AL: 16, role: "admin" }));
+});
+
+test("branch HOD cannot edit their own leave balance", async () => {
+  await seedBranchHodFixtures();
+  const hod = ctxDb(staffAuth("HODA"));
+  await assertFails(updateDoc(doc(hod, "staff", "HODA"), { ent_AL: 99 }));
+});
+
+test("ordinary staff cannot edit anyone's entitlements", async () => {
+  await seedBranchHodFixtures();
+  const s = ctxDb(staffAuth("SA"));
+  await assertFails(updateDoc(doc(s, "staff", "SB"), { ent_AL: 99 }));
+  await assertFails(updateDoc(doc(s, "staff", "SA"), { ent_AL: 99 }));
+});

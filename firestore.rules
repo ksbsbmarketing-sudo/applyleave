@@ -10,6 +10,23 @@ service cloud.firestore {
     function canApprove() { return signedIn() && request.auth.token.canApprove == true; }
     function manageStaff() { return signedIn() && request.auth.token.manageStaff == true; }
 
+    // hod_cawangan carries NO claim describing branch authority — the token holds
+    // only ic/canApprove/manageStaff, and manageStaff is global, so it cannot say
+    // "my branch only". So read the caller's own staff doc and compare branches,
+    // exactly as the config/publicHolidays rule below does. Costs one document read
+    // per HOD write; HOD saves are rare. A role change then takes effect on the next
+    // write with nothing to re-provision, which matters because onStaffWrite is not
+    // deployed.
+    function selfStaff() {
+      return get(/databases/$(database)/documents/staff/$(myIC())).data;
+    }
+    function isBranchHodOf(branch) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/staff/$(myIC()))
+        && selfStaff().role == 'hod_cawangan'
+        && selfStaff().branch == branch;
+    }
+
     // Pre-login picker — readable by anyone (incl. anonymous bootstrap). Created and
     // removed only via the Admin SDK (provision-auth.js); staff may rename themselves.
     match /directory/{id} {
@@ -44,7 +61,21 @@ service cloud.firestore {
                   .hasOnly(['name', 'phone', 'email', 'address', 'photoUrl'])
              && request.resource.data.name is string
              && request.resource.data.name.size() >= 3
-             && request.resource.data.name.size() <= 80 );
+             && request.resource.data.name.size() <= 80 )
+        // A HOD Cawangan maintains leave figures for their own branch. The field
+        // allowlist IS the security boundary: `role` and `branch` are absent, so a
+        // HOD cannot promote anyone, move staff between branches, deactivate an
+        // account or reset a password. myIC() != ic keeps them out of their own
+        // balance — HR still owns that.
+        || ( isBranchHodOf(resource.data.branch)
+             && myIC() != ic
+             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                  'ent_AL', 'ent_MC', 'ent_EL', 'ent_EL_EMG', 'ent_HL',
+                  'ent_ML', 'ent_PL', 'ent_CF', 'ent_UP', 'ent_CME',
+                  'al_used_pre', 'mc_used_pre', 'el_used_pre', 'cme_used_pre',
+                  'al_used_sys_adj', 'mc_used_sys_adj', 'el_used_sys_adj', 'cme_used_sys_adj',
+                  'al_pelarasan', 'mc_pelarasan', 'el_pelarasan', 'cme_pelarasan'
+                ]) );
     }
 
     match /leaves/{id} {
