@@ -3386,6 +3386,13 @@ window.generateJenisCutiReport = function() {
 };
 
 window.generateLeaveReport = function() {
+   // Butang ini berlabel "Semua Rekod" — maksudnya semua rekod DALAM ZON
+   // pengguna, bukan semua rekod dalam sistem. Tanpa tapisan ini HR boleh
+   // muat turun PDF zon yang seorang lagi HR uruskan.
+   const _rptRecords = filterByScope(leaveRecords, {
+     userScope: window.getUserStateScope(user),
+     stateOfBranch: window.scopeStateOfBranch,
+   });
    let printHTML = `
    <div id="print-container" style="font-family: Arial, sans-serif; padding: 20px; color: black; background: white;">
       ${window.printHeaderHTML({ isReport: true, title: 'LEDGER CUTI RASMI HR' })}
@@ -3406,7 +3413,7 @@ window.generateLeaveReport = function() {
               </tr>
           </thead>
           <tbody>
-              ${leaveRecords.map(r => `
+              ${_rptRecords.map(r => `
               <tr style="border-bottom: 1px solid #e2e8f0;">
                   <td style="padding: 10px; font-weight: bold;">${r.startDate}<br><span style="color: #718096; font-weight: normal;">to ${r.endDate}</span></td>
                   <td style="padding: 10px; font-weight: bold;">${r.name}<br><span style="color: #3b82f6; font-size: 10px;">${r.branch}</span><br><span style="color: #718096; font-size: 10px;">${r.ic}</span></td>
