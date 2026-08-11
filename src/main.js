@@ -6,6 +6,7 @@ import { deriveLoginBranches } from './loginBranches.js';
 import { formatPersonName } from './nameFormat.js';
 import { LEAVE_CATEGORIES, LEAVE_TYPE_NAMES, leaveTypeName, leaveTypeShort,
          proofRequirement, hexToRgbTriple, PROOF_REQUIRED_TYPES } from './leaveTypes.js';
+import { ALL as SCOPE_ALL, NO_BRANCH, visibleStates, branchOptions, filterByScope } from './masterLogScope.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
@@ -7571,7 +7572,13 @@ function renderView() {
         ` : ''}
 
 
-        ${managementTab === 'master_audit' ? `
+        ${managementTab === 'master_audit' ? (() => {
+          const _mlScope = window.getUserStateScope(user);
+          const _mlRecords = filterByScope(leaveRecords, {
+            userScope: _mlScope,
+            stateOfBranch: window.scopeStateOfBranch,
+          });
+          return `
           <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem; margin-top: 1rem;">
               <div style="display: flex; align-items: center; gap: 0.75rem;">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
@@ -7599,7 +7606,7 @@ function renderView() {
                           </tr>
                       </thead>
                       <tbody>
-                          ${leaveRecords.map((r, index) => `
+                          ${_mlRecords.map((r, index) => `
                           <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.2s;">
                               <td style="padding: 1.5rem 1rem;">
                                   <div style="font-weight: 700; font-size: 0.8rem;">${r.startDate}</div>
@@ -7642,7 +7649,7 @@ function renderView() {
                   </table>
               </div>
           </section>
-        ` : ''}
+        `; })() : ''}
 
         ${managementTab === 'login_audit' ? `
           <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem; margin-top: 1rem;">
