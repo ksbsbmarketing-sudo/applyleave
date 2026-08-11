@@ -6,6 +6,7 @@ import { deriveLoginBranches } from './loginBranches.js';
 import { formatPersonName } from './nameFormat.js';
 import { LEAVE_CATEGORIES, LEAVE_TYPE_NAMES, leaveTypeName, leaveTypeShort,
          proofRequirement, hexToRgbTriple, PROOF_REQUIRED_TYPES } from './leaveTypes.js';
+import { ALL as SCOPE_ALL, NO_BRANCH, visibleStates, branchOptions, filterByScope } from './masterLogScope.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
@@ -480,6 +481,8 @@ let editingStaff = null;
 let managementTab = 'pending';
 let managementGroup = 'approvals'; // 'approvals' | 'people' | 'reports' | 'config'
 let hrReportTab = 'all'; // 'all' | 'approved' | 'balance' | 'jenis'
+let masterLogState = SCOPE_ALL;   // SCOPE_ALL | 'Pahang' | 'Terengganu'
+let masterLogBranch = SCOPE_ALL;  // SCOPE_ALL | NO_BRANCH | nama cawangan
 let approvedReportBranch = 'SEMUA';
 let approvedReportType = 'SEMUA';
 let approvedReportYear = new Date().getFullYear().toString();
@@ -1589,6 +1592,19 @@ window.setManageGroup = function(group) {
 window.setManageTab = function(tab) {
   managementTab = tab;
   managementGroup = _tabToGroup[tab] || managementGroup;
+  render();
+};
+
+window.setMasterLogState = function(s) {
+  masterLogState = s;
+  // Tukar negeri mesti reset cawangan: kombinasi Pahang + Kerteh menghasilkan
+  // jadual kosong yang nampak macam pepijat, bukan macam kombinasi mustahil.
+  masterLogBranch = SCOPE_ALL;
+  render();
+};
+
+window.setMasterLogBranch = function(b) {
+  masterLogBranch = b;
   render();
 };
 
@@ -2886,7 +2902,25 @@ function matchesApprovedReportFilters(r) {
 window.generateApprovedReport = function() {
   const _MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
   const monthLabel = approvedReportMonth === 'SEMUA' ? 'Semua Bulan' : _MONTHS_MS[Number(approvedReportMonth) - 1];
-  const recs = leaveRecords.filter(r => r.status === 'APPROVED' && matchesApprovedReportFilters(r));
+  // Laporan ini ("Cuti Diluluskan") tidak pernah ditapis mengikut zon — HR
+  // Terengganu boleh muat turun PDF zon Pahang. Tapis mengikut zon dahulu
+  // (padanan generateLeaveReport), kemudian sempitkan lagi mengikut
+  // getUserReportDaerah/getUserReportBranch supaya PDF sepadan dengan
+  // scopedRecords/approvedFiltered yang dipaparkan di skrin tab hr_reports.
+  const _apprReportBranch = window.getUserReportBranch(user);
+  const _apprReportDaerah = window.getUserReportDaerah(user);
+  const _apprZoned = filterByScope(leaveRecords, {
+    userScope: window.getUserStateScope(user),
+    stateOfBranch: window.scopeStateOfBranch,
+  }).filter(r => {
+    if (_apprReportBranch) return r.branch === _apprReportBranch;
+    if (_apprReportDaerah) {
+      const rb = branches.find(b => b.name === r.branch);
+      return !!rb && rb.daerah === _apprReportDaerah;
+    }
+    return true;
+  });
+  const recs = _apprZoned.filter(r => r.status === 'APPROVED' && matchesApprovedReportFilters(r));
   const totalDays = recs.reduce((s, r) => s + parseFloat(r.days || 0), 0);
   const printHTML = `
   <div id="print-container" style="font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff;">
@@ -3385,6 +3419,26 @@ window.generateJenisCutiReport = function() {
 };
 
 window.generateLeaveReport = function() {
+   // Butang ini berlabel "Semua Rekod" — maksudnya semua rekod DALAM ZON
+   // pengguna, bukan semua rekod dalam sistem. Tanpa tapisan ini HR boleh
+   // muat turun PDF zon yang seorang lagi HR uruskan.
+   // Jadual di skrin (scopedRecords, tab hr_reports) turut menyempitkan
+   // dengan getUserReportDaerah/getUserReportBranch (cth. HR "Kuantan
+   // Sahaja"), jadi PDF mesti ikut sempadan yang sama — jika tidak, PDF akan
+   // lebih luas daripada apa yang HR itu nampak di skrin.
+   const _rptReportBranch = window.getUserReportBranch(user);
+   const _rptReportDaerah = window.getUserReportDaerah(user);
+   const _rptRecords = filterByScope(leaveRecords, {
+     userScope: window.getUserStateScope(user),
+     stateOfBranch: window.scopeStateOfBranch,
+   }).filter(r => {
+     if (_rptReportBranch) return r.branch === _rptReportBranch;
+     if (_rptReportDaerah) {
+       const rb = branches.find(b => b.name === r.branch);
+       return !!rb && rb.daerah === _rptReportDaerah;
+     }
+     return true;
+   });
    let printHTML = `
    <div id="print-container" style="font-family: Arial, sans-serif; padding: 20px; color: black; background: white;">
       ${window.printHeaderHTML({ isReport: true, title: 'LEDGER CUTI RASMI HR' })}
@@ -3405,7 +3459,7 @@ window.generateLeaveReport = function() {
               </tr>
           </thead>
           <tbody>
-              ${leaveRecords.map(r => `
+              ${_rptRecords.map(r => `
               <tr style="border-bottom: 1px solid #e2e8f0;">
                   <td style="padding: 10px; font-weight: bold;">${r.startDate}<br><span style="color: #718096; font-weight: normal;">to ${r.endDate}</span></td>
                   <td style="padding: 10px; font-weight: bold;">${r.name}<br><span style="color: #3b82f6; font-size: 10px;">${r.branch}</span><br><span style="color: #718096; font-size: 10px;">${r.ic}</span></td>
@@ -7571,7 +7625,60 @@ function renderView() {
         ` : ''}
 
 
-        ${managementTab === 'master_audit' ? `
+        ${managementTab === 'master_audit' ? (() => {
+          const _mlScope = window.getUserStateScope(user);
+          const _mlRecords = filterByScope(leaveRecords, {
+            userScope: _mlScope,
+            state: masterLogState,
+            branch: masterLogBranch,
+            stateOfBranch: window.scopeStateOfBranch,
+          });
+          const _mlStates = visibleStates(_mlScope);
+          const _mlBranchList = branchOptions(branches, {
+            userScope: _mlScope,
+            state: masterLogState,
+            stateOfBranch: window.scopeStateOfBranch,
+          });
+          // Kiraan per-tab dalam SATU laluan sahaja (bukan satu filterByScope
+          // berasingan bagi setiap tab cawangan + Semua + Lain-lain, ~15
+          // laluan penuh atas leaveRecords pada setiap render). Sengaja
+          // abaikan tab cawangan semasa supaya nombor pada setiap tab kekal
+          // sama tak kira tab mana yang sedang dibuka — hanya negeri
+          // (masterLogState) dan skop pengguna (_mlScope) yang tetap. Logik
+          // di bawah ialah filterByScope disusun semula sebagai satu
+          // pengumpulan, bukan definisi berasingan — kekalkan ia sepadan jika
+          // filterByScope berubah.
+          const _mlCountMap = new Map();
+          let _mlAllCount = 0;
+          for (const r of leaveRecords) {
+            const s = window.scopeStateOfBranch(r.branch);
+            const inZone = !!s && _mlStates.includes(s);
+            if (!inZone) {
+              // Rekod tersadai ATAU negeri di luar zon — hanya admin di tab
+              // negeri SEMUA mengiranya, dan ia hanya masuk baldi Lain-lain.
+              if (_mlScope === 'all' && masterLogState === SCOPE_ALL) {
+                _mlAllCount++;
+                _mlCountMap.set(NO_BRANCH, (_mlCountMap.get(NO_BRANCH) || 0) + 1);
+              }
+              continue;
+            }
+            if (masterLogState !== SCOPE_ALL && s !== masterLogState) continue;
+            _mlAllCount++;
+            _mlCountMap.set(r.branch, (_mlCountMap.get(r.branch) || 0) + 1);
+          }
+          const _mlCount = (branch) => branch === SCOPE_ALL ? _mlAllCount : (_mlCountMap.get(branch) || 0);
+          const _mlOrphans = (_mlScope === 'all' && masterLogState === SCOPE_ALL)
+            ? _mlCount(NO_BRANCH) : 0;
+          // Nama cawangan masuk ke dalam atribut onclick. encodeURIComponent
+          // tidak melepaskan petik tunggal, jadi ia dikendalikan sendiri.
+          const _mlArg = (v) => encodeURIComponent(v).replace(/'/g, '%27');
+          // Di bawah, onclick="window.setMasterLogState('ALL')" / setMasterLogBranch('ALL'
+          // | '__NONE__') sengaja kekal sebagai literal 'ALL' / '__NONE__', BUKAN
+          // ${SCOPE_ALL} / ${NO_BRANCH}. onclick ialah HTML yang dihurai semula sebagai
+          // JS global apabila diklik — SCOPE_ALL/NO_BRANCH (import modul) tiada dalam
+          // skop global itu, jadi menukarnya kepada templat akan pecah senyap. Nilainya
+          // masih perlu sepadan dgn ALL/NO_BRANCH dalam masterLogScope.js secara manual.
+          return `
           <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem; margin-top: 1rem;">
               <div style="display: flex; align-items: center; gap: 0.75rem;">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
@@ -7583,6 +7690,28 @@ function renderView() {
                  Reset System Cache
               </button>
               ` : ''}
+          </div>
+
+          <!-- _mlScope boleh jadi null (getUserStateScope tidak dapat
+               selesaikan cawangan pengguna) — jadual di bawah sudah
+               gagal-tertutup ke kosong dan mesej "Tiada rekod" meliputinya,
+               jadi cip tidak memaparkan apa-apa dalam kes itu. -->
+          ${_mlScope === 'all' ? `
+          <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;overflow-x:auto;padding-bottom:0.25rem;">
+            <button class="neu-tab ${masterLogState === SCOPE_ALL ? 'active' : ''}" onclick="window.setMasterLogState('ALL')" style="border-radius:8px;white-space:nowrap;">SEMUA</button>
+            ${_mlStates.map(s => `<button class="neu-tab ${masterLogState === s ? 'active' : ''}" onclick="window.setMasterLogState('${s}')" style="border-radius:8px;white-space:nowrap;">${s.toUpperCase()}</button>`).join('')}
+          </div>
+          ` : (typeof _mlScope === 'string' && _mlScope) ? `
+          <div style="display:flex;align-items:center;gap:0.4rem;background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.35);border-radius:20px;padding:0.25rem 0.75rem;margin-bottom:0.75rem;width:fit-content;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            <span style="font-size:0.68rem;font-weight:800;color:#0284c7;letter-spacing:0.3px;">Skop: ${_mlScope}</span>
+          </div>
+          ` : ''}
+
+          <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem;overflow-x:auto;padding-bottom:0.25rem;">
+            <button class="neu-tab ${masterLogBranch === SCOPE_ALL ? 'active' : ''}" onclick="window.setMasterLogBranch('ALL')" style="border-radius:8px;white-space:nowrap;">Semua (${_mlCount(SCOPE_ALL)})</button>
+            ${_mlBranchList.map(b => `<button class="neu-tab ${masterLogBranch === b ? 'active' : ''}" onclick="window.setMasterLogBranch(decodeURIComponent('${_mlArg(b)}'))" style="border-radius:8px;white-space:nowrap;">${b} (${_mlCount(b)})</button>`).join('')}
+            ${_mlOrphans > 0 ? `<button class="neu-tab ${masterLogBranch === NO_BRANCH ? 'active' : ''}" onclick="window.setMasterLogBranch('__NONE__')" style="border-radius:8px;white-space:nowrap;color:#f59e0b;" title="Rekod dengan cawangan yang tiada dalam senarai cawangan — perlu dibetulkan">Lain-lain (${_mlOrphans})</button>` : ''}
           </div>
 
           <section class="glass-card fade-in" style="padding: 0; overflow: hidden;">
@@ -7599,7 +7728,7 @@ function renderView() {
                           </tr>
                       </thead>
                       <tbody>
-                          ${leaveRecords.map((r, index) => `
+                          ${_mlRecords.map((r, index) => `
                           <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.2s;">
                               <td style="padding: 1.5rem 1rem;">
                                   <div style="font-weight: 700; font-size: 0.8rem;">${r.startDate}</div>
@@ -7640,9 +7769,10 @@ function renderView() {
                           `).join('')}
                       </tbody>
                   </table>
+                  ${_mlRecords.length === 0 ? `<div style="padding:2.5rem 1rem;text-align:center;font-size:0.8rem;color:var(--text-muted);">Tiada rekod untuk pilihan ini.</div>` : ''}
               </div>
           </section>
-        ` : ''}
+        `; })() : ''}
 
         ${managementTab === 'login_audit' ? `
           <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem; margin-top: 1rem;">
