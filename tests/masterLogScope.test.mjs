@@ -109,6 +109,44 @@ test('the Lain-lain tab shows ONLY stranded records, never real ones', () => {
   assert.ok(got.every(r => r.id === 6));
 });
 
+// ── Branches in a state outside any HR's zone (not stranded — the branch
+// exists and resolves to a real state, it just has no owning HR zone) ─────
+const BRANCHES_WITH_THIRD_STATE = [
+  ...BRANCHES,
+  { name: 'Klinik Kelantan', state: 'Kelantan' },
+];
+const stateOfBranchWithThirdState = (name) => {
+  if (ROUTES_AS_PAHANG.includes(name)) return 'Pahang';
+  const b = BRANCHES_WITH_THIRD_STATE.find(x => x.name === name);
+  return b ? b.state : null;
+};
+const RECORDS_WITH_THIRD_STATE = [
+  ...RECORDS,
+  { id: 7, branch: 'Klinik Kelantan' },
+];
+const runThird = (opts) => filterByScope(RECORDS_WITH_THIRD_STATE, { stateOfBranch: stateOfBranchWithThirdState, ...opts });
+
+test('a branch outside any zone (e.g. a new Kelantan branch) reaches admin via SEMUA and via Lain-lain', () => {
+  assert.ok(ids(runThird({ userScope: 'all', state: ALL, branch: ALL })).includes(7));
+  assert.deepStrictEqual(ids(runThird({ userScope: 'all', state: ALL, branch: NO_BRANCH })), [6, 7]);
+});
+
+test('a branch outside any zone is hidden from both the Pahang HR and the Terengganu HR', () => {
+  assert.ok(!ids(runThird({ userScope: 'Pahang' })).includes(7));
+  assert.ok(!ids(runThird({ userScope: 'Terengganu' })).includes(7));
+});
+
+test('a branch outside any zone does not appear under the named Pahang or Terengganu state tabs', () => {
+  assert.ok(!ids(runThird({ userScope: 'all', state: 'Pahang' })).includes(7));
+  assert.ok(!ids(runThird({ userScope: 'all', state: 'Terengganu' })).includes(7));
+});
+
+test('a branch outside any zone does not appear in branchOptions for any scope', () => {
+  assert.ok(!branchOptions(BRANCHES_WITH_THIRD_STATE, { userScope: 'all', state: ALL, stateOfBranch: stateOfBranchWithThirdState }).includes('Klinik Kelantan'));
+  assert.ok(!branchOptions(BRANCHES_WITH_THIRD_STATE, { userScope: 'Pahang', state: ALL, stateOfBranch: stateOfBranchWithThirdState }).includes('Klinik Kelantan'));
+  assert.ok(!branchOptions(BRANCHES_WITH_THIRD_STATE, { userScope: 'Terengganu', state: ALL, stateOfBranch: stateOfBranchWithThirdState }).includes('Klinik Kelantan'));
+});
+
 // ── visibleStates ─────────────────────────────────────────────────────
 test('visibleStates: admin gets both, an HR gets only their own, null gets none', () => {
   assert.deepStrictEqual(visibleStates('all'), ['Pahang', 'Terengganu']);
