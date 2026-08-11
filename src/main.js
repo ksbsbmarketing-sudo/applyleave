@@ -481,6 +481,8 @@ let editingStaff = null;
 let managementTab = 'pending';
 let managementGroup = 'approvals'; // 'approvals' | 'people' | 'reports' | 'config'
 let hrReportTab = 'all'; // 'all' | 'approved' | 'balance' | 'jenis'
+let masterLogState = 'ALL';   // 'ALL' | 'Pahang' | 'Terengganu'
+let masterLogBranch = 'ALL';  // 'ALL' | '__NONE__' | nama cawangan
 let approvedReportBranch = 'SEMUA';
 let approvedReportType = 'SEMUA';
 let approvedReportYear = new Date().getFullYear().toString();
@@ -1590,6 +1592,19 @@ window.setManageGroup = function(group) {
 window.setManageTab = function(tab) {
   managementTab = tab;
   managementGroup = _tabToGroup[tab] || managementGroup;
+  render();
+};
+
+window.setMasterLogState = function(s) {
+  masterLogState = s;
+  // Tukar negeri mesti reset cawangan: kombinasi Pahang + Kerteh menghasilkan
+  // jadual kosong yang nampak macam pepijat, bukan macam kombinasi mustahil.
+  masterLogBranch = 'ALL';
+  render();
+};
+
+window.setMasterLogBranch = function(b) {
+  masterLogBranch = b;
   render();
 };
 
@@ -7583,8 +7598,29 @@ function renderView() {
           const _mlScope = window.getUserStateScope(user);
           const _mlRecords = filterByScope(leaveRecords, {
             userScope: _mlScope,
+            state: masterLogState,
+            branch: masterLogBranch,
             stateOfBranch: window.scopeStateOfBranch,
           });
+          const _mlStates = visibleStates(_mlScope);
+          const _mlBranchList = branchOptions(branches, {
+            userScope: _mlScope,
+            state: masterLogState,
+            stateOfBranch: window.scopeStateOfBranch,
+          });
+          // Kiraan per-tab. Sengaja abaikan tab cawangan semasa supaya nombor
+          // pada setiap tab kekal sama tak kira tab mana yang sedang dibuka.
+          const _mlCount = (branch) => filterByScope(leaveRecords, {
+            userScope: _mlScope,
+            state: masterLogState,
+            branch,
+            stateOfBranch: window.scopeStateOfBranch,
+          }).length;
+          const _mlOrphans = (_mlScope === 'all' && masterLogState === SCOPE_ALL)
+            ? _mlCount(NO_BRANCH) : 0;
+          // Nama cawangan masuk ke dalam atribut onclick. encodeURIComponent
+          // tidak melepaskan petik tunggal, jadi ia dikendalikan sendiri.
+          const _mlArg = (v) => encodeURIComponent(v).replace(/'/g, '%27');
           return `
           <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem; margin-top: 1rem;">
               <div style="display: flex; align-items: center; gap: 0.75rem;">
@@ -7597,6 +7633,24 @@ function renderView() {
                  Reset System Cache
               </button>
               ` : ''}
+          </div>
+
+          ${_mlScope === 'all' ? `
+          <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;overflow-x:auto;padding-bottom:0.25rem;">
+            <button class="neu-tab ${masterLogState === SCOPE_ALL ? 'active' : ''}" onclick="window.setMasterLogState('ALL')" style="border-radius:8px;white-space:nowrap;">SEMUA</button>
+            ${_mlStates.map(s => `<button class="neu-tab ${masterLogState === s ? 'active' : ''}" onclick="window.setMasterLogState('${s}')" style="border-radius:8px;white-space:nowrap;">${s.toUpperCase()}</button>`).join('')}
+          </div>
+          ` : `
+          <div style="display:flex;align-items:center;gap:0.4rem;background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.35);border-radius:20px;padding:0.25rem 0.75rem;margin-bottom:0.75rem;width:fit-content;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            <span style="font-size:0.68rem;font-weight:800;color:#0284c7;letter-spacing:0.3px;">Skop: ${_mlScope}</span>
+          </div>
+          `}
+
+          <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem;overflow-x:auto;padding-bottom:0.25rem;">
+            <button class="neu-tab ${masterLogBranch === SCOPE_ALL ? 'active' : ''}" onclick="window.setMasterLogBranch('ALL')" style="border-radius:8px;white-space:nowrap;">Semua (${_mlCount(SCOPE_ALL)})</button>
+            ${_mlBranchList.map(b => `<button class="neu-tab ${masterLogBranch === b ? 'active' : ''}" onclick="window.setMasterLogBranch(decodeURIComponent('${_mlArg(b)}'))" style="border-radius:8px;white-space:nowrap;">${b} (${_mlCount(b)})</button>`).join('')}
+            ${_mlOrphans > 0 ? `<button class="neu-tab ${masterLogBranch === NO_BRANCH ? 'active' : ''}" onclick="window.setMasterLogBranch('__NONE__')" style="border-radius:8px;white-space:nowrap;color:#f59e0b;" title="Rekod dengan cawangan yang tiada dalam senarai cawangan — perlu dibetulkan">Lain-lain (${_mlOrphans})</button>` : ''}
           </div>
 
           <section class="glass-card fade-in" style="padding: 0; overflow: hidden;">
@@ -7654,6 +7708,7 @@ function renderView() {
                           `).join('')}
                       </tbody>
                   </table>
+                  ${_mlRecords.length === 0 ? `<div style="padding:2.5rem 1rem;text-align:center;font-size:0.8rem;color:var(--text-muted);">Tiada rekod untuk pilihan ini.</div>` : ''}
               </div>
           </section>
         `; })() : ''}
