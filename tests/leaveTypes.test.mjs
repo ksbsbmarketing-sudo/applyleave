@@ -153,4 +153,9 @@ test('LEAVE_PROOF cannot be mutated by a caller', () => {
   const before = LEAVE_PROOF.CME.inputId;
   try { LEAVE_PROOF.CME = 'HACKED'; } catch { /* frozen throws in strict mode */ }
   assert.strictEqual(LEAVE_PROOF.CME.inputId, before);
+  // Each entry is individually deep-frozen too — nested field mutation must
+  // also fail, otherwise a future refactor that drops the inner Object.freeze
+  // calls would leave this suite green.
+  try { LEAVE_PROOF.CME.inputId = 'HACKED'; } catch { /* frozen throws in strict mode */ }
+  assert.strictEqual(LEAVE_PROOF.CME.inputId, before);
 });

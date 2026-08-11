@@ -654,7 +654,8 @@ const HELP_FAQ = [
     action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
   { id:'cme-submit', cat:'Cuti', keywords:['cme','latihan','kursus','seminar','doktor'],
     q:'Cuti CME (doktor) — macam mana?',
-    a:'<strong>Cuti CME</strong> untuk <strong>doktor sahaja</strong>, maksimum <strong>5 hari setiap kalendar</strong>, khusus untuk kursus/seminar/latihan luaran berkaitan kerja. Perlu surat sokongan + pengesahan daripada Pengurus dan Ketua Jabatan (HOD).' },
+    a:'<strong>Cuti CME</strong> untuk <strong>doktor sahaja</strong>, maksimum <strong>5 hari setiap kalendar</strong>, khusus untuk kursus/seminar/latihan luaran berkaitan kerja. Perlu surat sokongan + pengesahan daripada Pengurus dan Ketua Jabatan (HOD).<br><br><strong>WAJIB muat naik bukti CME</strong> (surat jemputan atau slip pendaftaran program) sebelum hantar — gambar JPG/PNG atau PDF. Tanpa bukti, borang akan ditolak.',
+    action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
   { id:'ganti-submit', cat:'Cuti', keywords:['cuti ganti','ganti','replacement','rl','mesyuarat','meeting','doktor'],
     q:'Cuti Ganti (doktor) — apa itu & macam mana mohon?',
     a:'<strong>Cuti Ganti</strong> ialah cuti gantian untuk <strong>doktor sahaja</strong>, selepas menghadiri <strong>mesyuarat doktor</strong>. Ia <strong>tiada kuota tetap</strong> — hari diambil direkod dan dilaporkan, tetapi tiada baki tahunan. Mohon seperti biasa melalui <em>Mohon Cuti</em> → pilih <strong>Cuti Ganti</strong>; <strong>polisi notis awal tidak terpakai</strong> kerana cuti ini dituntut selepas mesyuarat berlangsung.',
@@ -668,6 +669,9 @@ const HELP_FAQ = [
   { id:'no-submit-mc', cat:'Masalah', keywords:['mc tak hantar','sijil belum','muat naik mc','upload mc'],
     q:'MC tak boleh hantar — sijil belum dimuat naik',
     a:'Cuti Sakit (MC) <strong>wajib</strong> ada <strong>Sijil Sakit</strong> dimuat naik (gambar JPG/PNG atau PDF) sebelum boleh dihantar. Tekan kotak muat naik MC, pilih fail, kemudian hantar.' },
+  { id:'no-submit-cme', cat:'Masalah', keywords:['cme tak hantar','bukti cme','muat naik cme','upload cme','surat jemputan'],
+    q:'Cuti CME tak boleh hantar — bukti belum dimuat naik',
+    a:'Cuti CME <strong>wajib</strong> ada <strong>bukti program</strong> dimuat naik (surat jemputan atau slip pendaftaran — gambar JPG/PNG atau PDF) sebelum boleh dihantar. Tekan kotak muat naik bukti CME, pilih fail, kemudian hantar.' },
   { id:'notice-policy', cat:'Masalah', keywords:['notis','policy violation','3 hari','7 hari','days notice','terlalu lewat'],
     q:'Mesej "Policy Violation — days notice"',
     a:'Cuti Tahunan (AL) mesti dimohon awal: <strong>3 hari</strong> untuk Staff Admin, <strong>7 hari</strong> untuk Operasi & Doktor, sebelum tarikh cuti. <strong>MC, Cuti Kecemasan & Cuti Ehsan dikecualikan</strong> (boleh hari ini/ke belakang) — tetapi wajib pilih pelulus & muat naik bukti.' },
@@ -1172,17 +1176,30 @@ window.handleFileSelect = function(input, displayId, noticeId) {
             input.value = '';
             const _d = document.getElementById(displayId);
             if (_d) _d.innerText = 'Tiada fail dipilih';
+            // Notis mungkin masih menunjukkan hijau "sedia untuk dihantar" daripada
+            // percubaan lepas — pulihkan kepada teks asal "belum dimuat naik".
+            if (noticeId) {
+                const noticeEl = document.getElementById(noticeId);
+                if (noticeEl && noticeEl.dataset.pendingHtml) {
+                    noticeEl.style.background = 'rgba(239,68,68,0.08)';
+                    noticeEl.style.color = '#ef4444';
+                    noticeEl.innerHTML = noticeEl.dataset.pendingHtml;
+                }
+            }
             return;
         }
         document.getElementById(displayId).innerText = input.files[0].name;
         if (noticeId) {
             const noticeEl = document.getElementById(noticeId);
-            noticeEl.style.background = 'rgba(34, 197, 94, 0.1)';
-            noticeEl.style.color = '#34d399';
-            noticeEl.innerHTML = `
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                DOKUMEN TELAH DIMUAT NAIK - SEDIA UNTUK DIHANTAR
-            `;
+            if (noticeEl) {
+                if (!noticeEl.dataset.pendingHtml) noticeEl.dataset.pendingHtml = noticeEl.innerHTML;
+                noticeEl.style.background = 'rgba(34, 197, 94, 0.1)';
+                noticeEl.style.color = '#34d399';
+                noticeEl.innerHTML = `
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    DOKUMEN TELAH DIMUAT NAIK - SEDIA UNTUK DIHANTAR
+                `;
+            }
         }
     }
 };
@@ -4993,7 +5010,7 @@ function renderDashboard() {
         directHR: _sbmDirectHR || null,
         // Semua jenis cuti (termasuk MC) bermula PENDING & ikut step kelulusan penuh seperti AL.
         status: 'PENDING',
-        // Bukti (MC/Kecemasan/Ehsan) — null untuk jenis cuti lain & rekod lama.
+        // Bukti (MC/Kecemasan/Ehsan/CME) — null untuk jenis cuti lain & rekod lama.
         proofUrl: proofUrl || null,
         proofName: proofName || null
       };
