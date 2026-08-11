@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import {
   LEAVE_CATEGORIES, LEAVE_TYPE_NAMES, LEAVE_TYPE_SHORT,
   leaveTypeName, leaveTypeShort,
+  LEAVE_PROOF, PROOF_REQUIRED_TYPES, proofRequirement, hexToRgbTriple,
 } from '../src/leaveTypes.js';
 import { FORMULA_B_TYPES } from '../src/leaveBalance.js';
 
@@ -71,4 +72,90 @@ test('the exported maps cannot be mutated by a caller', () => {
   assert.strictEqual(LEAVE_TYPE_SHORT.EL_EMG, before);
   try { LEAVE_TYPE_NAMES.EL = 'HACKED'; } catch { /* frozen */ }
   assert.strictEqual(LEAVE_TYPE_NAMES.EL, 'Cuti Ehsan');
+});
+
+// ── Proof requirement ─────────────────────────────────────────────────
+// LEAVE_PROOF is the ONLY list of which leave types demand a document.
+// Four call sites in main.js read it; none of them keeps its own copy.
+
+test('CME requires proof — a doctor cannot apply without an invitation letter', () => {
+  const cme = proofRequirement('CME');
+  assert.ok(cme, 'CME must require proof');
+  assert.strictEqual(cme.inputId, 'cme-upload');
+});
+
+test('the three original proof types still require proof', () => {
+  ['MC', 'EL', 'EL_EMG'].forEach(id =>
+    assert.ok(proofRequirement(id), `${id} required proof before this change and still must`));
+});
+
+test('RL requires NO proof — deliberate, do not "fix" this', () => {
+  // Cuti Ganti is the other doctors-only claimed-after-the-fact type, so it
+  // looks like an omission. It is not: it was excluded on purpose (spec
+  // 2026-08-11, "Non-goals"). Adding it is a policy decision, not a bugfix.
+  assert.strictEqual(proofRequirement('RL'), null);
+});
+
+test('types with no document requirement return null, not undefined', () => {
+  ['AL', 'UP', 'HL', 'ML', 'ML_PL', 'NONSENSE'].forEach(id =>
+    assert.strictEqual(proofRequirement(id), null, `${id} must not demand proof`));
+});
+
+test('every proof key is a real leave type — a typo would silently never fire', () => {
+  const ids = LEAVE_CATEGORIES.map(c => c.id);
+  PROOF_REQUIRED_TYPES.forEach(id =>
+    assert.ok(ids.includes(id), `${id} is not in LEAVE_CATEGORIES`));
+});
+
+test('every entry is complete — a half-added type fails here, not in the browser', () => {
+  const fields = ['inputId', 'title', 'hint', 'buttonLabel', 'barFrom', 'barTo', 'boxColor', 'notice', 'error'];
+  PROOF_REQUIRED_TYPES.forEach(id => {
+    fields.forEach(f => {
+      const v = LEAVE_PROOF[id][f];
+      assert.strictEqual(typeof v, 'string', `${id}.${f} must be a string`);
+      assert.ok(v.length > 0, `${id}.${f} must not be empty`);
+    });
+  });
+});
+
+test('inputIds are unique and end in -upload — renderProofSection derives ids from them', () => {
+  const inputs = PROOF_REQUIRED_TYPES.map(id => LEAVE_PROOF[id].inputId);
+  assert.strictEqual(new Set(inputs).size, inputs.length, 'duplicate inputId');
+  inputs.forEach(i => assert.ok(i.endsWith('-upload'),
+    `${i} must end in -upload: the renderer builds the filename/notice element ids from that stem`));
+});
+
+test('colours are 6-digit hex — hexToRgbTriple assumes it', () => {
+  PROOF_REQUIRED_TYPES.forEach(id => {
+    ['barFrom', 'barTo', 'boxColor'].forEach(f =>
+      assert.match(LEAVE_PROOF[id][f], /^#[0-9a-f]{6}$/, `${id}.${f}`));
+  });
+});
+
+test('hexToRgbTriple converts to the comma triple CSS rgba() needs', () => {
+  assert.strictEqual(hexToRgbTriple('#3b82f6'), '59,130,246');
+  assert.strictEqual(hexToRgbTriple('#ef4444'), '239,68,68');
+  assert.strictEqual(hexToRgbTriple('#f97316'), '249,115,22');
+  assert.strictEqual(hexToRgbTriple('#8b5cf6'), '139,92,246');
+  assert.strictEqual(hexToRgbTriple('#000000'), '0,0,0');
+  assert.strictEqual(hexToRgbTriple('#ffffff'), '255,255,255');
+});
+
+test('CME proof copy names the document a doctor actually has', () => {
+  // CME is applied for BEFORE attending, so the certificate does not exist yet.
+  // The invitation letter or registration slip does. Both hint and error say so.
+  const cme = proofRequirement('CME');
+  assert.match(cme.hint, /jemputan|pendaftaran/i);
+  assert.match(cme.error, /jemputan|pendaftaran/i);
+});
+
+test('LEAVE_PROOF cannot be mutated by a caller', () => {
+  const before = LEAVE_PROOF.CME.inputId;
+  try { LEAVE_PROOF.CME = 'HACKED'; } catch { /* frozen throws in strict mode */ }
+  assert.strictEqual(LEAVE_PROOF.CME.inputId, before);
+  // Each entry is individually deep-frozen too — nested field mutation must
+  // also fail, otherwise a future refactor that drops the inner Object.freeze
+  // calls would leave this suite green.
+  try { LEAVE_PROOF.CME.inputId = 'HACKED'; } catch { /* frozen throws in strict mode */ }
+  assert.strictEqual(LEAVE_PROOF.CME.inputId, before);
 });

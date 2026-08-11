@@ -13,7 +13,10 @@
 ## Global Constraints
 
 - **All user-facing copy is Malay.** Match the surrounding tone (e.g. "Sila muat naik…", "MAAF, Borang ditolak.").
-- **Existing MC / EL / EL_EMG copy moves verbatim.** This work changes where strings live, not what they say. The one exception is the two new `notice` strings for EL and EL_EMG, which do not exist today (see Task 2).
+- **Existing MC / EL / EL_EMG copy moves verbatim.** This work changes where strings live, not what they say. Three deliberate exceptions, all in Task 1:
+  - EL and EL_EMG gain a `notice` string. Neither has one today, because neither renders a notice bar today.
+  - EL's section title becomes `'Surat Kematian'`, dropping the trailing "— Wajib Muat Naik". The shared renderer puts a "★ WAJIB" chip beside every title, so keeping the words would read "Surat Kematian — Wajib Muat Naik ★ WAJIB".
+  - MC's hint wraps `(JPG/PNG/PDF, maks 10MB)` in `<strong>`. EL and EL_EMG already bold that exact fragment; MC was the only one that did not. Ruled by the human partner on 2026-08-11 in favour of consistency. **Reviewers: this is sanctioned, not drift.**
 - **Storage codes are frozen.** `MC`, `EL`, `EL_EMG`, `CME` appear in every historical Firestore record. Never rename an id.
 - **RL (Cuti Ganti) is deliberately NOT given mandatory proof.** This is a decision, not an oversight — Task 1 pins it with a test.
 - **No new npm dependencies.**

@@ -4,7 +4,8 @@ import { recordBalances, computeElOverflow, computeCMEEntitlement, FORMULA_B_TYP
 import { computeYearEndRollover, buildStaffRolloverPatch, CF_CAP } from './yearEnd.js';
 import { deriveLoginBranches } from './loginBranches.js';
 import { formatPersonName } from './nameFormat.js';
-import { LEAVE_CATEGORIES, LEAVE_TYPE_NAMES, leaveTypeName, leaveTypeShort } from './leaveTypes.js';
+import { LEAVE_CATEGORIES, LEAVE_TYPE_NAMES, leaveTypeName, leaveTypeShort,
+         proofRequirement, hexToRgbTriple, PROOF_REQUIRED_TYPES } from './leaveTypes.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
@@ -653,7 +654,8 @@ const HELP_FAQ = [
     action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
   { id:'cme-submit', cat:'Cuti', keywords:['cme','latihan','kursus','seminar','doktor'],
     q:'Cuti CME (doktor) — macam mana?',
-    a:'<strong>Cuti CME</strong> untuk <strong>doktor sahaja</strong>, maksimum <strong>5 hari setiap kalendar</strong>, khusus untuk kursus/seminar/latihan luaran berkaitan kerja. Perlu surat sokongan + pengesahan daripada Pengurus dan Ketua Jabatan (HOD).' },
+    a:'<strong>Cuti CME</strong> untuk <strong>doktor sahaja</strong>, maksimum <strong>5 hari setiap kalendar</strong>, khusus untuk kursus/seminar/latihan luaran berkaitan kerja. Perlu surat sokongan + pengesahan daripada Pengurus dan Ketua Jabatan (HOD).<br><br><strong>WAJIB muat naik bukti CME</strong> (surat jemputan atau slip pendaftaran program) sebelum hantar — gambar JPG/PNG atau PDF. Tanpa bukti, borang akan ditolak.',
+    action:{ label:'Pergi ke Borang Cuti', view:'leave-form' } },
   { id:'ganti-submit', cat:'Cuti', keywords:['cuti ganti','ganti','replacement','rl','mesyuarat','meeting','doktor'],
     q:'Cuti Ganti (doktor) — apa itu & macam mana mohon?',
     a:'<strong>Cuti Ganti</strong> ialah cuti gantian untuk <strong>doktor sahaja</strong>, selepas menghadiri <strong>mesyuarat doktor</strong>. Ia <strong>tiada kuota tetap</strong> — hari diambil direkod dan dilaporkan, tetapi tiada baki tahunan. Mohon seperti biasa melalui <em>Mohon Cuti</em> → pilih <strong>Cuti Ganti</strong>; <strong>polisi notis awal tidak terpakai</strong> kerana cuti ini dituntut selepas mesyuarat berlangsung.',
@@ -667,6 +669,9 @@ const HELP_FAQ = [
   { id:'no-submit-mc', cat:'Masalah', keywords:['mc tak hantar','sijil belum','muat naik mc','upload mc'],
     q:'MC tak boleh hantar — sijil belum dimuat naik',
     a:'Cuti Sakit (MC) <strong>wajib</strong> ada <strong>Sijil Sakit</strong> dimuat naik (gambar JPG/PNG atau PDF) sebelum boleh dihantar. Tekan kotak muat naik MC, pilih fail, kemudian hantar.' },
+  { id:'no-submit-cme', cat:'Masalah', keywords:['cme tak hantar','bukti cme','muat naik cme','upload cme','surat jemputan'],
+    q:'Cuti CME tak boleh hantar — bukti belum dimuat naik',
+    a:'Cuti CME <strong>wajib</strong> ada <strong>bukti program</strong> dimuat naik (surat jemputan atau slip pendaftaran — gambar JPG/PNG atau PDF) sebelum boleh dihantar. Tekan kotak muat naik bukti CME, pilih fail, kemudian hantar.' },
   { id:'notice-policy', cat:'Masalah', keywords:['notis','policy violation','3 hari','7 hari','days notice','terlalu lewat'],
     q:'Mesej "Policy Violation — days notice"',
     a:'Cuti Tahunan (AL) mesti dimohon awal: <strong>3 hari</strong> untuk Staff Admin, <strong>7 hari</strong> untuk Operasi & Doktor, sebelum tarikh cuti. <strong>MC, Cuti Kecemasan & Cuti Ehsan dikecualikan</strong> (boleh hari ini/ke belakang) — tetapi wajib pilih pelulus & muat naik bukti.' },
@@ -1171,23 +1176,70 @@ window.handleFileSelect = function(input, displayId, noticeId) {
             input.value = '';
             const _d = document.getElementById(displayId);
             if (_d) _d.innerText = 'Tiada fail dipilih';
+            // Notis mungkin masih menunjukkan hijau "sedia untuk dihantar" daripada
+            // percubaan lepas — pulihkan kepada teks asal "belum dimuat naik".
+            if (noticeId) {
+                const noticeEl = document.getElementById(noticeId);
+                if (noticeEl && noticeEl.dataset.pendingHtml) {
+                    noticeEl.style.background = 'rgba(239,68,68,0.08)';
+                    noticeEl.style.color = '#ef4444';
+                    noticeEl.innerHTML = noticeEl.dataset.pendingHtml;
+                }
+            }
             return;
         }
         document.getElementById(displayId).innerText = input.files[0].name;
         if (noticeId) {
             const noticeEl = document.getElementById(noticeId);
-            noticeEl.style.background = 'rgba(34, 197, 94, 0.1)';
-            noticeEl.style.color = '#34d399';
-            noticeEl.innerHTML = `
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                DOKUMEN TELAH DIMUAT NAIK - SEDIA UNTUK DIHANTAR
-            `;
+            if (noticeEl) {
+                if (!noticeEl.dataset.pendingHtml) noticeEl.dataset.pendingHtml = noticeEl.innerHTML;
+                noticeEl.style.background = 'rgba(34, 197, 94, 0.1)';
+                noticeEl.style.color = '#34d399';
+                noticeEl.innerHTML = `
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    DOKUMEN TELAH DIMUAT NAIK - SEDIA UNTUK DIHANTAR
+                `;
+            }
         }
     }
 };
 
+// Kotak muat naik bukti — satu renderer untuk SEMUA jenis cuti yang perlukan
+// dokumen (MC / Ehsan / Kecemasan / CME). Isi kandungan datang dari LEAVE_PROOF
+// dalam leaveTypes.js; jangan tambah blok HTML baharu untuk jenis cuti baharu.
+// Pulangkan '' jika jenis cuti itu tidak perlukan bukti.
+function renderProofSection(code) {
+  const need = proofRequirement(code);
+  if (!need) return '';
+  const stem = need.inputId.replace('-upload', '');   // 'mc-upload' → 'mc'
+  const rgb = hexToRgbTriple(need.boxColor);
+  return `
+            <div style="margin-bottom:1.5rem;">
+              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
+                <div style="width:4px;height:18px;border-radius:2px;background:linear-gradient(to bottom,${need.barFrom},${need.barTo});"></div>
+                <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">${need.title}</span>
+                <span style="font-size:0.65rem;background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.2);border-radius:6px;padding:0.15rem 0.5rem;font-weight:700;">★ WAJIB</span>
+              </div>
+              <div style="padding:1rem;border-radius:12px;border:1.5px dashed rgba(${rgb},0.3);background:rgba(${rgb},0.03);">
+                <div style="font-size:0.75rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;">${need.hint}</div>
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                  <input type="file" id="${need.inputId}" accept="image/jpeg,image/png,image/jpg,application/pdf" style="display:none;" onchange="window.handleFileSelect(this, '${stem}-filename', '${stem}-notice')">
+                  <button type="button" onclick="document.getElementById('${need.inputId}').click()" style="padding:0.55rem 1rem;border-radius:8px;border:1px solid rgba(${rgb},0.3);background:rgba(${rgb},0.1);color:${need.boxColor};font-size:0.75rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;white-space:nowrap;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    ${need.buttonLabel}
+                  </button>
+                  <span id="${stem}-filename" style="font-size:0.72rem;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Tiada fail dipilih</span>
+                </div>
+                <div id="${stem}-notice" style="margin-top:0.75rem;padding:0.6rem 0.85rem;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.18);border-radius:8px;font-size:0.72rem;color:#ef4444;display:flex;align-items:center;gap:0.5rem;font-weight:700;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12.01" y2="8"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
+                  ${need.notice}
+                </div>
+              </div>
+            </div>`;
+}
+
 // Master Logs: HR/Admin muat naik atau ganti bukti untuk cuti yang perlukan bukti
-// (MC / Cuti Kecemasan / Cuti Ehsan). Fail dimuat naik ke Cloudinary dan proofUrl/
+// (lihat LEAVE_PROOF — MC / Kecemasan / Ehsan / CME). Fail dimuat naik ke Cloudinary dan proofUrl/
 // proofName dikemas kini pada rekod cuti. Berguna untuk rekod lama yang belum ada bukti.
 window.reuploadProof = function(id) {
   const rec = leaveRecords.find(r => r.id === id);
@@ -4854,23 +4906,14 @@ function renderDashboard() {
           }
       }
 
-      // Mandatory File Validations
-      if (selectedLeaveType === 'MC') {
-          const mcUpload = document.getElementById('mc-upload');
-          if (!mcUpload || mcUpload.files.length === 0) {
-              alert('🔴 WAJIB: Sila muat naik Sijil Sakit (MC) yang dikeluarkan oleh doktor sebelum menghantar permohonan.\n\nFormat yang diterima: Gambar (JPG/PNG) atau PDF.');
-              return;
-          }
-      } else if (selectedLeaveType === 'EL_EMG') {
-          const emgUpload = document.getElementById('emg-upload');
-          if (!emgUpload || emgUpload.files.length === 0) {
-              alert('MAAF, Borang ditolak. Anda WAJIB memuat naik dokumen/gambar bukti bagi permohonan Cuti Kecemasan.');
-              return;
-          }
-      } else if (selectedLeaveType === 'EL') {
-          const ehsanUpload = document.getElementById('ehsan-upload');
-          if (!ehsanUpload || ehsanUpload.files.length === 0) {
-              alert('MAAF, Borang ditolak. Anda WAJIB memuat naik Salinan Sijil Kematian bagi permohonan Cuti Ehsan.');
+      // Bukti wajib — jenis cuti yang perlukan dokumen disenaraikan dalam
+      // LEAVE_PROOF (leaveTypes.js). Termasuk CME: tanpa surat jemputan /
+      // slip pendaftaran program CME, permohonan tidak boleh dihantar.
+      const _proofNeed = proofRequirement(selectedLeaveType);
+      if (_proofNeed) {
+          const _inp = document.getElementById(_proofNeed.inputId);
+          if (!_inp || _inp.files.length === 0) {
+              alert(_proofNeed.error);
               return;
           }
       }
@@ -4913,15 +4956,12 @@ function renderDashboard() {
         return;
       }
       
-      // ── Muat naik fail bukti (MC / Kecemasan / Ehsan) ke Cloudinary ──
+      // ── Muat naik fail bukti (MC / Kecemasan / Ehsan / CME) ke Cloudinary ──
       // Firebase Storage tidak diaktifkan (perlu Blaze), jadi bukti dimuat naik ke
       // Cloudinary via unsigned upload. `secure_url` disimpan sebagai proofUrl untuk
       // rujukan HR (dilihat semula sebagai "Lihat Bukti" di Master Logs).
       let proofUrl = null, proofName = null;
-      const _proofInput = selectedLeaveType === 'MC'     ? document.getElementById('mc-upload')
-                        : selectedLeaveType === 'EL_EMG' ? document.getElementById('emg-upload')
-                        : selectedLeaveType === 'EL'     ? document.getElementById('ehsan-upload')
-                        : null;
+      const _proofInput = _proofNeed ? document.getElementById(_proofNeed.inputId) : null;
       if (_proofInput && _proofInput.files.length > 0) {
         const _proofFile = _proofInput.files[0];
         try {
@@ -4970,7 +5010,7 @@ function renderDashboard() {
         directHR: _sbmDirectHR || null,
         // Semua jenis cuti (termasuk MC) bermula PENDING & ikut step kelulusan penuh seperti AL.
         status: 'PENDING',
-        // Bukti (MC/Kecemasan/Ehsan) — null untuk jenis cuti lain & rekod lama.
+        // Bukti (MC/Kecemasan/Ehsan/CME) — null untuk jenis cuti lain & rekod lama.
         proofUrl: proofUrl || null,
         proofName: proofName || null
       };
@@ -6102,9 +6142,7 @@ function renderView() {
       const currentCat = leaveCategories.find(c => c.id === selectedLeaveType) || leaveCategories[0];
       const isAL = selectedLeaveType === 'AL';
       const isMC = selectedLeaveType === 'MC';
-      const isEhsan = selectedLeaveType === 'EL';
       const isNoticeExempt = ['MC', 'EL_EMG', 'EL', 'CME', 'RL'].includes(selectedLeaveType);
-      const isEMG = selectedLeaveType === 'EL_EMG';
       const isHosp = selectedLeaveType === 'HL';
       
       const myRecords = leaveRecords.filter(r => r.ic === user.ic);
@@ -6345,63 +6383,7 @@ function renderView() {
               </div>
             </div>
 
-            ${isMC ? `
-                <div style="margin-bottom:1.5rem;">
-                  <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
-                    <div style="width:4px;height:18px;border-radius:2px;background:linear-gradient(to bottom,#10b981,#3b82f6);"></div>
-                    <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Dokumen Wajib</span>
-                    <span style="font-size:0.65rem;background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.2);border-radius:6px;padding:0.15rem 0.5rem;font-weight:700;">★ WAJIB</span>
-                  </div>
-                  <div style="padding:1rem;border-radius:12px;border:1.5px dashed rgba(59,130,246,0.3);background:rgba(59,130,246,0.03);">
-                    <div style="font-size:0.75rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;">Sila muat naik MC yang dikeluarkan oleh doktor (JPG/PNG/PDF, maks 10MB)</div>
-                    <div style="display:flex;align-items:center;gap:0.75rem;">
-                      <input type="file" id="mc-upload" accept="image/jpeg,image/png,image/jpg,application/pdf" style="display:none;" onchange="window.handleFileSelect(this, 'mc-filename', 'mc-notice')">
-                      <button type="button" onclick="document.getElementById('mc-upload').click()" style="padding:0.55rem 1rem;border-radius:8px;border:1px solid rgba(59,130,246,0.3);background:rgba(59,130,246,0.1);color:#3b82f6;font-size:0.75rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;white-space:nowrap;">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        PILIH FAIL MC
-                      </button>
-                      <span id="mc-filename" style="font-size:0.72rem;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Tiada fail dipilih</span>
-                    </div>
-                    <div id="mc-notice" style="margin-top:0.75rem;padding:0.6rem 0.85rem;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.18);border-radius:8px;font-size:0.72rem;color:#ef4444;display:flex;align-items:center;gap:0.5rem;font-weight:700;">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12.01" y2="8"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
-                      MC BELUM DIMUAT NAIK — WAJIB SEBELUM HANTAR
-                    </div>
-                  </div>
-                </div>
-            ` : ''}
-
-            ${isEhsan ? `
-                <div style="margin-bottom:1.5rem;padding:1rem;border-radius:12px;border:1.5px dashed rgba(239,68,68,0.3);background:rgba(239,68,68,0.03);">
-                  <div style="font-size:0.75rem;font-weight:700;color:#ef4444;text-transform:uppercase;margin-bottom:0.6rem;">Surat Kematian — Wajib Muat Naik</div>
-                  <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.75rem;">Cuti Ehsan hanya untuk kematian ayah, ibu, suami, isteri, atau anak. Had: 3 hari sahaja. <strong>(JPG/PNG/PDF, maks 10MB)</strong></div>
-                  <div style="display:flex;align-items:center;gap:0.75rem;">
-                    <input type="file" id="ehsan-upload" accept="image/jpeg,image/png,image/jpg,application/pdf" style="display:none;" onchange="window.handleFileSelect(this, 'ehsan-filename')">
-                    <button type="button" onclick="document.getElementById('ehsan-upload').click()" style="padding:0.55rem 1rem;border-radius:8px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.1);color:#ef4444;font-size:0.75rem;font-weight:700;cursor:pointer;white-space:nowrap;">PILIH FAIL</button>
-                    <span id="ehsan-filename" style="font-size:0.72rem;color:var(--text-muted);">Tiada fail dipilih</span>
-                  </div>
-                </div>
-            ` : ''}
-
-            ${isEMG ? `
-                <div style="margin-bottom:1.5rem;">
-                  <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
-                    <div style="width:4px;height:18px;border-radius:2px;background:linear-gradient(to bottom,#ef4444,#f97316);"></div>
-                    <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Bukti Kecemasan</span>
-                    <span style="font-size:0.65rem;background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.2);border-radius:6px;padding:0.15rem 0.5rem;font-weight:700;">★ WAJIB</span>
-                  </div>
-                  <div style="padding:1rem;border-radius:12px;border:1.5px dashed rgba(249,115,22,0.3);background:rgba(249,115,22,0.03);">
-                    <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:0.75rem;">Sila muat naik gambar/bukti berkaitan (contoh: gambar banjir, kerosakan kenderaan dll) <strong>(JPG/PNG/PDF, maks 10MB)</strong></div>
-                    <div style="display:flex;align-items:center;gap:0.75rem;">
-                      <input type="file" id="emg-upload" accept="image/jpeg,image/png,image/jpg,application/pdf" style="display:none;" onchange="window.handleFileSelect(this, 'emg-filename')">
-                      <button type="button" onclick="document.getElementById('emg-upload').click()" style="padding:0.55rem 1rem;border-radius:8px;border:1px solid rgba(249,115,22,0.3);background:rgba(249,115,22,0.1);color:#f97316;font-size:0.75rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;white-space:nowrap;">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        PILIH FAIL BUKTI
-                      </button>
-                      <span id="emg-filename" style="font-size:0.72rem;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Tiada fail dipilih</span>
-                    </div>
-                  </div>
-                </div>
-            ` : ''}
+            ${renderProofSection(selectedLeaveType)}
 
             <!-- SECTION: Pelulus Peringkat 0 — TL selector untuk op-balok -->
             ${(() => {
@@ -7645,7 +7627,7 @@ function renderView() {
                               <td style="padding: 1.5rem 1rem; text-align: right;">
                                   <div style="display: flex; gap: 1.25rem; justify-content: flex-end;">
                                       ${r.proofUrl ? `<a href="${r.proofUrl}" target="_blank" rel="noopener" title="Lihat Bukti${r.proofName ? ' (' + r.proofName + ')' : ''}" style="display:inline-flex;align-items:center;color:#10b981;transition:transform 0.2s;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></a>` : ''}
-                                      ${['MC','EL','EL_EMG'].includes(r.type) && ['admin','hr','super_admin'].includes(user.role) ? `<button onclick="window.reuploadProof(${r.id})" title="${r.proofUrl ? 'Ganti' : 'Muat Naik'} Bukti (JPG/PNG/PDF, maks 10MB)" style="background: none; border: none; cursor: pointer; color: #f59e0b; transition: transform 0.2s;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></button>` : ''}
+                                      ${PROOF_REQUIRED_TYPES.includes(r.type) && ['admin','hr','super_admin'].includes(user.role) ? `<button onclick="window.reuploadProof(${r.id})" title="${r.proofUrl ? 'Ganti' : 'Muat Naik'} Bukti (JPG/PNG/PDF, maks 10MB)" style="background: none; border: none; cursor: pointer; color: #f59e0b; transition: transform 0.2s;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></button>` : ''}
                                       ${window.canManageRequest(user, r) && r.status !== 'CANCELLED' ? `<button onclick="window.cancelLeave(${r.id})" title="Batal Cuti" style="background: none; border: none; cursor: pointer; color: #f87171; transition: transform 0.2s;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg></button>` : ''}
                                       <button onclick="printLeave(${r.id})" style="background: none; border: none; cursor: pointer; color: var(--secondary); transition: transform 0.2s;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg></button>
                                       ${['admin', 'hr', 'super_admin'].includes(user.role) ? `
