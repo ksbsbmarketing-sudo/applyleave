@@ -4,7 +4,8 @@ import { recordBalances, computeElOverflow, computeCMEEntitlement, FORMULA_B_TYP
 import { computeYearEndRollover, buildStaffRolloverPatch, CF_CAP } from './yearEnd.js';
 import { deriveLoginBranches } from './loginBranches.js';
 import { formatPersonName } from './nameFormat.js';
-import { LEAVE_CATEGORIES, LEAVE_TYPE_NAMES, leaveTypeName, leaveTypeShort } from './leaveTypes.js';
+import { LEAVE_CATEGORIES, LEAVE_TYPE_NAMES, leaveTypeName, leaveTypeShort,
+         proofRequirement, hexToRgbTriple, PROOF_REQUIRED_TYPES } from './leaveTypes.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
@@ -1185,6 +1186,40 @@ window.handleFileSelect = function(input, displayId, noticeId) {
         }
     }
 };
+
+// Kotak muat naik bukti — satu renderer untuk SEMUA jenis cuti yang perlukan
+// dokumen (MC / Ehsan / Kecemasan / CME). Isi kandungan datang dari LEAVE_PROOF
+// dalam leaveTypes.js; jangan tambah blok HTML baharu untuk jenis cuti baharu.
+// Pulangkan '' jika jenis cuti itu tidak perlukan bukti.
+function renderProofSection(code) {
+  const need = proofRequirement(code);
+  if (!need) return '';
+  const stem = need.inputId.replace('-upload', '');   // 'mc-upload' → 'mc'
+  const rgb = hexToRgbTriple(need.boxColor);
+  return `
+            <div style="margin-bottom:1.5rem;">
+              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
+                <div style="width:4px;height:18px;border-radius:2px;background:linear-gradient(to bottom,${need.barFrom},${need.barTo});"></div>
+                <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">${need.title}</span>
+                <span style="font-size:0.65rem;background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.2);border-radius:6px;padding:0.15rem 0.5rem;font-weight:700;">★ WAJIB</span>
+              </div>
+              <div style="padding:1rem;border-radius:12px;border:1.5px dashed rgba(${rgb},0.3);background:rgba(${rgb},0.03);">
+                <div style="font-size:0.75rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;">${need.hint}</div>
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                  <input type="file" id="${need.inputId}" accept="image/jpeg,image/png,image/jpg,application/pdf" style="display:none;" onchange="window.handleFileSelect(this, '${stem}-filename', '${stem}-notice')">
+                  <button type="button" onclick="document.getElementById('${need.inputId}').click()" style="padding:0.55rem 1rem;border-radius:8px;border:1px solid rgba(${rgb},0.3);background:rgba(${rgb},0.1);color:${need.boxColor};font-size:0.75rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;white-space:nowrap;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    ${need.buttonLabel}
+                  </button>
+                  <span id="${stem}-filename" style="font-size:0.72rem;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Tiada fail dipilih</span>
+                </div>
+                <div id="${stem}-notice" style="margin-top:0.75rem;padding:0.6rem 0.85rem;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.18);border-radius:8px;font-size:0.72rem;color:#ef4444;display:flex;align-items:center;gap:0.5rem;font-weight:700;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12.01" y2="8"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
+                  ${need.notice}
+                </div>
+              </div>
+            </div>`;
+}
 
 // Master Logs: HR/Admin muat naik atau ganti bukti untuk cuti yang perlukan bukti
 // (MC / Cuti Kecemasan / Cuti Ehsan). Fail dimuat naik ke Cloudinary dan proofUrl/
@@ -6102,9 +6137,7 @@ function renderView() {
       const currentCat = leaveCategories.find(c => c.id === selectedLeaveType) || leaveCategories[0];
       const isAL = selectedLeaveType === 'AL';
       const isMC = selectedLeaveType === 'MC';
-      const isEhsan = selectedLeaveType === 'EL';
       const isNoticeExempt = ['MC', 'EL_EMG', 'EL', 'CME', 'RL'].includes(selectedLeaveType);
-      const isEMG = selectedLeaveType === 'EL_EMG';
       const isHosp = selectedLeaveType === 'HL';
       
       const myRecords = leaveRecords.filter(r => r.ic === user.ic);
@@ -6345,63 +6378,7 @@ function renderView() {
               </div>
             </div>
 
-            ${isMC ? `
-                <div style="margin-bottom:1.5rem;">
-                  <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
-                    <div style="width:4px;height:18px;border-radius:2px;background:linear-gradient(to bottom,#10b981,#3b82f6);"></div>
-                    <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Dokumen Wajib</span>
-                    <span style="font-size:0.65rem;background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.2);border-radius:6px;padding:0.15rem 0.5rem;font-weight:700;">★ WAJIB</span>
-                  </div>
-                  <div style="padding:1rem;border-radius:12px;border:1.5px dashed rgba(59,130,246,0.3);background:rgba(59,130,246,0.03);">
-                    <div style="font-size:0.75rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;">Sila muat naik MC yang dikeluarkan oleh doktor (JPG/PNG/PDF, maks 10MB)</div>
-                    <div style="display:flex;align-items:center;gap:0.75rem;">
-                      <input type="file" id="mc-upload" accept="image/jpeg,image/png,image/jpg,application/pdf" style="display:none;" onchange="window.handleFileSelect(this, 'mc-filename', 'mc-notice')">
-                      <button type="button" onclick="document.getElementById('mc-upload').click()" style="padding:0.55rem 1rem;border-radius:8px;border:1px solid rgba(59,130,246,0.3);background:rgba(59,130,246,0.1);color:#3b82f6;font-size:0.75rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;white-space:nowrap;">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        PILIH FAIL MC
-                      </button>
-                      <span id="mc-filename" style="font-size:0.72rem;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Tiada fail dipilih</span>
-                    </div>
-                    <div id="mc-notice" style="margin-top:0.75rem;padding:0.6rem 0.85rem;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.18);border-radius:8px;font-size:0.72rem;color:#ef4444;display:flex;align-items:center;gap:0.5rem;font-weight:700;">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12.01" y2="8"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
-                      MC BELUM DIMUAT NAIK — WAJIB SEBELUM HANTAR
-                    </div>
-                  </div>
-                </div>
-            ` : ''}
-
-            ${isEhsan ? `
-                <div style="margin-bottom:1.5rem;padding:1rem;border-radius:12px;border:1.5px dashed rgba(239,68,68,0.3);background:rgba(239,68,68,0.03);">
-                  <div style="font-size:0.75rem;font-weight:700;color:#ef4444;text-transform:uppercase;margin-bottom:0.6rem;">Surat Kematian — Wajib Muat Naik</div>
-                  <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.75rem;">Cuti Ehsan hanya untuk kematian ayah, ibu, suami, isteri, atau anak. Had: 3 hari sahaja. <strong>(JPG/PNG/PDF, maks 10MB)</strong></div>
-                  <div style="display:flex;align-items:center;gap:0.75rem;">
-                    <input type="file" id="ehsan-upload" accept="image/jpeg,image/png,image/jpg,application/pdf" style="display:none;" onchange="window.handleFileSelect(this, 'ehsan-filename')">
-                    <button type="button" onclick="document.getElementById('ehsan-upload').click()" style="padding:0.55rem 1rem;border-radius:8px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.1);color:#ef4444;font-size:0.75rem;font-weight:700;cursor:pointer;white-space:nowrap;">PILIH FAIL</button>
-                    <span id="ehsan-filename" style="font-size:0.72rem;color:var(--text-muted);">Tiada fail dipilih</span>
-                  </div>
-                </div>
-            ` : ''}
-
-            ${isEMG ? `
-                <div style="margin-bottom:1.5rem;">
-                  <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
-                    <div style="width:4px;height:18px;border-radius:2px;background:linear-gradient(to bottom,#ef4444,#f97316);"></div>
-                    <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Bukti Kecemasan</span>
-                    <span style="font-size:0.65rem;background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.2);border-radius:6px;padding:0.15rem 0.5rem;font-weight:700;">★ WAJIB</span>
-                  </div>
-                  <div style="padding:1rem;border-radius:12px;border:1.5px dashed rgba(249,115,22,0.3);background:rgba(249,115,22,0.03);">
-                    <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:0.75rem;">Sila muat naik gambar/bukti berkaitan (contoh: gambar banjir, kerosakan kenderaan dll) <strong>(JPG/PNG/PDF, maks 10MB)</strong></div>
-                    <div style="display:flex;align-items:center;gap:0.75rem;">
-                      <input type="file" id="emg-upload" accept="image/jpeg,image/png,image/jpg,application/pdf" style="display:none;" onchange="window.handleFileSelect(this, 'emg-filename')">
-                      <button type="button" onclick="document.getElementById('emg-upload').click()" style="padding:0.55rem 1rem;border-radius:8px;border:1px solid rgba(249,115,22,0.3);background:rgba(249,115,22,0.1);color:#f97316;font-size:0.75rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;white-space:nowrap;">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        PILIH FAIL BUKTI
-                      </button>
-                      <span id="emg-filename" style="font-size:0.72rem;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Tiada fail dipilih</span>
-                    </div>
-                  </div>
-                </div>
-            ` : ''}
+            ${renderProofSection(selectedLeaveType)}
 
             <!-- SECTION: Pelulus Peringkat 0 — TL selector untuk op-balok -->
             ${(() => {
