@@ -4889,23 +4889,14 @@ function renderDashboard() {
           }
       }
 
-      // Mandatory File Validations
-      if (selectedLeaveType === 'MC') {
-          const mcUpload = document.getElementById('mc-upload');
-          if (!mcUpload || mcUpload.files.length === 0) {
-              alert('🔴 WAJIB: Sila muat naik Sijil Sakit (MC) yang dikeluarkan oleh doktor sebelum menghantar permohonan.\n\nFormat yang diterima: Gambar (JPG/PNG) atau PDF.');
-              return;
-          }
-      } else if (selectedLeaveType === 'EL_EMG') {
-          const emgUpload = document.getElementById('emg-upload');
-          if (!emgUpload || emgUpload.files.length === 0) {
-              alert('MAAF, Borang ditolak. Anda WAJIB memuat naik dokumen/gambar bukti bagi permohonan Cuti Kecemasan.');
-              return;
-          }
-      } else if (selectedLeaveType === 'EL') {
-          const ehsanUpload = document.getElementById('ehsan-upload');
-          if (!ehsanUpload || ehsanUpload.files.length === 0) {
-              alert('MAAF, Borang ditolak. Anda WAJIB memuat naik Salinan Sijil Kematian bagi permohonan Cuti Ehsan.');
+      // Bukti wajib — jenis cuti yang perlukan dokumen disenaraikan dalam
+      // LEAVE_PROOF (leaveTypes.js). Termasuk CME: tanpa surat jemputan /
+      // slip pendaftaran program CME, permohonan tidak boleh dihantar.
+      const _proofNeed = proofRequirement(selectedLeaveType);
+      if (_proofNeed) {
+          const _inp = document.getElementById(_proofNeed.inputId);
+          if (!_inp || _inp.files.length === 0) {
+              alert(_proofNeed.error);
               return;
           }
       }
@@ -4948,15 +4939,12 @@ function renderDashboard() {
         return;
       }
       
-      // ── Muat naik fail bukti (MC / Kecemasan / Ehsan) ke Cloudinary ──
+      // ── Muat naik fail bukti (MC / Kecemasan / Ehsan / CME) ke Cloudinary ──
       // Firebase Storage tidak diaktifkan (perlu Blaze), jadi bukti dimuat naik ke
       // Cloudinary via unsigned upload. `secure_url` disimpan sebagai proofUrl untuk
       // rujukan HR (dilihat semula sebagai "Lihat Bukti" di Master Logs).
       let proofUrl = null, proofName = null;
-      const _proofInput = selectedLeaveType === 'MC'     ? document.getElementById('mc-upload')
-                        : selectedLeaveType === 'EL_EMG' ? document.getElementById('emg-upload')
-                        : selectedLeaveType === 'EL'     ? document.getElementById('ehsan-upload')
-                        : null;
+      const _proofInput = _proofNeed ? document.getElementById(_proofNeed.inputId) : null;
       if (_proofInput && _proofInput.files.length > 0) {
         const _proofFile = _proofInput.files[0];
         try {
