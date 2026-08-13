@@ -5342,6 +5342,17 @@ function renderDashboard() {
               if (!(elDays > 0)) {
                   alert('Bilangan hari mesti lebih daripada 0. Sila betulkan.'); return;
               }
+              // `rec.ic` bukan `user.ic` — HR dan pelulus mengedit rekod orang lain di sini.
+              // `excludeId` menghalang rekod daripada bertindih dengan dirinya sendiri.
+              const _editOverlaps = findOverlappingLeaves(leaveRecords, rec.ic, elStart, elEnd,
+                                                          { excludeId: editingLeaveId });
+              if (_editOverlaps.length > 0) {
+                  alert('🔴 TARIKH BERTINDIH\n\n' +
+                        'Staf ini sudah ada permohonan cuti lain untuk tarikh tersebut:\n\n' +
+                        describeOverlaps(_editOverlaps, leaveTypeName) + '\n\n' +
+                        'Sila batalkan permohonan berkenaan terlebih dahulu.');
+                  return;
+              }
               const updates = {
                 reason: document.querySelector('#el-reason').value,
                 startDate: elStart,
