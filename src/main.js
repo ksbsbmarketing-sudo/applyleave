@@ -445,6 +445,11 @@ let user = null;
 let currentSessionId = null;
 let sessionUnsubscribe = null;
 let duplicateSessionDetected = false;
+// Kunci hantar borang cuti. Muat naik bukti ke Cloudinary ambil beberapa saat;
+// tanpa kunci ini, klik kedua menjalankan semula seluruh handler dan menulis
+// rekod kedua. Semakan pertindihan TIDAK dapat menangkapnya — kedua-dua larian
+// membaca leaveRecords yang sama, sebelum mana-mana tulisan mendarat.
+let leaveSubmitting = false;
 let sessionKickHandled = false; // guard: auto-logout sesi lama hanya dicetus sekali
 let view = 'login'; // 'login', 'dashboard', 'management', 'leave-form', 'policy', 'settings'
 window.setView = function(v) {
@@ -4919,7 +4924,8 @@ function renderDashboard() {
   if (leaveForm) {
     leaveForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      
+      if (leaveSubmitting) return;
+
       const leaveTypeName = leaveCategories.find(c => c.id === selectedLeaveType)?.name || selectedLeaveType;
       const startDate = leaveStartDate;
       const endDate = leaveEndDate;
@@ -5026,145 +5032,169 @@ function renderDashboard() {
         return;
       }
       
-      // ── Muat naik fail bukti (MC / Kecemasan / Ehsan / CME) ke Cloudinary ──
-      // Firebase Storage tidak diaktifkan (perlu Blaze), jadi bukti dimuat naik ke
-      // Cloudinary via unsigned upload. `secure_url` disimpan sebagai proofUrl untuk
-      // rujukan HR (dilihat semula sebagai "Lihat Bukti" di Master Logs).
-      let proofUrl = null, proofName = null;
-      const _proofInput = _proofNeed ? document.getElementById(_proofNeed.inputId) : null;
-      if (_proofInput && _proofInput.files.length > 0) {
-        const _proofFile = _proofInput.files[0];
-        try {
-          const _fd = new FormData();
-          _fd.append('file', _proofFile);
-          _fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-          // Susun ikut IC supaya bukti mudah dikesan di Cloudinary.
-          _fd.append('folder', `leave-proofs/${user.ic}`);
-          // `auto` = Cloudinary kesan sendiri sama ada gambar (jpg/png) atau PDF.
-          const _resp = await fetch(
-            `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`,
-            { method: 'POST', body: _fd }
-          );
-          const _data = await _resp.json().catch(() => ({}));
-          if (!_resp.ok || !_data.secure_url) {
-            throw new Error((_data.error && _data.error.message) || ('Cloudinary HTTP ' + _resp.status));
+      // ── Kunci hantar ──
+      // Ditetapkan SELEPAS semua pengesahan lulus: kalau diletak di awal,
+      // kegagalan pengesahan akan mengunci borang sampai render seterusnya.
+      // `finally` di hujung memulihkan butang walau upload/tulisan gagal —
+      // jangan tukar kepada pemulihan manual di setiap `return`.
+      leaveSubmitting = true;
+      const _submitBtn = leaveForm.querySelector('button[type="submit"]');
+      const _submitBtnHTML = _submitBtn ? _submitBtn.innerHTML : '';
+      if (_submitBtn) {
+        _submitBtn.disabled = true;
+        _submitBtn.style.opacity = '0.6';
+        _submitBtn.style.cursor = 'not-allowed';
+        _submitBtn.textContent = 'MENGHANTAR…';
+      }
+      try {
+        // ── Muat naik fail bukti (MC / Kecemasan / Ehsan / CME) ke Cloudinary ──
+        // Firebase Storage tidak diaktifkan (perlu Blaze), jadi bukti dimuat naik ke
+        // Cloudinary via unsigned upload. `secure_url` disimpan sebagai proofUrl untuk
+        // rujukan HR (dilihat semula sebagai "Lihat Bukti" di Master Logs).
+        let proofUrl = null, proofName = null;
+        const _proofInput = _proofNeed ? document.getElementById(_proofNeed.inputId) : null;
+        if (_proofInput && _proofInput.files.length > 0) {
+          const _proofFile = _proofInput.files[0];
+          try {
+            const _fd = new FormData();
+            _fd.append('file', _proofFile);
+            _fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+            // Susun ikut IC supaya bukti mudah dikesan di Cloudinary.
+            _fd.append('folder', `leave-proofs/${user.ic}`);
+            // `auto` = Cloudinary kesan sendiri sama ada gambar (jpg/png) atau PDF.
+            const _resp = await fetch(
+              `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`,
+              { method: 'POST', body: _fd }
+            );
+            const _data = await _resp.json().catch(() => ({}));
+            if (!_resp.ok || !_data.secure_url) {
+              throw new Error((_data.error && _data.error.message) || ('Cloudinary HTTP ' + _resp.status));
+            }
+            proofUrl = _data.secure_url;
+            proofName = _proofFile.name;
+          } catch (err) {
+            console.error('Proof upload failed:', err);
+            alert('🔴 Gagal memuat naik fail bukti. Sila cuba lagi atau semak sambungan internet anda.');
+            return;
           }
-          proofUrl = _data.secure_url;
-          proofName = _proofFile.name;
+        }
+  
+        const copyText = `*LEAVE APPLICATION*${leaveBreakdown}\nStaff Name: ${user.name}\nIC Number: ${user.ic}\nLeave Type: ${leaveTypeName}\nFrom: ${startDate}\nTo: ${endDate}\nHandover To: ${handover}\nReason: ${reason}`;
+  
+        // Save to Firestore
+        const selectedHOD = leaveForm.querySelector('#hod-select')?.value;
+        const newRecord = {
+          id: Date.now(),
+          name: user.name,
+          ic: user.ic,
+          branch: user.branch,
+          type: selectedLeaveType,
+          days: diffDays,
+          startDate,
+          endDate,
+          reason,
+          handoverName: handover,
+          hodIC: _sbmDirectHR ? null : (selectedHOD || null),
+          tlIC: selectedTL || null,
+          // Permohonan terus ke HR (skip HOD) — disimpan supaya laluan kekal stabil
+          // walaupun polisi berubah kemudian. null untuk laluan biasa & rekod lama.
+          directHR: _sbmDirectHR || null,
+          // Semua jenis cuti (termasuk MC) bermula PENDING & ikut step kelulusan penuh seperti AL.
+          status: 'PENDING',
+          // Bukti (MC/Kecemasan/Ehsan/CME) — null untuk jenis cuti lain & rekod lama.
+          proofUrl: proofUrl || null,
+          proofName: proofName || null
+        };
+  
+        try {
+            await setDoc(doc(db, "leaves", newRecord.id.toString()), newRecord);
+            window.logSystemActivity(`Applied for ${leaveTypeName} (${diffDays} days)`);
+            window.addNotification(user.ic, 'leave_submitted', '📋 Permohonan Cuti Dihantar', `Permohonan ${leaveTypeName} anda (${startDate} → ${endDate}, ${diffDays} hari) telah berjaya dihantar dan sedang menunggu kelulusan.`, newRecord.id.toString());
         } catch (err) {
-          console.error('Proof upload failed:', err);
-          alert('🔴 Gagal memuat naik fail bukti. Sila cuba lagi atau semak sambungan internet anda.');
-          return;
+            console.error("Error adding leave record: ", err);
+            alert("Ralat menghantar permohonan ke pangkalan data.");
+            return;
+        }
+  
+        // WA Peringkat 0/1: notify TL yang dipilih (op-balok) atau approver biasa
+        let hodToNotify = [];
+        let hodMsg = '';
+        if (_sbmIsOpBalokTL) {
+          // Op-balok: notify hanya TL yang dipilih oleh staff (bukan semua TL)
+          hodToNotify = staffList.filter(s => s.ic === selectedTL && s.phone);
+          hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 0 (Sokongan Team Leader)*\n\nPermohonan cuti memerlukan sokongan anda (Team Leader) sebelum dihantar ke Supervisor.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+        } else if (_sbmDirectHR) {
+          // Terus ke HR — HR/Admin ialah pelulus (bukan HOD)
+          hodToNotify = window.hrRecipientsForBranch(user.branch).filter(s => s.phone);
+          hodMsg = `📩 *PERMOHONAN CUTI BARU — Kelulusan HR (Terus)*\n\nPermohonan cuti ini dilaluankan TERUS kepada HR/Admin untuk kelulusan (tanpa peringkat HOD).\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+        } else if (selectedHOD) {
+          hodToNotify = staffList.filter(s => s.ic === selectedHOD && s.phone);
+          hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+        } else {
+          hodToNotify = window.getRoutingP1Approvers(user, selectedLeaveType).filter(s => s.phone);
+          hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+        }
+  
+        hodToNotify.forEach(hod => window.sendWhatsApp(hod.phone, hodMsg));
+  
+        // Inbox kepada pelulus (selari dengan WhatsApp) — peringkat yang sesuai
+        const _apprStaff = _sbmIsOpBalokTL ? staffList.filter(s => s.ic === selectedTL)
+          : _sbmDirectHR ? window.hrRecipientsForBranch(user.branch)
+          : selectedHOD ? staffList.filter(s => s.ic === selectedHOD)
+          : window.getRoutingP1Approvers(user, selectedLeaveType);
+        window.notifyApproversInbox(_apprStaff,
+          '📥 Permohonan Cuti Perlu Tindakan',
+          `${user.name} memohon ${leaveTypeName} (${startDate}${startDate !== endDate ? ' → ' + endDate : ''}, ${diffDays} hari). Memerlukan ${_sbmIsOpBalokTL ? 'sokongan Team Leader (Peringkat 0)' : _sbmDirectHR ? 'kelulusan HR/Admin' : 'kelulusan Peringkat 1'} anda.`,
+          newRecord.id.toString(), user.ic);
+  
+        // WA pengesahan kepada pemohon sendiri
+        if (user.phone) {
+          const nextStage = _sbmIsOpBalokTL
+            ? 'Sokongan Team Leader (Peringkat 0)'
+            : _sbmDirectHR ? 'Kelulusan HR/Admin'
+            : 'Sokongan HOD/Supervisor (Peringkat 1)';
+          const confirmMsg = `✅ *PERMOHONAN CUTI DIHANTAR*\n\nSalam ${user.name},\n\nPermohonan cuti anda telah berjaya dihantar dengan sebab: *${reason}*\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${startDate} → ${endDate}\n• Tempoh: ${diffDays} hari\n\nPermohonan sedang menunggu *${nextStage}*. Anda akan dimaklumkan setiap kemaskini status.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+          window.sendWhatsApp(user.phone, confirmMsg);
+        }
+  
+        // CC: notify HR/Admin terus supaya mereka aware ada permohonan baru.
+        // HR zon lain dikecualikan — Terengganu ke HR Terengganu, Pahang ke HR Pahang.
+        // (Dulu SEMUA hr disekat untuk cuti Terengganu kerana tiada HR Terengganu.)
+        const adminCC = window.hrRecipientsForBranch(user.branch).filter(s => s.phone);
+        const adminCCMsg = _sbmIsOpBalokTL
+          ? `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan Team Leader)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan Team Leader (Peringkat 0).\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`
+          : `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan HOD)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan HOD/Supervisor (Peringkat 1).\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+        // Untuk laluan "terus ke HR", HR/Admin sudah menerima notifikasi pelulus di atas —
+        // elak hantar WA berganda melalui CC.
+        if (!_sbmDirectHR) adminCC.forEach(admin => window.sendWhatsApp(admin.phone, adminCCMsg));
+  
+        // Build status message
+        const waEnabled = WHATSAPP_ENABLED();
+        const recipientNames = hodToNotify.map(h => h.name).join(', ');
+        let statusMsg = '✅ Permohonan Cuti Berjaya Dihantar!\n\n';
+        if (!waEnabled) {
+          statusMsg += '⚠️ AMARAN: Token WhatsApp belum dikonfigurasi. Notifikasi WA TIDAK dihantar. Sila hubungi Super Admin untuk tetapkan token Fonnte dalam WA Settings.';
+        } else if (hodToNotify.length === 0) {
+          const noRecipientLabel = _sbmIsOpBalokTL ? 'Team Leader' : _sbmDirectHR ? 'HR/Admin' : 'HOD/Supervisor';
+          statusMsg += `⚠️ Tiada pelulus dijumpai untuk menerima notifikasi WA. Sila pastikan ${noRecipientLabel} telah didaftarkan dengan nombor telefon dalam sistem.`;
+        } else {
+          const notifLabel = _sbmIsOpBalokTL ? 'Team Leader (Peringkat 0)' : _sbmDirectHR ? 'HR/Admin (Kelulusan Terus)' : 'Pelulus Peringkat 1';
+          statusMsg += `📲 Notifikasi WA dihantar kepada ${notifLabel}:\n${recipientNames}`;
+        }
+  
+        navigator.clipboard.writeText(copyText).catch(() => {});
+        alert(statusMsg);
+        view = 'dashboard';
+        render();
+      } finally {
+        leaveSubmitting = false;
+        if (_submitBtn) {
+          _submitBtn.disabled = false;
+          _submitBtn.style.opacity = '';
+          _submitBtn.style.cursor = '';
+          _submitBtn.innerHTML = _submitBtnHTML;
         }
       }
-
-      const copyText = `*LEAVE APPLICATION*${leaveBreakdown}\nStaff Name: ${user.name}\nIC Number: ${user.ic}\nLeave Type: ${leaveTypeName}\nFrom: ${startDate}\nTo: ${endDate}\nHandover To: ${handover}\nReason: ${reason}`;
-
-      // Save to Firestore
-      const selectedHOD = leaveForm.querySelector('#hod-select')?.value;
-      const newRecord = {
-        id: Date.now(),
-        name: user.name,
-        ic: user.ic,
-        branch: user.branch,
-        type: selectedLeaveType,
-        days: diffDays,
-        startDate,
-        endDate,
-        reason,
-        handoverName: handover,
-        hodIC: _sbmDirectHR ? null : (selectedHOD || null),
-        tlIC: selectedTL || null,
-        // Permohonan terus ke HR (skip HOD) — disimpan supaya laluan kekal stabil
-        // walaupun polisi berubah kemudian. null untuk laluan biasa & rekod lama.
-        directHR: _sbmDirectHR || null,
-        // Semua jenis cuti (termasuk MC) bermula PENDING & ikut step kelulusan penuh seperti AL.
-        status: 'PENDING',
-        // Bukti (MC/Kecemasan/Ehsan/CME) — null untuk jenis cuti lain & rekod lama.
-        proofUrl: proofUrl || null,
-        proofName: proofName || null
-      };
-
-      try {
-          await setDoc(doc(db, "leaves", newRecord.id.toString()), newRecord);
-          window.logSystemActivity(`Applied for ${leaveTypeName} (${diffDays} days)`);
-          window.addNotification(user.ic, 'leave_submitted', '📋 Permohonan Cuti Dihantar', `Permohonan ${leaveTypeName} anda (${startDate} → ${endDate}, ${diffDays} hari) telah berjaya dihantar dan sedang menunggu kelulusan.`, newRecord.id.toString());
-      } catch (err) {
-          console.error("Error adding leave record: ", err);
-          alert("Ralat menghantar permohonan ke pangkalan data.");
-          return;
-      }
-
-      // WA Peringkat 0/1: notify TL yang dipilih (op-balok) atau approver biasa
-      let hodToNotify = [];
-      let hodMsg = '';
-      if (_sbmIsOpBalokTL) {
-        // Op-balok: notify hanya TL yang dipilih oleh staff (bukan semua TL)
-        hodToNotify = staffList.filter(s => s.ic === selectedTL && s.phone);
-        hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 0 (Sokongan Team Leader)*\n\nPermohonan cuti memerlukan sokongan anda (Team Leader) sebelum dihantar ke Supervisor.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
-      } else if (_sbmDirectHR) {
-        // Terus ke HR — HR/Admin ialah pelulus (bukan HOD)
-        hodToNotify = window.hrRecipientsForBranch(user.branch).filter(s => s.phone);
-        hodMsg = `📩 *PERMOHONAN CUTI BARU — Kelulusan HR (Terus)*\n\nPermohonan cuti ini dilaluankan TERUS kepada HR/Admin untuk kelulusan (tanpa peringkat HOD).\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
-      } else if (selectedHOD) {
-        hodToNotify = staffList.filter(s => s.ic === selectedHOD && s.phone);
-        hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
-      } else {
-        hodToNotify = window.getRoutingP1Approvers(user, selectedLeaveType).filter(s => s.phone);
-        hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
-      }
-
-      hodToNotify.forEach(hod => window.sendWhatsApp(hod.phone, hodMsg));
-
-      // Inbox kepada pelulus (selari dengan WhatsApp) — peringkat yang sesuai
-      const _apprStaff = _sbmIsOpBalokTL ? staffList.filter(s => s.ic === selectedTL)
-        : _sbmDirectHR ? window.hrRecipientsForBranch(user.branch)
-        : selectedHOD ? staffList.filter(s => s.ic === selectedHOD)
-        : window.getRoutingP1Approvers(user, selectedLeaveType);
-      window.notifyApproversInbox(_apprStaff,
-        '📥 Permohonan Cuti Perlu Tindakan',
-        `${user.name} memohon ${leaveTypeName} (${startDate}${startDate !== endDate ? ' → ' + endDate : ''}, ${diffDays} hari). Memerlukan ${_sbmIsOpBalokTL ? 'sokongan Team Leader (Peringkat 0)' : _sbmDirectHR ? 'kelulusan HR/Admin' : 'kelulusan Peringkat 1'} anda.`,
-        newRecord.id.toString(), user.ic);
-
-      // WA pengesahan kepada pemohon sendiri
-      if (user.phone) {
-        const nextStage = _sbmIsOpBalokTL
-          ? 'Sokongan Team Leader (Peringkat 0)'
-          : _sbmDirectHR ? 'Kelulusan HR/Admin'
-          : 'Sokongan HOD/Supervisor (Peringkat 1)';
-        const confirmMsg = `✅ *PERMOHONAN CUTI DIHANTAR*\n\nSalam ${user.name},\n\nPermohonan cuti anda telah berjaya dihantar dengan sebab: *${reason}*\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${startDate} → ${endDate}\n• Tempoh: ${diffDays} hari\n\nPermohonan sedang menunggu *${nextStage}*. Anda akan dimaklumkan setiap kemaskini status.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
-        window.sendWhatsApp(user.phone, confirmMsg);
-      }
-
-      // CC: notify HR/Admin terus supaya mereka aware ada permohonan baru.
-      // HR zon lain dikecualikan — Terengganu ke HR Terengganu, Pahang ke HR Pahang.
-      // (Dulu SEMUA hr disekat untuk cuti Terengganu kerana tiada HR Terengganu.)
-      const adminCC = window.hrRecipientsForBranch(user.branch).filter(s => s.phone);
-      const adminCCMsg = _sbmIsOpBalokTL
-        ? `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan Team Leader)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan Team Leader (Peringkat 0).\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`
-        : `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan HOD)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan HOD/Supervisor (Peringkat 1).\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
-      // Untuk laluan "terus ke HR", HR/Admin sudah menerima notifikasi pelulus di atas —
-      // elak hantar WA berganda melalui CC.
-      if (!_sbmDirectHR) adminCC.forEach(admin => window.sendWhatsApp(admin.phone, adminCCMsg));
-
-      // Build status message
-      const waEnabled = WHATSAPP_ENABLED();
-      const recipientNames = hodToNotify.map(h => h.name).join(', ');
-      let statusMsg = '✅ Permohonan Cuti Berjaya Dihantar!\n\n';
-      if (!waEnabled) {
-        statusMsg += '⚠️ AMARAN: Token WhatsApp belum dikonfigurasi. Notifikasi WA TIDAK dihantar. Sila hubungi Super Admin untuk tetapkan token Fonnte dalam WA Settings.';
-      } else if (hodToNotify.length === 0) {
-        const noRecipientLabel = _sbmIsOpBalokTL ? 'Team Leader' : _sbmDirectHR ? 'HR/Admin' : 'HOD/Supervisor';
-        statusMsg += `⚠️ Tiada pelulus dijumpai untuk menerima notifikasi WA. Sila pastikan ${noRecipientLabel} telah didaftarkan dengan nombor telefon dalam sistem.`;
-      } else {
-        const notifLabel = _sbmIsOpBalokTL ? 'Team Leader (Peringkat 0)' : _sbmDirectHR ? 'HR/Admin (Kelulusan Terus)' : 'Pelulus Peringkat 1';
-        statusMsg += `📲 Notifikasi WA dihantar kepada ${notifLabel}:\n${recipientNames}`;
-      }
-
-      navigator.clipboard.writeText(copyText).catch(() => {});
-      alert(statusMsg);
-      view = 'dashboard';
-      render();
     });
   }
 
