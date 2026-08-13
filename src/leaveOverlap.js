@@ -92,6 +92,10 @@ export function findOverlapGroups(records) {
   const byIc = new Map();
   for (const r of records || []) {
     if (!r) continue;
+    // Tanpa id, beberapa rekod akan runtuh ke satu kunci `undefined` yang
+    // sama dalam peta keluaran — dan has(r.id) kemudian jadi true untuk
+    // SETIAP baris berid undefined, termasuk staf lain. Langkau terus.
+    if (r.id == null) continue;
     const ic = norm(r.ic);
     if (!ic) continue;
     if (!isBlockingStatus(r.status)) continue;

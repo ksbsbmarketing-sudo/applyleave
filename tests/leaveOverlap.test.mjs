@@ -273,7 +273,24 @@ test('findOverlapGroups excludes rejected and cancelled records', () => {
 });
 
 test('findOverlapGroups skips records missing dates', () => {
-  const m = findOverlapGroups([REC({ id: 1 }), REC({ id: 2, endDate: '' })]);
+  // Missing endDate alone doesn't actually exercise the guard: '' sorts
+  // before any real date, so datesOverlap already returns false on its own
+  // ('2026-08-05' <= '' is false). The case that bites is a missing
+  // startDate — datesOverlap('2026-08-05','2026-08-07','','2026-08-06') is
+  // true, so without the guard a blank startDate would falsely group a
+  // legitimate record. Both must still clear the map.
+  const m1 = findOverlapGroups([REC({ id: 1 }), REC({ id: 2, endDate: '' })]);
+  assert.strictEqual(m1.size, 0);
+  const m2 = findOverlapGroups([REC({ id: 1 }), REC({ id: 2, startDate: '' })]);
+  assert.strictEqual(m2.size, 0);
+});
+
+test('findOverlapGroups skips records with no id instead of collapsing onto a shared key', () => {
+  // Two overlapping records of the same staff member, both missing `id`:
+  // without the guard they'd both key onto `undefined` in the output Map,
+  // and a has(r.id) lookup would then read true for every undefined-id row
+  // — including a different staff member's.
+  const m = findOverlapGroups([REC({ id: undefined }), REC({ id: undefined })]);
   assert.strictEqual(m.size, 0);
 });
 
