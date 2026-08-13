@@ -7746,17 +7746,30 @@ function renderView() {
             branch: masterLogBranch,
             stateOfBranch: window.scopeStateOfBranch,
           });
-          // Pertindihan dikira SEKALI setiap render, daripada _mlRecords yang
-          // sudah ber-skop zon + tab negeri/cawangan. JANGAN guna leaveRecords
-          // mentah di sini: kiraan HR Pahang tidak boleh termasuk rekod
-          // Terengganu. Berbeza daripada kaunter tab cawangan di bawah yang
-          // sengaja abaikan tab semasa — butang ini penapis ke atas pandangan
-          // semasa, jadi "(N)" mesti bermaksud N baris yang anda sedang lihat.
-          const _mlOverlaps = findOverlapGroups(_mlRecords);
-          const _mlOverlapCount = _mlOverlaps.size;
+          // Pertindihan dikira SEKALI setiap render, daripada senarai yang
+          // ber-skop ZON SAHAJA (_mlZoneRecords) — bukan _mlRecords yang juga
+          // ditapis oleh tab negeri/cawangan. Tab negeri/cawangan cuma
+          // navigasi, bukan sempadan keselamatan; jika peta dikira selepas
+          // tapisan cawangan, pasangan bertindih yang rekodnya berlainan
+          // cawangan (cth. staf berpindah cawangan) akan hilang sepenuhnya
+          // apabila mana-mana tab cawangan dipilih — kedua-dua rekod tidak
+          // ditanda dan butang ⚠️ Bertindih hilang. Sempadan keselamatan
+          // sebenar (userScope) kekal dikuatkuasakan di _mlZoneRecords.
+          const _mlZoneRecords = filterByScope(leaveRecords, {
+            userScope: _mlScope,
+            state: SCOPE_ALL,
+            branch: SCOPE_ALL,
+            stateOfBranch: window.scopeStateOfBranch,
+          });
+          const _mlOverlaps = findOverlapGroups(_mlZoneRecords);
           const _mlRows = masterLogOverlapOnly
             ? _mlRecords.filter(r => _mlOverlaps.has(r.id))
             : _mlRecords;
+          // "(N)" bermaksud N daripada baris yang anda sedang lihat (selepas
+          // tab negeri/cawangan) yang bertindih — bukan jumlah keseluruhan
+          // dalam zon; pasangan silang-cawangan tetap muncul dalam tooltip
+          // walaupun tidak dikira di sini.
+          const _mlOverlapCount = _mlRecords.reduce((n, r) => n + (_mlOverlaps.has(r.id) ? 1 : 0), 0);
           const _mlStates = visibleStates(_mlScope);
           const _mlBranchList = branchOptions(branches, {
             userScope: _mlScope,
