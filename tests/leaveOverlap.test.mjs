@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import {
   NON_BLOCKING_STATUSES, isBlockingStatus, datesOverlap,
   findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps,
+  findApprovedOverlaps, findOverlapGroups,
 } from '../src/leaveOverlap.js';
 
 // Mirrors the real `leaves` collection: numeric `id` (Date.now()), `ic` as the
@@ -189,4 +190,101 @@ test('describeOverlaps falls back to the raw type code with no resolver', () => 
 test('describeOverlaps returns empty string for no overlaps', () => {
   assert.strictEqual(describeOverlaps([]), '');
   assert.strictEqual(describeOverlaps(undefined), '');
+});
+
+// ── findApprovedOverlaps ──────────────────────────────────────────────
+// Same default query as `find`, but through the approved-only matcher.
+const findAppr = (records, over = {}) => {
+  const q = { ic: '900101015555', startDate: '2026-08-05', endDate: '2026-08-07', ...over };
+  return findApprovedOverlaps(records, q.ic, q.startDate, q.endDate, q.opts);
+};
+
+test('findApprovedOverlaps returns an overlapping approved record', () => {
+  assert.deepStrictEqual(ids(findAppr([REC({ id: 7, status: 'APPROVED' })])), [7]);
+});
+
+test('findApprovedOverlaps ignores overlapping records not yet fully approved', () => {
+  // Two competing PENDING applications must not block each other — HR
+  // approves the right one and rejects the other.
+  const records = [
+    REC({ id: 1, status: 'PENDING' }),
+    REC({ id: 2, status: 'TL APPROVED' }),
+    REC({ id: 3, status: 'HOD APPROVED' }),
+    REC({ id: 4, status: 'HOD RECOMMENDED' }),
+  ];
+  assert.deepStrictEqual(findAppr(records), []);
+});
+
+test('findApprovedOverlaps ignores rejected and cancelled records', () => {
+  const records = [REC({ id: 1, status: 'REJECTED' }), REC({ id: 2, status: 'CANCELLED' })];
+  assert.deepStrictEqual(findAppr(records), []);
+});
+
+test('findApprovedOverlaps returns [] for a NON-overlapping approved record', () => {
+  // Mutation-killer: an implementation that ignored dates would pass the
+  // rest of this section. Default query is 08-05..08-07; this is adjacent.
+  const rec = REC({ id: 7, status: 'APPROVED', startDate: '2026-08-08', endDate: '2026-08-10' });
+  assert.deepStrictEqual(findAppr([rec]), []);
+});
+
+test('findApprovedOverlaps honours excludeId', () => {
+  assert.deepStrictEqual(findAppr([REC({ id: 7, status: 'APPROVED' })], { opts: { excludeId: 7 } }), []);
+});
+
+test('findApprovedOverlaps tolerates lowercase and padded status', () => {
+  assert.deepStrictEqual(ids(findAppr([REC({ id: 7, status: ' approved ' })])), [7]);
+});
+
+test('findApprovedOverlaps never matches another staff member', () => {
+  assert.deepStrictEqual(findAppr([REC({ id: 7, status: 'APPROVED', ic: '880202025555' })]), []);
+});
+
+// ── findOverlapGroups ─────────────────────────────────────────────────
+test('findOverlapGroups maps both members of a pair to each other', () => {
+  const a = REC({ id: 1 }), b = REC({ id: 2 });
+  const m = findOverlapGroups([a, b]);
+  assert.strictEqual(m.size, 2);
+  assert.deepStrictEqual(ids(m.get(1)), [2]);
+  assert.deepStrictEqual(ids(m.get(2)), [1]);
+});
+
+test('findOverlapGroups returns an empty Map when nothing overlaps', () => {
+  const m = findOverlapGroups([REC({ id: 1 }), REC({ id: 2, startDate: '2026-09-01', endDate: '2026-09-02' })]);
+  assert.strictEqual(m.size, 0);
+});
+
+test('findOverlapGroups does NOT group adjacent-but-separate ranges', () => {
+  // The boundary that decides whether legitimate back-to-back leave gets
+  // wrongly flagged for every staff member in Master Logs.
+  const m = findOverlapGroups([REC({ id: 1 }), REC({ id: 2, startDate: '2026-08-08', endDate: '2026-08-10' })]);
+  assert.strictEqual(m.size, 0);
+});
+
+test('findOverlapGroups never groups records belonging to different staff', () => {
+  const m = findOverlapGroups([REC({ id: 1 }), REC({ id: 2, ic: '880202025555' })]);
+  assert.strictEqual(m.size, 0);
+});
+
+test('findOverlapGroups excludes rejected and cancelled records', () => {
+  const m = findOverlapGroups([
+    REC({ id: 1 }), REC({ id: 2, status: 'CANCELLED' }), REC({ id: 3, status: 'REJECTED' }),
+  ]);
+  assert.strictEqual(m.size, 0);
+});
+
+test('findOverlapGroups skips records missing dates', () => {
+  const m = findOverlapGroups([REC({ id: 1 }), REC({ id: 2, endDate: '' })]);
+  assert.strictEqual(m.size, 0);
+});
+
+test('findOverlapGroups links all three of a mutually overlapping trio', () => {
+  const m = findOverlapGroups([REC({ id: 1 }), REC({ id: 2 }), REC({ id: 3 })]);
+  assert.deepStrictEqual(ids(m.get(1)), [2, 3]);
+  assert.deepStrictEqual(ids(m.get(2)), [1, 3]);
+  assert.deepStrictEqual(ids(m.get(3)), [1, 2]);
+});
+
+test('findOverlapGroups survives a missing list and null entries', () => {
+  assert.strictEqual(findOverlapGroups(undefined).size, 0);
+  assert.strictEqual(findOverlapGroups([null, REC({ id: 1 })]).size, 0);
 });

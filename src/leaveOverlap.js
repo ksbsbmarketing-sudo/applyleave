@@ -67,3 +67,56 @@ export function describeOverlaps(records, labelOf) {
     return `• ${label(r.type)} — ${period} (${r.status})`;
   }).join('\n');
 }
+
+// Rekod yang SUDAH DILULUSKAN dan bertindih. Sekatan kelulusan guna ini —
+// hanya APPROVED yang menghalang, bukan sekadar rekod hidup: dua permohonan
+// yang sama-sama MENUNGGU tidak menghalang satu sama lain, kerana HR yang
+// memilih mana satu untuk diluluskan dan mana satu untuk ditolak.
+export function findApprovedOverlaps(records, ic, startDate, endDate, opts = {}) {
+  return findOverlappingLeaves(records, ic, startDate, endDate, opts)
+    .filter(r => norm(r.status).toUpperCase() === 'APPROVED');
+}
+
+// Semua pertindihan dalam satu koleksi, dikumpulkan sekali gus.
+// Map: id rekod → senarai rekod LAIN yang bertindih dengannya.
+//
+// Wujud untuk PRESTASI, bukan kemudahan. Memanggil overlapsOtherLeaves bagi
+// setiap baris Master Logs mengimbas seluruh koleksi bagi SETIAP baris —
+// O(n²) pada SETIAP render, dan render() berjalan pada setiap snapshot
+// Firestore. Di sini rekod dikumpul ikut `ic` dalam satu laluan, kemudian
+// dibandingkan berpasangan dalam setiap staff sahaja (seorang staff ada
+// sedikit rekod), jadi kosnya hampir lelurus. Ini pengajaran yang sama yang
+// sudah dicatat pada kaunter tab Master Logs dalam main.js.
+export function findOverlapGroups(records) {
+  // Laluan 1: kumpul rekod hidup yang bertarikh sah, ikut ic.
+  const byIc = new Map();
+  for (const r of records || []) {
+    if (!r) continue;
+    const ic = norm(r.ic);
+    if (!ic) continue;
+    if (!isBlockingStatus(r.status)) continue;
+    // Rekod tanpa tarikh dilangkau, sama seperti findOverlappingLeaves —
+    // rekod lama yang rosak tidak boleh menandakan orang secara palsu.
+    if (!norm(r.startDate) || !norm(r.endDate)) continue;
+    if (!byIc.has(ic)) byIc.set(ic, []);
+    byIc.get(ic).push(r);
+  }
+
+  // Laluan 2: berpasangan dalam setiap staff sahaja.
+  const out = new Map();
+  for (const list of byIc.values()) {
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i];
+        const b = list[j];
+        if (!datesOverlap(norm(a.startDate), norm(a.endDate),
+                          norm(b.startDate), norm(b.endDate))) continue;
+        if (!out.has(a.id)) out.set(a.id, []);
+        if (!out.has(b.id)) out.set(b.id, []);
+        out.get(a.id).push(b);
+        out.get(b.id).push(a);
+      }
+    }
+  }
+  return out;
+}
