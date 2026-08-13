@@ -7,7 +7,8 @@ import { formatPersonName } from './nameFormat.js';
 import { LEAVE_CATEGORIES, LEAVE_TYPE_NAMES, leaveTypeName, leaveTypeName as leaveTypeLabel,
          leaveTypeShort, proofRequirement, hexToRgbTriple, PROOF_REQUIRED_TYPES } from './leaveTypes.js';
 import { ALL as SCOPE_ALL, NO_BRANCH, visibleStates, branchOptions, filterByScope } from './masterLogScope.js';
-import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps } from './leaveOverlap.js';
+import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps,
+         findApprovedOverlaps, findOverlapGroups } from './leaveOverlap.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
@@ -2476,6 +2477,33 @@ window.finalizeLeave = async function(id) {
             alert('Anda tidak mempunyai kebenaran untuk meluluskan permohonan cawangan/staf ini.');
             return;
         }
+
+        // ── Halang kelulusan yang bertindih dengan cuti yang SUDAH diluluskan ──
+        // DI ATAS SEKALI, sebelum semua cabang peringkat. Cabang-cabang itu
+        // menghantar WhatsApp SEBELUM tulisan (2503/2512/2598 vs updateDoc di
+        // 2617), jadi sekatan yang diletak kemudian akan memberitahu pemohon
+        // cutinya diluluskan, kemudian tidak meluluskannya.
+        //
+        // Kerana `newStatus` belum wujud di sini, sekatan ini meliputi SEMUA
+        // peringkat (TL, HOD, HR) — itu memang niatnya: menyokong rekod yang
+        // bertindih dengan cuti yang sudah diluluskan tetap salah, cuma salah
+        // lebih awal.
+        //
+        // Guna leaveTypeLabel, BUKAN leaveTypeName — `const leaveTypeName` di
+        // bawah (2490) berada dalam blok yang SAMA, jadi merujuknya di sini
+        // melontar ReferenceError (temporal dead zone). Build tidak menangkapnya.
+        const _apprDup = findApprovedOverlaps(
+            leaveRecords, record.ic, record.startDate, record.endDate, { excludeId: record.id }
+        );
+        if (_apprDup.length > 0) {
+            alert('⛔ TIDAK BOLEH DILULUSKAN — BERTINDIH\n\n' +
+                  'Staf ini sudah ada cuti DILULUSKAN untuk tarikh yang sama:\n\n' +
+                  describeOverlaps(_apprDup, leaveTypeLabel) + '\n\n' +
+                  'Meluluskan permohonan ini akan menolak baki dua kali.\n' +
+                  'Sila batalkan rekod yang bertindih itu terlebih dahulu.');
+            return;
+        }
+
         const applicant = staffList.find(s => s.ic === record.ic);
         if (applicant && applicant.category === 'Doctor') {
             const hasLocum2 = showLocum2Set.has(record.id) || record.locum2Name;
