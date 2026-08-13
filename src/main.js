@@ -2510,7 +2510,8 @@ window.finalizeLeave = async function(id) {
                   'Staf ini sudah ada cuti DILULUSKAN untuk tarikh yang sama:\n\n' +
                   describeOverlaps(_apprDup, leaveTypeLabel) + '\n\n' +
                   'Meluluskan permohonan ini akan menolak baki dua kali.\n' +
-                  'Sila batalkan rekod yang bertindih itu terlebih dahulu.');
+                  'Sila batalkan rekod yang bertindih itu terlebih dahulu.\n\n' +
+                  'Jika anda bukan HR/Admin: tolak permohonan ini, atau hubungi HR untuk membatalkan rekod bertindih.');
             return;
         }
 
