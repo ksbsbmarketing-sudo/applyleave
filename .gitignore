@@ -22,6 +22,9 @@ public/data/
 # Firebase CLI deploy cache
 .firebase/
 
+# Superpowers subagent-driven-development scratch (ledgers, briefs, review packages)
+.superpowers/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
