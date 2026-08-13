@@ -2396,6 +2396,11 @@ function selfHealPendingLeaveDays() {
 
 // Staff edits their OWN leave's dates/reason. Resets to PENDING (re-approval),
 // after a before→after confirmation of exactly what changed.
+// NOTA: fungsi ini kini TIADA titik panggilan (call site) di seluruh repo —
+// tiada butang menggunakannya. Ia menulis startDate/endDate melalui updateDoc
+// TANPA semakan pertindihan (overlap guard). Jika ia disambungkan semula pada
+// masa depan (cth. butang baharu), WAJIB tambah semakan findOverlappingLeaves
+// dahulu — sama seperti modal edit (#edit-leave-form) sudah buat.
 window.staffEditOwnLeave = async function(id) {
   const rec = leaveRecords.find(r => r.id === id);
   if (!rec) return;
