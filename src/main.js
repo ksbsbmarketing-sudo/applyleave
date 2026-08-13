@@ -7274,6 +7274,19 @@ function renderView() {
                       })()}
                   </div>
 
+                  ${(() => {
+                      // Lencana ini yang mendedahkan duplikat yang SUDAH ada dalam
+                      // barisan menunggu — ia muncul pada KEDUA-DUA kad pasangan
+                      // duplikat, jadi pelulus nampak dua kad bertanda dan tolak satu.
+                      const _ov = overlapsOtherLeaves(leaveRecords, req);
+                      if (_ov.length === 0) return '';
+                      return `
+                  <div style="padding: 0.5rem 0.75rem; border-radius: 8px; margin-bottom: 1rem; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #dc2626; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
+                      ⚠️ Bertindih — staf ini ada permohonan lain untuk tarikh yang sama
+                      <div style="margin-top: 0.35rem; font-weight: 600; text-transform: none; letter-spacing: 0; white-space: pre-line;">${describeOverlaps(_ov, leaveTypeName)}</div>
+                  </div>`;
+                  })()}
+
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
                       <div class="neu-inset" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem;">
                           <span style="font-size: 1.5rem; font-weight: 700;">${req.days}</span>
