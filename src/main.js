@@ -490,6 +490,11 @@ let managementGroup = 'approvals'; // 'approvals' | 'people' | 'reports' | 'conf
 let hrReportTab = 'all'; // 'all' | 'approved' | 'balance' | 'jenis'
 let masterLogState = SCOPE_ALL;   // SCOPE_ALL | 'Pahang' | 'Terengganu'
 let masterLogBranch = SCOPE_ALL;  // SCOPE_ALL | NO_BRANCH | nama cawangan
+// Penapis "⚠️ Bertindih sahaja" pada Master Logs. Sengaja TIDAK di-reset oleh
+// setMasterLogState/setMasterLogBranch — ia penyempitan pandangan di atas tab,
+// bukan sebahagian daripada tab itu. Jadual kosong dilindungi oleh mesej
+// khusus di bawah, bukan dengan mematikan penapis secara senyap.
+let masterLogOverlapOnly = false;
 let approvedReportBranch = 'SEMUA';
 let approvedReportType = 'SEMUA';
 let approvedReportYear = new Date().getFullYear().toString();
@@ -1612,6 +1617,11 @@ window.setMasterLogState = function(s) {
 
 window.setMasterLogBranch = function(b) {
   masterLogBranch = b;
+  render();
+};
+
+window.toggleMasterLogOverlap = function() {
+  masterLogOverlapOnly = !masterLogOverlapOnly;
   render();
 };
 
@@ -7736,6 +7746,17 @@ function renderView() {
             branch: masterLogBranch,
             stateOfBranch: window.scopeStateOfBranch,
           });
+          // Pertindihan dikira SEKALI setiap render, daripada _mlRecords yang
+          // sudah ber-skop zon + tab negeri/cawangan. JANGAN guna leaveRecords
+          // mentah di sini: kiraan HR Pahang tidak boleh termasuk rekod
+          // Terengganu. Berbeza daripada kaunter tab cawangan di bawah yang
+          // sengaja abaikan tab semasa — butang ini penapis ke atas pandangan
+          // semasa, jadi "(N)" mesti bermaksud N baris yang anda sedang lihat.
+          const _mlOverlaps = findOverlapGroups(_mlRecords);
+          const _mlOverlapCount = _mlOverlaps.size;
+          const _mlRows = masterLogOverlapOnly
+            ? _mlRecords.filter(r => _mlOverlaps.has(r.id))
+            : _mlRecords;
           const _mlStates = visibleStates(_mlScope);
           const _mlBranchList = branchOptions(branches, {
             userScope: _mlScope,
@@ -7815,6 +7836,7 @@ function renderView() {
             <button class="neu-tab ${masterLogBranch === SCOPE_ALL ? 'active' : ''}" onclick="window.setMasterLogBranch('ALL')" style="border-radius:8px;white-space:nowrap;">Semua (${_mlCount(SCOPE_ALL)})</button>
             ${_mlBranchList.map(b => `<button class="neu-tab ${masterLogBranch === b ? 'active' : ''}" onclick="window.setMasterLogBranch(decodeURIComponent('${_mlArg(b)}'))" style="border-radius:8px;white-space:nowrap;">${b} (${_mlCount(b)})</button>`).join('')}
             ${_mlOrphans > 0 ? `<button class="neu-tab ${masterLogBranch === NO_BRANCH ? 'active' : ''}" onclick="window.setMasterLogBranch('__NONE__')" style="border-radius:8px;white-space:nowrap;color:#f59e0b;" title="Rekod dengan cawangan yang tiada dalam senarai cawangan — perlu dibetulkan">Lain-lain (${_mlOrphans})</button>` : ''}
+            ${(_mlOverlapCount > 0 || masterLogOverlapOnly) ? `<button class="neu-tab ${masterLogOverlapOnly ? 'active' : ''}" onclick="window.toggleMasterLogOverlap()" style="border-radius:8px;white-space:nowrap;color:#dc2626;" title="Tunjuk hanya rekod yang bertindih dengan cuti lain staf yang sama">⚠️ Bertindih (${_mlOverlapCount})</button>` : ''}
           </div>
 
           <section class="glass-card fade-in" style="padding: 0; overflow: hidden;">
@@ -7831,8 +7853,8 @@ function renderView() {
                           </tr>
                       </thead>
                       <tbody>
-                          ${_mlRecords.map((r, index) => `
-                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.2s;">
+                          ${_mlRows.map((r, index) => `
+                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.2s;${_mlOverlaps.has(r.id) ? ' border-left: 3px solid #dc2626; background: rgba(239,68,68,0.04);' : ''}">
                               <td style="padding: 1.5rem 1rem;">
                                   <div style="font-weight: 700; font-size: 0.8rem;">${r.startDate}</div>
                                   <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem;">${r.startDate === r.endDate ? '' : `to ${r.endDate}`}</div>
@@ -7840,6 +7862,7 @@ function renderView() {
                               <td style="padding: 1.5rem 1rem;">
                                   <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; margin-bottom: 0.25rem;">${r.name}</div>
                                   <div style="font-size: 0.65rem; color: var(--primary); text-transform: uppercase; font-weight: 600;">${r.branch}</div>
+                                  ${_mlOverlaps.has(r.id) ? `<div title="Bertindih dengan:&#10;${describeOverlaps(_mlOverlaps.get(r.id), leaveTypeName).replace(/"/g, '&quot;')}" style="display:inline-block;margin-top:0.35rem;font-size:0.58rem;font-weight:800;color:#dc2626;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px;padding:0.15rem 0.4rem;letter-spacing:0.3px;cursor:help;">⚠️ BERTINDIH</div>` : ''}
                               </td>
                               <td style="padding: 1.5rem 1rem; font-weight: 700; font-size: 1rem;">
                                   ${r.days}d <span style="font-size: 0.6rem; background: rgba(59,130,246,0.1); color: ${r.typeColor}; padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid var(--border); vertical-align: top; margin-left: 4px;">${leaveTypeShort(r.type)}</span>
@@ -7872,7 +7895,7 @@ function renderView() {
                           `).join('')}
                       </tbody>
                   </table>
-                  ${_mlRecords.length === 0 ? `<div style="padding:2.5rem 1rem;text-align:center;font-size:0.8rem;color:var(--text-muted);">Tiada rekod untuk pilihan ini.</div>` : ''}
+                  ${_mlRows.length === 0 ? `<div style="padding:2.5rem 1rem;text-align:center;font-size:0.8rem;color:var(--text-muted);">${masterLogOverlapOnly ? 'Tiada rekod bertindih untuk pilihan ini.' : 'Tiada rekod untuk pilihan ini.'}</div>` : ''}
               </div>
           </section>
         `; })() : ''}
