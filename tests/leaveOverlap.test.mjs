@@ -137,6 +137,13 @@ test('an incomplete query returns empty rather than matching everything', () => 
   assert.deepStrictEqual(findOverlappingLeaves(records, '900101015555', '2026-08-05', ''), []);
 });
 
+test('a non-overlapping record of the same staff does not block', () => {
+  // Guards the filter at the layer the app actually calls. Without this, a
+  // findOverlappingLeaves that ignored dates entirely would pass the whole
+  // suite — and would block every application a staff member ever made.
+  assert.deepStrictEqual(find([REC({ id: 7, startDate: '2026-08-08', endDate: '2026-08-10' })]), []);
+});
+
 // ── overlapsOtherLeaves ───────────────────────────────────────────────
 test('overlapsOtherLeaves finds the twin of a duplicate pair', () => {
   const a = REC({ id: 1 });
@@ -158,6 +165,12 @@ test('a cancelled record is not flagged as overlapping', () => {
 
 test('overlapsOtherLeaves survives a missing record', () => {
   assert.deepStrictEqual(overlapsOtherLeaves([REC({ id: 1 })], null), []);
+});
+
+test('overlapsOtherLeaves ignores a non-overlapping record', () => {
+  const a = REC({ id: 1 });
+  const b = REC({ id: 2, startDate: '2026-09-01', endDate: '2026-09-02' });
+  assert.deepStrictEqual(overlapsOtherLeaves([a, b], a), []);
 });
 
 // ── describeOverlaps ──────────────────────────────────────────────────
