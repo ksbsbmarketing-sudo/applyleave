@@ -4,9 +4,10 @@ import { recordBalances, computeElOverflow, computeCMEEntitlement, FORMULA_B_TYP
 import { computeYearEndRollover, buildStaffRolloverPatch, CF_CAP } from './yearEnd.js';
 import { deriveLoginBranches } from './loginBranches.js';
 import { formatPersonName } from './nameFormat.js';
-import { LEAVE_CATEGORIES, LEAVE_TYPE_NAMES, leaveTypeName, leaveTypeShort,
-         proofRequirement, hexToRgbTriple, PROOF_REQUIRED_TYPES } from './leaveTypes.js';
+import { LEAVE_CATEGORIES, LEAVE_TYPE_NAMES, leaveTypeName, leaveTypeName as leaveTypeLabel,
+         leaveTypeShort, proofRequirement, hexToRgbTriple, PROOF_REQUIRED_TYPES } from './leaveTypes.js';
 import { ALL as SCOPE_ALL, NO_BRANCH, visibleStates, branchOptions, filterByScope } from './masterLogScope.js';
+import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps } from './leaveOverlap.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
@@ -4928,6 +4929,21 @@ function renderDashboard() {
       let diffDays = window.computeLeaveDays(leaveStartDate, leaveEndDate, user, selectedLeaveType);
       if (diffDays <= 0) {
         alert('Tarikh yang dipilih tiada hari bekerja untuk staf pentadbiran. Sila pilih tarikh yang merangkumi hari bekerja (Isnin–Jumaat).');
+        return;
+      }
+      // ── Halang permohonan bertindih ──
+      // Diletakkan SEBELUM dialog baki AL/EL, semakan pelulus dan muat naik
+      // Cloudinary: pemohon tidak perlu klik tiga dialog sebelum ditolak, dan
+      // tiada fail dimuat naik untuk permohonan yang takkan wujud.
+      // Guna leaveTypeLabel (fungsi), BUKAN leaveTypeName — yang itu dilindungi
+      // oleh const tempatan di atas yang memegang nama jenis cuti semasa.
+      const _overlaps = findOverlappingLeaves(leaveRecords, user.ic, startDate, endDate);
+      if (_overlaps.length > 0) {
+        alert('🔴 PERMOHONAN BERTINDIH\n\n' +
+              'Anda sudah ada permohonan cuti untuk tarikh ini:\n\n' +
+              describeOverlaps(_overlaps, leaveTypeLabel) + '\n\n' +
+              'Permohonan baharu tidak boleh dihantar. Sila batalkan permohonan asal ' +
+              'terlebih dahulu jika anda perlu mengubah tarikh.');
         return;
       }
       if (applyHalfDay) diffDays -= 0.5;
