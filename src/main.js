@@ -10,6 +10,7 @@ import { ALL as SCOPE_ALL, NO_BRANCH, visibleStates, branchOptions, filterByScop
 import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps,
          findApprovedOverlaps, findOverlapGroups } from './leaveOverlap.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
+import { canSeeAuditLogs, canSeeRegistrations } from './listenerScope.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -3544,6 +3545,33 @@ let branches = [
   { name: "Klinik Rakyat dan X-Ray Dungun",         state: "Terengganu", daerah: "Dungun",   manager: "Admin" },
 ];
 
+// Pendengar audit_logs dipasang secara MALAS — hanya untuk peranan yang betul-betul
+// ada kebenaran `manage_login_audit`.
+//
+// Selamat dipanggil berulang kali, dan itu memang perlu: window.rbacMatrix bermula
+// dengan nilai lalai dalam kod, sedangkan settings/rbac di Firestore boleh MEMBERI
+// kebenaran yang lalai itu tolak. Kalau kita nilai sekali sahaja semasa init, seorang
+// admin yang dibenarkan oleh Firestore sahaja akan nampak jadual audit kosong selamanya.
+// Sebab itu pendengar RBAC memanggil fungsi ini semula bila snapshotnya tiba.
+let auditLogUnsub = null;
+function ensureAuditLogListener() {
+  if (auditLogUnsub) return;                                    // sudah dipasang
+  if (!user || !canSeeAuditLogs(user.role, window.rbacMatrix)) return;
+  auditLogUnsub = onSnapshot(
+    query(collection(db, "audit_logs"), orderBy("createdAt", "desc"), limit(AUDIT_LOG_LIMIT)),
+    (snapshot) => {
+      systemAuditLogs = snapshot.docs.map(doc => doc.data())
+        .sort((a, b) => auditMillis(b.createdAt) - auditMillis(a.createdAt));
+      render();
+    },
+    (e) => {
+      // Lepaskan pemegang supaya percubaan seterusnya boleh pasang semula.
+      console.warn('Audit log sync failed:', e);
+      auditLogUnsub = null;
+    }
+  );
+}
+
 async function initData() {
   if (initData._done) return;
   initData._done = true;
@@ -3745,14 +3773,13 @@ async function initData() {
   // pagination, jadi 200 terbaru mencukupi.
   //
   // orderBy medan tunggal + limit tidak perlukan indeks komposit.
-  onSnapshot(
-    query(collection(db, "audit_logs"), orderBy("createdAt", "desc"), limit(AUDIT_LOG_LIMIT)),
-    (snapshot) => {
-      systemAuditLogs = snapshot.docs.map(doc => doc.data())
-        .sort((a, b) => auditMillis(b.createdAt) - auditMillis(a.createdAt));
-      render();
-    }
-  );
+  //
+  // Had 200 itu sahaja tidak cukup: ia masih dibayar oleh SETIAP pengguna pada
+  // setiap cold load, walaupun staf biasa langsung tak boleh buka skrin
+  // `login_audit`. 200 bacaan itu adalah kepingan TERBESAR sesuatu page-load
+  // (~475 bacaan), untuk kira-kira 90% pengguna yang tak guna pun datanya.
+  // Sekarang ia dipasang hanya untuk peranan yang benar-benar ada kebenaran.
+  ensureAuditLogListener();
 
   // Real-time Leave Records
   onSnapshot(collection(db, "leaves"), (snapshot) => {
@@ -3765,12 +3792,20 @@ async function initData() {
     render();
   });
 
-  // Real-time Registration Requests
-  onSnapshot(collection(db, "registration_requests"), (snapshot) => {
-    registrationRequests = snapshot.docs.map(d => ({ ...d.data(), docId: d.id }))
-      .sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
-    render();
-  });
+  // Real-time Registration Requests — hanya untuk peranan yang memang ada tab
+  // "Daftar Baharu" (admin / hr / super_admin). Peranan lain tidak pernah membaca
+  // `registrationRequests`, jadi melanggannya cuma membakar kuota.
+  //
+  // Borang pendaftaran awam menyemak pendua terhadap array ini, tetapi borang itu
+  // berjalan SEBELUM log masuk — ketika itu initData() belum pernah dijalankan dan
+  // array memang kosong. Jadi gate ini tidak melemahkan semakan tersebut.
+  if (canSeeRegistrations(user && user.role)) {
+    onSnapshot(collection(db, "registration_requests"), (snapshot) => {
+      registrationRequests = snapshot.docs.map(d => ({ ...d.data(), docId: d.id }))
+        .sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
+      render();
+    });
+  }
 
   // Real-time RBAC Matrix
   // Staff config: categories & role labels
@@ -3873,12 +3908,63 @@ async function initData() {
         window.rbacMatrix = data;
         if (needsMigration) setDoc(doc(db, "settings", "rbac"), data);
         console.log('RBAC matrix updated from Firestore');
+        // Firestore boleh memberi `manage_login_audit` yang lalai dalam kod tolak.
+        // Nilai semula sekarang, jika tidak pengguna itu terpaksa muat semula app
+        // sebelum jadual audit terisi.
+        ensureAuditLogListener();
         render();
     } else {
         console.warn('RBAC matrix not found in Firestore, using defaults');
         setDoc(doc(db, "settings", "rbac"), window.rbacMatrix);
     }
   });
+}
+
+// Pulihkan sesi selepas refresh menggunakan SATU getDoc.
+//
+// Dulu ini dibuat di dalam pendengar `staff` seluruh koleksi: `user` dicari dalam
+// staffList, jadi pemulihan sesi bergantung pada 122 dokumen tiba dahulu. Itu
+// bermakna peranan pengguna belum diketahui semasa initData() memasang pendengar —
+// mustahil hendak menggate ikut peranan. Membaca staff/{ic} terus berharga 1 bacaan
+// dan bukan 122, DAN ia menjadikan `user.role` tersedia sebelum pendengar dipasang.
+//
+// Blok pemulihan dalam pendengar `staff` sengaja dikekalkan sebagai jaring
+// keselamatan; ia menjadi no-op sebaik `user` sudah terisi di sini.
+async function restoreSessionUser() {
+  if (user) return true;
+  const savedIC  = localStorage.getItem('ksb_logged_in_ic');
+  const savedSID = localStorage.getItem('ksb_logged_in_sid');
+  const forget = () => {
+    localStorage.removeItem('ksb_logged_in_ic');
+    localStorage.removeItem('ksb_logged_in_sid');
+  };
+  if (!savedIC || !savedSID) { if (savedIC || savedSID) forget(); return false; }
+  if (!(auth.currentUser && !auth.currentUser.isAnonymous)) return false;
+  // Sesi peranti tunggal: SID tempatan mesti sepadan, sama seperti semakan lama.
+  if (localStorage.getItem('ksb_session_' + savedIC) !== savedSID) { forget(); return false; }
+
+  let snap;
+  try {
+    snap = await getDoc(doc(db, 'staff', savedIC));
+  } catch (e) {
+    // Rangkaian mati atau kuota habis — JANGAN buang sesi. Biar jaring keselamatan
+    // dalam pendengar `staff` mencuba lagi apabila data akhirnya sampai.
+    console.warn('Session restore read failed:', e);
+    return false;
+  }
+  if (!snap.exists() || snap.data().inactive) { forget(); return false; }
+
+  user = { ...snap.data(), docId: snap.id };
+  currentSessionId = savedSID;
+  duplicateSessionDetected = false;
+  sessionKickHandled = false;
+  startSessionListener(savedIC, savedSID);
+  window.initInbox();
+  window.requestNotifPermission();
+  startReminderScheduler();
+  view = window.rbacMatrix[user.role]?.dashboard ? 'dashboard' : 'leave-form';
+  console.log(`[AUTH] Session restored for ${user.name} (${user.ic})`);
+  return true;
 }
 
 // Migration helper removed as data is now live on Firestore.
@@ -3896,7 +3982,13 @@ console.log('[SYSTEM] Version 2.1.0 - Inbox bulk actions + calendar-day leave + 
     if (auth.currentUser && !auth.currentUser.isAnonymous) {
       console.log('[AUTH] Restored real session:', auth.currentUser.uid);
       await loadDirectory();
+      // Mesti SEBELUM initData(): ia yang menetapkan `user.role`, dan initData
+      // menggunakan peranan itu untuk memutuskan pendengar mana patut dipasang.
+      await restoreSessionUser();
       initData();
+      // Sengaja TIADA render() di sini: pendengar `staff` tetap akan panggil render()
+      // bila datanya tiba. Melukis lebih awal hanya akan memaparkan dashboard dengan
+      // senarai kosong buat seketika.
     } else {
       if (!auth.currentUser) {
         await signInAnonymously(auth);
