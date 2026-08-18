@@ -48,6 +48,19 @@ export function computeElOverflow({ entEL, usedPre = 0, usedSys = 0, pelarasan =
   return Math.max(0, total - num(entEL));
 }
 
+// Cuti Kecemasan (EL_EMG) charged to Annual Leave. Unlike EL, EMG carries no bucket
+// of its own by default (ent_EL_EMG = 0), so every approved EMG day lands on AL from
+// day one — clinic policy: a general emergency spends your annual leave. If HR ever
+// grants an EMG entitlement, those days come free first and only the excess reaches AL.
+//
+// EMG is not a Formula B type, so it has no {type}_used_pre / _pelarasan fields —
+// `used` is simply the days from approved records (or 0 in manual mode, matching how
+// getLeaveStats reports usage for every non-Formula-B type).
+// Returns days ≥ 0. Consumed by getLeaveStats('AL') to reduce the AL balance.
+export function computeEmgOverflow({ entEMG = 0, used = 0 } = {}) {
+  return Math.max(0, num(used) - num(entEMG));
+}
+
 // Leave types whose balance follows Formula B:
 //   Baki = Jumlah − Guna Sebelum Sistem − Guna Dalam Sistem − Pelarasan HR
 // backed by the HR-entered fields {type}_used_pre, {type}_used_sys_adj and

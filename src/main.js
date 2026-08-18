@@ -1,6 +1,6 @@
 import './style.css'
 import { countLeaveDays, weekendDaysForState } from './leaveDays.js';
-import { recordBalances, computeElOverflow, computeCMEEntitlement, FORMULA_B_TYPES, usesFormulaB, formulaBBalance } from './leaveBalance.js';
+import { recordBalances, computeElOverflow, computeEmgOverflow, computeCMEEntitlement, FORMULA_B_TYPES, usesFormulaB, formulaBBalance } from './leaveBalance.js';
 import { computeYearEndRollover, buildStaffRolloverPatch, CF_CAP } from './yearEnd.js';
 import { deriveLoginBranches } from './loginBranches.js';
 import { formatPersonName } from './nameFormat.js';
@@ -2100,9 +2100,10 @@ window._recalcLeaveBalance = function(prefix) {
     const sysManual = parseFloat(document.getElementById(prefix + '-sys-adj-input')?.value || 0);
     const sys = autoSystemUsage ? sysAuto : sysManual;
     const pel = parseFloat(document.getElementById(prefix + '-pelarasan-input')?.value || 0);
-    // AL absorbs EL overflow: read the live EL fields from the same modal so the displayed
-    // AL balance stays consistent with the dashboard (getLeaveStats). Only AL is affected.
-    let elOv = 0;
+    // AL absorbs EL overflow AND every EMG day: read the live fields from the same modal
+    // so the displayed AL balance stays consistent with the dashboard (getLeaveStats).
+    // Only AL is affected.
+    let elOv = 0, emgOv = 0;
     if (prefix === 'al') {
         const elEnt = parseFloat(document.getElementById('ent-EL')?.value || 0);
         const elPre = parseFloat(document.getElementById('el-used-pre-input')?.value || 0);
@@ -2115,9 +2116,20 @@ window._recalcLeaveBalance = function(prefix) {
             noteEl.textContent = elOv > 0 ? `− ${elOv.toFixed(1)} hari ditolak dari limpahan Cuti Ehsan` : '';
             noteEl.style.display = elOv > 0 ? 'block' : 'none';
         }
+        // EMG is not a Formula B type, so the modal has no EMG usage inputs — the approved
+        // days are stashed on the ent-EL_EMG field as data-used when the modal renders.
+        const emgInput = document.getElementById('ent-EL_EMG');
+        const emgEnt = parseFloat(emgInput?.value || 0);
+        const emgUsed = parseFloat(emgInput?.dataset.used || 0);
+        emgOv = computeEmgOverflow({ entEMG: emgEnt, used: autoSystemUsage ? emgUsed : 0 });
+        const emgNote = document.getElementById('al-emg-overflow-note');
+        if (emgNote) {
+            emgNote.textContent = emgOv > 0 ? `− ${emgOv.toFixed(1)} hari ditolak dari Cuti Kecemasan` : '';
+            emgNote.style.display = emgOv > 0 ? 'block' : 'none';
+        }
     }
     const balEl = document.getElementById(prefix + '-balance-display');
-    if (balEl) balEl.value = Math.max(0, total - pre - sys - pel - elOv).toFixed(1);
+    if (balEl) balEl.value = Math.max(0, total - pre - sys - pel - elOv - emgOv).toFixed(1);
     // Editing EL fields must refresh the AL balance, since AL absorbs EL overflow.
     if (prefix === 'el') window._recalcLeaveBalance('al');
 };
@@ -2228,9 +2240,10 @@ window.printLeave = function(id) {
       record,
       ent: stats.ent,
       // Potongan bukan-rekod: Guna Sebelum + Pelarasan HR (+ Guna Sistem manual bila mod manual).
-      // elOverflow is 0 for every type except AL, so this is a no-op on other forms;
-      // on AL it shifts the printed baseline down so BAKI CUTI matches the dashboard.
-      alAdj: (stats.usedPre || 0) + (stats.pelarasan || 0) + (stats.elOverflow || 0) + (autoSystemUsage ? 0 : (stats.usedSysAdj || 0)),
+      // elOverflow/emgOverflow are 0 for every type except AL, so this is a no-op on
+      // other forms; on AL they shift the printed baseline down so BAKI CUTI matches
+      // the dashboard (Cuti Ehsan spillover + every Cuti Kecemasan day).
+      alAdj: (stats.usedPre || 0) + (stats.pelarasan || 0) + (stats.elOverflow || 0) + (stats.emgOverflow || 0) + (autoSystemUsage ? 0 : (stats.usedSysAdj || 0)),
       // Mod manual → jangan kira rekod diluluskan (selari dengan getLeaveStats).
       records: autoSystemUsage ? leaveRecords : [],
     });
@@ -4745,15 +4758,21 @@ window.getLeaveStats = function(staff, type, year) {
   }
   const usedSys = autoSystemUsage ? recordsUsed : usedSysAdj;
 
-  // EL overflow: once the 3-day EL bucket is exhausted, the excess EL days are
-  // deducted from Annual Leave (Option B). Only AL absorbs the spillover; the
-  // recursive EL call never re-enters this branch (type === 'EL'), so it terminates.
-  let elOverflow = 0;
+  // Annual Leave absorbs TWO spillovers. Only AL does; the recursive EL / EL_EMG calls
+  // never re-enter this branch (type !== 'AL'), so this terminates.
+  //
+  //  • EL  (Cuti Ehsan)     — once the 3-day bucket is exhausted, the excess hits AL.
+  //  • EMG (Cuti Kecemasan) — no bucket of its own (ent_EL_EMG defaults to 0), so every
+  //                           approved EMG day hits AL from day one. Before this, EMG
+  //                           days were logged but charged to nothing at all.
+  let elOverflow = 0, emgOverflow = 0;
   if (type === 'AL') {
     const el = window.getLeaveStats(staff, 'EL', leaveYear);
     elOverflow = computeElOverflow({
       entEL: el.ent, usedPre: el.usedPre, usedSys: el.used, pelarasan: el.pelarasan
     });
+    const emg = window.getLeaveStats(staff, 'EL_EMG', leaveYear);
+    emgOverflow = computeEmgOverflow({ entEMG: emg.ent, used: emg.used });
   }
 
   return {
@@ -4765,7 +4784,8 @@ window.getLeaveStats = function(staff, type, year) {
     adj: pelarasan,
     ent: ent,
     elOverflow: elOverflow,
-    bal: formulaBBalance({ ent, usedPre, usedSys, pelarasan, overflow: elOverflow })
+    emgOverflow: emgOverflow,
+    bal: formulaBBalance({ ent, usedPre, usedSys, pelarasan, overflow: elOverflow + emgOverflow })
   };
 };
 
@@ -5115,6 +5135,26 @@ function renderDashboard() {
                   elMsg += "\n\n⚠️ Baki AL juga tidak mencukupi (baki AL: " + alBal.toFixed(2) + " hari).";
               }
               alert(elMsg);
+          }
+      }
+      if (selectedLeaveType === 'EL_EMG') {
+          // Cuti Kecemasan carries no bucket by default (ent_EL_EMG = 0), so the whole
+          // application is charged to Annual Leave. If HR granted an EMG entitlement,
+          // that is consumed first and only the excess reaches AL.
+          const emgBal = window.getLeaveStats(user, 'EL_EMG').bal;
+          const fromEMG = Math.min(diffDays, emgBal);
+          const toAL = diffDays - fromEMG;
+          if (toAL > 0) {
+              const alBal = window.getLeaveStats(user, 'AL').bal;
+              leaveBreakdown = "\n*EMG → AL*\n" + (fromEMG > 0 ? "EMG Bucket Used: " + fromEMG.toFixed(1) + " days\n" : "")
+                  + "Annual Leave (AL) Used: " + toAL.toFixed(1) + " days\n(Cuti Kecemasan is deducted from Annual Leave)";
+              let emgMsg = fromEMG > 0
+                  ? "Notis: Baki Cuti Kecemasan anda tinggal " + emgBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan ditolak " + fromEMG.toFixed(1) + " hari dari Cuti Kecemasan dan " + toAL.toFixed(1) + " hari dari Cuti Tahunan (AL)."
+                  : "Notis: Cuti Kecemasan ditolak dari Cuti Tahunan (AL). Permohonan " + diffDays + " hari ini akan menolak " + toAL.toFixed(1) + " hari dari baki AL anda (baki AL sekarang: " + alBal.toFixed(2) + " hari).";
+              if (toAL > alBal) {
+                  emgMsg += "\n\n⚠️ Baki AL tidak mencukupi (baki AL: " + alBal.toFixed(2) + " hari).";
+              }
+              alert(emgMsg);
           }
       }
 
@@ -10540,7 +10580,15 @@ function renderModal() {
     usedSys: autoSystemUsage ? _modalElSys : parseFloat(staff.el_used_sys_adj || 0),
     pelarasan: parseFloat(staff.el_pelarasan || 0)
   });
-  const _modalAlBalance = Math.max(0, _modalTotalAL - _modalAlUsedPre - (autoSystemUsage ? _modalSysUsedAL : _modalAlUsedSysAdj) - _modalAlPelarasan - _modalElOverflow);
+  // EMG into AL (mirror getLeaveStats): Cuti Kecemasan has no bucket of its own, so every
+  // approved EMG day is charged to AL here too.
+  const _modalEmgUsed = _modalSysUsed('EL_EMG');
+  const _modalEmgEnt  = (staff.ent_EL_EMG !== undefined && staff.ent_EL_EMG !== null) ? parseFloat(staff.ent_EL_EMG) : 0;
+  const _modalEmgOverflow = computeEmgOverflow({
+    entEMG: _modalEmgEnt,
+    used: autoSystemUsage ? _modalEmgUsed : 0
+  });
+  const _modalAlBalance = Math.max(0, _modalTotalAL - _modalAlUsedPre - (autoSystemUsage ? _modalSysUsedAL : _modalAlUsedSysAdj) - _modalAlPelarasan - _modalElOverflow - _modalEmgOverflow);
 
   // Helper HTML breakdown untuk MC & EL (tiada CF). prefix: 'mc'|'el'.
   // balanceLabel: what the "Baki … Sebenar" field calls this type. Defaults to the storage
@@ -10730,6 +10778,7 @@ function renderModal() {
                   style="border-left: 3px solid #10b981; font-weight: 800; color: #10b981; opacity: 1; cursor: default;">
                 <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Jumlah − Guna Sebelum − Guna Sistem − Pelarasan HR</span>
                 <span id="al-el-overflow-note" style="font-size: 0.68rem; color: #f59e0b; font-weight: 700; margin-top: 0.35rem; display: ${_modalElOverflow > 0 ? 'block' : 'none'};">${_modalElOverflow > 0 ? `− ${_modalElOverflow.toFixed(1)} hari ditolak dari limpahan Cuti Ehsan` : ''}</span>
+                <span id="al-emg-overflow-note" style="font-size: 0.68rem; color: #ef4444; font-weight: 700; margin-top: 0.35rem; display: ${_modalEmgOverflow > 0 ? 'block' : 'none'};">${_modalEmgOverflow > 0 ? `− ${_modalEmgOverflow.toFixed(1)} hari ditolak dari Cuti Kecemasan` : ''}</span>
               </div>
             </div>
           </div>
@@ -10756,9 +10805,12 @@ function renderModal() {
             </div>
             <div style="display: flex; flex-direction: column;">
                <!-- EMG, bukan EL: medan ini menetapkan ent_EL_EMG (Cuti Kecemasan).
-                    Cuti Ehsan (EL) ada blok Formula B tersendiri di atas. -->
+                    Cuti Ehsan (EL) ada blok Formula B tersendiri di atas.
+                    data-used membawa hari EMG diluluskan tahun ini — EMG bukan jenis
+                    Formula B jadi tiada medan guna; _recalcLeaveBalance('al') membacanya
+                    untuk tolak hari EMG dari baki AL. Biar 0 → setiap hari EMG tolak AL. -->
                <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">EMG &mdash; Cuti Kecemasan</label>
-               <input type="number" id="ent-EL_EMG" class="neu-inset" value="${staff.ent_EL_EMG !== undefined ? staff.ent_EL_EMG : 0}">
+               <input type="number" id="ent-EL_EMG" class="neu-inset" data-used="${_modalEmgUsed}" oninput="window._recalcLeaveBalance('al')" value="${staff.ent_EL_EMG !== undefined ? staff.ent_EL_EMG : 0}">
             </div>
             <div style="display: flex; flex-direction: column;">
                <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">UL &mdash; Tanpa Gaji</label>

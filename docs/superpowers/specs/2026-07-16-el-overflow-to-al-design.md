@@ -137,6 +137,40 @@ arithmetic into a small helper so it can be unit-tested without the browser, mir
 
 ## Out of scope
 
-- EL_EMG overflow.
+- ~~EL_EMG overflow.~~ **Superseded 2026-08-18 — see the amendment below.**
 - Automatic Unpaid Leave cascade when AL is also exhausted by EL overflow.
 - Any change to EL/AL entitlement values or the manual/auto usage toggle.
+
+---
+
+## Amendment 2026-08-18 — EL_EMG (Cuti Kecemasan) also charges AL
+
+**Why:** scoping the spillover to `EL` alone left a hole nobody noticed for a year. In
+practice **every** emergency application staff filed was `EL_EMG`, never `EL` — 24 approved
+EL_EMG records vs **0** EL records. Because `EL_EMG` has `entitlement: 0`, is absent from
+`FORMULA_B_TYPES`, and was excluded here, those days were approved and logged but deducted
+from *nothing at all*. Staff were effectively taking free leave.
+
+**Rule now:** `EL_EMG` is charged to Annual Leave, and unlike `EL` it has **no free bucket
+by default** — `ent_EL_EMG` defaults to 0, so day one already lands on AL:
+
+```
+emgOverflow = max(0, emg_used - ent_EL_EMG)
+bal_AL      = max(0, ent_AL_total - usedPre_AL - usedSys_AL - pelarasan_AL
+                     - elOverflow - emgOverflow)
+```
+
+`ent_EL_EMG` is still honoured when HR sets it (12 staff had a 1–3 day quota on record),
+so HR keeps a per-staff exemption lever. `EL_EMG` is **not** promoted to a Formula B type —
+it has no `_used_pre` / `_used_sys_adj` / `_pelarasan` fields, so `emg_used` is simply the
+approved records for the leave year (and 0 in manual-usage mode, exactly like every other
+non-Formula-B type).
+
+**Retroactive by decision.** The charge is computed from records, so it applies to the whole
+current leave year the moment it ships — no migration, no backfill. 15 days across 13 staff
+were reclaimed from AL balances on rollout.
+
+**Touched:** `computeEmgOverflow` (`src/leaveBalance.js`), the AL branch of `getLeaveStats`,
+the `printLeave` AL baseline, the HR modal's live "Baki AL Sebenar" (`_recalcLeaveBalance`
+plus a `data-used` stash on `ent-EL_EMG`, which now also recalculates AL on input), and an
+apply-time notice on EL_EMG mirroring the EL one.

@@ -140,3 +140,50 @@ test('CME entitlement: null/undefined ent_CME falls back to category rule', () =
 test('CME entitlement: missing category treated as non-doctor', () => {
   assert.strictEqual(computeCMEEntitlement({}), 0);
 });
+
+import { computeEmgOverflow, formulaBBalance } from '../src/leaveBalance.js';
+
+// Cuti Kecemasan (EL_EMG) carries no entitlement of its own by default, so every
+// approved EMG day is charged to Annual Leave from day one.
+test('EMG with no entitlement → every day is charged to AL', () => {
+  assert.strictEqual(computeEmgOverflow({ entEMG: 0, used: 3 }), 3);
+});
+
+test('EMG with no entitlement and no usage → nothing charged', () => {
+  assert.strictEqual(computeEmgOverflow({ entEMG: 0, used: 0 }), 0);
+});
+
+test('EMG entitlement granted by HR is consumed before AL is touched', () => {
+  assert.strictEqual(computeEmgOverflow({ entEMG: 2, used: 1 }), 0);
+  assert.strictEqual(computeEmgOverflow({ entEMG: 2, used: 2 }), 0);
+  assert.strictEqual(computeEmgOverflow({ entEMG: 2, used: 5 }), 3);
+});
+
+test('EMG charge never goes negative', () => {
+  assert.strictEqual(computeEmgOverflow({ entEMG: 5, used: 1 }), 0);
+  assert.strictEqual(computeEmgOverflow({}), 0);
+});
+
+test('EMG: non-numeric / missing inputs are treated as zero', () => {
+  assert.strictEqual(computeEmgOverflow({ entEMG: null, used: 'x' }), 0);
+  assert.strictEqual(computeEmgOverflow({ entEMG: undefined, used: 2 }), 2);
+});
+
+// The AL balance absorbs BOTH spillovers at once: Cuti Ehsan past its 3-day bucket
+// and every Cuti Kecemasan day. This is the arithmetic getLeaveStats('AL') performs.
+test('AL balance absorbs EL overflow and EMG charge together', () => {
+  const elOverflow  = computeElOverflow({ entEL: 3, usedSys: 5 }); // 2 days past the bucket
+  const emgOverflow = computeEmgOverflow({ entEMG: 0, used: 4 });  // all 4 EMG days
+  assert.strictEqual(elOverflow, 2);
+  assert.strictEqual(emgOverflow, 4);
+  // ent 14, 2 AL days already taken → 14 - 2 - (2 + 4) = 6
+  assert.strictEqual(
+    formulaBBalance({ ent: 14, usedSys: 2, overflow: elOverflow + emgOverflow }),
+    6
+  );
+});
+
+test('AL clamps at 0 when the EMG charge exceeds the remaining balance', () => {
+  const emgOverflow = computeEmgOverflow({ entEMG: 0, used: 20 });
+  assert.strictEqual(formulaBBalance({ ent: 14, overflow: emgOverflow }), 0);
+});
