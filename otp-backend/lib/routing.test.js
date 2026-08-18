@@ -30,8 +30,27 @@ test("Admin Staff at Balok → admin_balok", () => {
 });
 
 test("Operation Staff at Balok with leaveAsAdmin → admin_balok (routes to HOD Balok)", () => {
-  const s = { branch: BALOK_HQ, category: "Operation Staff", role: "supervisor", leaveAsAdmin: true };
+  const s = { branch: BALOK_HQ, category: "Operation Staff", role: "staff", leaveAsAdmin: true };
   assert.equal(getStaffGroup(s, branches), "admin_balok");
+});
+
+// A Supervisor sited at Balok routes to the Balok Doctor PIC, and that beats the
+// leaveAsAdmin flag — the flag would otherwise send them to HOD Balok. Added for
+// HASIMAH BINTI MOHAMAD (2026-08-18): she is Operation Staff, role supervisor,
+// leaveAsAdmin true, and her leave must be endorsed by the Balok Doctor PIC.
+test("Supervisor at Balok → supervisor_balok, even with leaveAsAdmin set", () => {
+  const s = { branch: BALOK_HQ, category: "Operation Staff", role: "supervisor", leaveAsAdmin: true };
+  assert.equal(getStaffGroup(s, branches), "supervisor_balok");
+});
+
+test("Supervisor at Balok without leaveAsAdmin → supervisor_balok too", () => {
+  const s = { branch: BALOK_HQ, category: "Operation Staff", role: "supervisor" };
+  assert.equal(getStaffGroup(s, branches), "supervisor_balok");
+});
+
+test("Supervisor outside Balok is untouched by the new group", () => {
+  const s = { branch: "Klinik Syed Badaruddin Kuantan", category: "Operation Staff", role: "supervisor" };
+  assert.equal(getStaffGroup(s, branches), "pahang_lain");
 });
 
 test("leaveAsAdmin does NOT change routing outside Balok", () => {
@@ -131,11 +150,22 @@ test("merged config resolves the same P1 approvers as the defaults do", () => {
 test("hod_balok and supervisor skip P1; others do not", () => {
   assert.equal(shouldSkipP1({ role: "hod_balok" }), true);
   assert.equal(shouldSkipP1({ role: "supervisor" }), true);
+  assert.equal(shouldSkipP1({ role: "supervisor", branch: "Klinik Syed Badaruddin Kuantan" }), true);
   // Peringkat-1 approvers that are NOT exempt.
   assert.equal(shouldSkipP1({ role: "doctor_pic" }), false);
   assert.equal(shouldSkipP1({ role: "team_leader" }), false);
   assert.equal(shouldSkipP1({ role: "nurse" }), false);
   assert.equal(shouldSkipP1(null), false);
+});
+
+// The supervisor exemption is deliberately NOT applied at Balok: a Balok
+// Supervisor is endorsed by the Balok Doctor PIC before HR (2026-08-18).
+test("Supervisor at Balok does NOT skip P1", () => {
+  assert.equal(shouldSkipP1({ role: "supervisor", branch: BALOK_HQ }), false);
+});
+
+test("hod_balok at Balok still skips P1", () => {
+  assert.equal(shouldSkipP1({ role: "hod_balok", branch: BALOK_HQ }), true);
 });
 
 // ── getRoutingP1Approvers ────────────────────────────────────────────────────
@@ -146,7 +176,20 @@ const staffList = [
   { ic: "PIC1", role: "doctor_pic", branch: "Klinik Syed Badaruddin Kuantan" },
   { ic: "SUPK", role: "supervisor", branch: "Klinik Syed Badaruddin Kuantan" },
   { ic: "PICM", role: "doctor_pic", branch: "Klinik Syed Badaruddin MCKIP", category: "Doctor" },
+  { ic: "PICB", role: "doctor_pic", branch: BALOK_HQ, category: "Doctor" },
 ];
+
+test("Supervisor at Balok → Doctor PIC at Balok, not HOD Balok", () => {
+  const applicant = { ic: "A6", branch: BALOK_HQ, category: "Operation Staff", role: "supervisor", leaveAsAdmin: true };
+  const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
+  assert.deepEqual(out.map((s) => s.ic), ["PICB"]);
+});
+
+test("supervisor_balok still needs HR at Peringkat 2", () => {
+  assert.equal(ROUTING_DEFAULTS.supervisor_balok.needs_p2, true);
+  assert.equal(ROUTING_DEFAULTS.supervisor_balok.p1_doctor_pic, true);
+  assert.equal(ROUTING_DEFAULTS.supervisor_balok.p1_hod_balok, false);
+});
 
 test("operation_balok applicant → Balok HQ supervisors (active only)", () => {
   const applicant = { ic: "A1", branch: BALOK_HQ, category: "Operation Staff", role: "nurse" };
@@ -209,16 +252,20 @@ test("hod_balok applicant → no P1 approvers (skips P1)", () => {
   assert.deepEqual(out, []);
 });
 
-test("supervisor applicant → no P1 approvers (straight to HR)", () => {
-  const applicant = { ic: "SUP1", branch: BALOK_HQ, category: "Operation Staff", role: "supervisor" };
+// The straight-to-HR exemption survives for supervisors away from Balok. It was
+// written against a Balok supervisor before Balok got its own group (2026-08-18).
+test("supervisor applicant outside Balok → no P1 approvers (straight to HR)", () => {
+  const applicant = { ic: "SUPK", branch: "Klinik Syed Badaruddin Kuantan", category: "Operation Staff", role: "supervisor" };
   const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
   assert.deepEqual(out, []);
 });
 
-test("supervisor with leaveAsAdmin still skips P1 (does not go to HOD Balok)", () => {
+// leaveAsAdmin must never hand a Balok supervisor to HOD Balok. That guarantee
+// still holds — the destination is now the Balok Doctor PIC rather than nobody.
+test("supervisor with leaveAsAdmin does not go to HOD Balok", () => {
   const applicant = { ic: "SUP1", branch: BALOK_HQ, category: "Operation Staff", role: "supervisor", leaveAsAdmin: true };
   const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
-  assert.deepEqual(out, []);
+  assert.deepEqual(out.map((s) => s.ic), ["PICB"]);
 });
 
 test("team_leader applicant still gets P1 approvers (not exempt)", () => {

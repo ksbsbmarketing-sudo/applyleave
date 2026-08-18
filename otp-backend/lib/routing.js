@@ -12,6 +12,7 @@ export const ROUTING_DEFAULTS = {
   terengganu:       { needs_tl: false, p1_doctor_pic: true,  p1_supervisor: false, p1_hod_balok: false, needs_p2: true  },
   pahang_lain:      { needs_tl: false, p1_doctor_pic: true,  p1_supervisor: false, p1_hod_balok: false, needs_p2: true  },
   admin_balok:      { needs_tl: false, p1_doctor_pic: false, p1_supervisor: false, p1_hod_balok: true,  needs_p2: true  },
+  supervisor_balok: { needs_tl: false, p1_doctor_pic: true,  p1_supervisor: false, p1_hod_balok: false, needs_p2: true  },
   doctor_pahang:    { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
   operation_balok:  { needs_tl: true,  p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
   xray_sono_balok:  { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
@@ -60,6 +61,9 @@ export function getStaffGroup(s, branches) {
   if (s.role === "juru_audio" && isBalok) return "juru_audio_balok";
   if (s.role === "pemandu" && isBalok) return "pemandu_balok";
 
+  // A Supervisor sited at Balok is endorsed by the Balok Doctor PIC (2026-08-18).
+  // Checked BEFORE leaveAsAdmin: the flag would otherwise route them to HOD Balok.
+  if (isBalok && s.role === "supervisor") return "supervisor_balok";
   // Per-staff override: Operation Staff flagged leaveAsAdmin follow the Admin Staff
   // leave route (→ HOD Balok), while staying Operation Staff everywhere else.
   if (isBalok && s.leaveAsAdmin) return "admin_balok";
@@ -85,7 +89,9 @@ export function getStaffGroup(s, branches) {
 export function shouldSkipP1(applicant) {
   if (!applicant) return false;
   if (applicant.role === "hod_balok") return true;
-  if (applicant.role === "supervisor") return true;
+  // Supervisors outside Balok still go straight to HR. A Balok Supervisor does
+  // NOT: their leave is endorsed by the Balok Doctor PIC first (2026-08-18).
+  if (applicant.role === "supervisor" && !(applicant.branch || "").includes("Balok")) return true;
   return false;
 }
 

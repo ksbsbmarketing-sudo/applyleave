@@ -1791,6 +1791,8 @@ const ROUTING_DEFAULTS = {
   terengganu:       { needs_tl: false, p1_doctor_pic: true,  p1_supervisor: false, p1_hod_balok: false, needs_p2: true  },
   pahang_lain:      { needs_tl: false, p1_doctor_pic: true,  p1_supervisor: false, p1_hod_balok: false, needs_p2: true  },
   admin_balok:      { needs_tl: false, p1_doctor_pic: false, p1_supervisor: false, p1_hod_balok: true,  needs_p2: true  },
+  // Supervisor Balok — disokong Doctor PIC Balok sebelum HR (2026-08-18).
+  supervisor_balok: { needs_tl: false, p1_doctor_pic: true,  p1_supervisor: false, p1_hod_balok: false, needs_p2: true  },
   doctor_pahang:    { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
   operation_balok:  { needs_tl: true,  p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
   xray_sono_balok:  { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
@@ -1815,6 +1817,9 @@ window.getStaffGroup = function(s) {
   if (s.role === 'juru_audio'                        && isBalok) return 'juru_audio_balok';
   if (s.role === 'pemandu'                           && isBalok) return 'pemandu_balok';
 
+  // Supervisor yang bertugas di Balok — sokongan Doctor PIC Balok (2026-08-18).
+  // Disemak SEBELUM leaveAsAdmin: kalau tidak, flag itu akan tarik dia ke HOD Balok.
+  if (isBalok && s.role === 'supervisor') return 'supervisor_balok';
   // Pengecualian per-staff: Operation Staff bertanda leaveAsAdmin ikut laluan cuti
   // Admin Staff (→ HOD Balok), tetapi kekal Operation Staff di tempat lain (laporan).
   if (isBalok && s.leaveAsAdmin) return 'admin_balok';
@@ -1853,7 +1858,9 @@ window.staffNeedsP2 = function(s) {
 window.shouldSkipP1 = function(applicant, leaveType) {
   if (!applicant) return false;
   if (applicant.role === 'hod_balok') return true;                                  // (a)
-  if (applicant.role === 'supervisor') return true;                                 // (b)
+  // (b) Supervisor DI LUAR Balok sahaja. Supervisor Balok kekal perlu sokongan
+  //     Doctor PIC Balok pada Peringkat 1 (2026-08-18).
+  if (applicant.role === 'supervisor' && !(applicant.branch || '').includes('Balok')) return true;
   return false;
 };
 
@@ -6772,6 +6779,12 @@ function renderView() {
                         flowColor = '#059669';
                         flowIcon = 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z';
                     }
+                } else if (isBalokStaff && user.role === 'supervisor') {
+                    // Supervisor Balok — Doctor PIC Balok, bukan HOD Balok (2026-08-18).
+                    step1Who = 'Doctor PIC — Klinik Syed Badaruddin Balok (HQ)';
+                    step1Note = 'Supervisor Balok mendapat sokongan Doctor PIC Balok pada peringkat pertama.';
+                    flowColor = '#8b5cf6';
+                    flowIcon = 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z';
                 } else if (user.category === 'Admin Staff' || user.leaveAsAdmin === true) {
                     const _isBalokHQ = user.branch === 'Klinik Syed Badaruddin Balok (HQ)';
                     step1Who = _isBalokHQ ? 'HOD Balok — Klinik Syed Badaruddin Balok (HQ)' : `Doctor PIC — ${user.branch || 'Klinik Anda'}`;
@@ -9218,6 +9231,7 @@ function renderView() {
             { key:'terengganu',       label:'Semua Kakitangan',  sub:'Terengganu',           color:'#0d9488', bg:'rgba(13,148,136,0.06)'  },
             { key:'pahang_lain',      label:'Semua Kakitangan',  sub:'Pahang (Selain Balok)', color:'#3b82f6', bg:'rgba(59,130,246,0.06)'  },
             { key:'admin_balok',      label:'Kakitangan Admin',  sub:'Balok (HQ)',            color:'#0ea5e9', bg:'rgba(14,165,233,0.06)'  },
+            { key:'supervisor_balok', label:'Supervisor',        sub:'Balok (HQ)',            color:'#8b5cf6', bg:'rgba(139,92,246,0.06)'  },
             { key:'doctor_pahang',    label:'Doktor',            sub:'Pahang (Semua Cawangan)', color:'#d97706', bg:'rgba(217,119,6,0.06)'  },
             { key:'operation_balok',  label:'Kakitangan Operasi',sub:'Balok (HQ)',            color:'#10b981', bg:'rgba(16,185,129,0.06)'  },
             { key:'xray_sono_balok',  label:'Juru X-Ray / Sono', sub:'Balok (HQ)',            color:'#ec4899', bg:'rgba(236,72,153,0.06)'  },
