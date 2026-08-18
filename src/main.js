@@ -403,7 +403,7 @@ window.testWANotification = async function() {
   const phone = document.getElementById('wa-test-phone')?.value;
   if (!phone) return alert('Sila masukkan nombor telefon untuk ujian.');
   if (!WHATSAPP_TOKEN) return alert('Sila simpan token Fonnte dahulu.');
-  await window.sendWhatsApp(phone, `✅ *Ujian Notifikasi KSB Leave Apply*\n\nSistem notifikasi WhatsApp berfungsi dengan baik.\n\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`);
+  await window.sendWhatsApp(phone, `✅ *Ujian Notifikasi KSB Leave Apply*\n\nSistem notifikasi WhatsApp berfungsi dengan baik.\n\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`);
   alert('Mesej ujian telah dihantar ke ' + phone);
 };
 
@@ -2467,7 +2467,7 @@ window.staffEditOwnLeave = async function(id) {
     // Re-notify approvers that this needs (re-)action.
     const applicant = staffList.find(s => s.ic === rec.ic) || user;
     const approvers = window.getRoutingP1Approvers(applicant, rec.type).filter(s => s.phone);
-    const info = `\n\n👤 Pemohon: *${applicant.name}*\n📅 Tarikh: ${newStart} → ${newEnd}\n⏱ Tempoh: ${days} hari\n💬 Sebab: ${newReason}\n\n🔗 https://apply-leave-89ebb.web.app`;
+    const info = `\n\n👤 Pemohon: *${applicant.name}*\n📅 Tarikh: ${newStart} → ${newEnd}\n⏱ Tempoh: ${days} hari\n💬 Sebab: ${newReason}\n\n🔗 https://cuti-staff.ksbsb.com.my`;
     approvers.forEach(a => window.sendWhatsApp(a.phone, `🔁 *PERMOHONAN CUTI DIKEMASKINI — Perlu Sokongan Semula*${info}`));
     window.notifyApproversInbox(window.getRoutingP1Approvers(applicant, rec.type),
       '🔁 Cuti Dikemaskini — Perlu Sokongan Semula',
@@ -2552,7 +2552,7 @@ window.finalizeLeave = async function(id) {
             const supervisors = staffList.filter(s =>
                 s.role === 'supervisor' && (s.branch || '').includes('Balok') && s.phone && !s.inactive
             );
-            const supMsg = `📋 *SOKONGAN TEAM LEADER — PERLU NILAI SUPERVISOR (Peringkat 1)*\n\nPermohonan cuti telah disokong oleh *${user.name} (TEAM LEADER)* dan menunggu penilaian anda.\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\n🔗 *Log masuk untuk menilai:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+            const supMsg = `📋 *SOKONGAN TEAM LEADER — PERLU NILAI SUPERVISOR (Peringkat 1)*\n\nPermohonan cuti telah disokong oleh *${user.name} (TEAM LEADER)* dan menunggu penilaian anda.\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\n🔗 *Log masuk untuk menilai:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
             supervisors.forEach(sup => window.sendWhatsApp(sup.phone, supMsg));
             // Inbox kepada Supervisor Balok (selari dengan WhatsApp)
             window.notifyApproversInbox(
@@ -2561,7 +2561,7 @@ window.finalizeLeave = async function(id) {
                 `${record.name} — ${leaveTypeName} (${record.startDate} → ${record.endDate}) telah disokong Team Leader; memerlukan penilaian anda.`,
                 id.toString(), record.ic);
             if (applicant && applicant.phone) {
-                const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *disokong oleh Team Leader*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini menunggu *penilaian Supervisor*. Anda akan dimaklumkan selepas kelulusan akhir.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+                const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *disokong oleh Team Leader*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini menunggu *penilaian Supervisor*. Anda akan dimaklumkan selepas kelulusan akhir.\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
                 window.sendWhatsApp(applicant.phone, staffMsg);
             }
             if (!WHATSAPP_ENABLED()) {
@@ -2595,7 +2595,7 @@ window.finalizeLeave = async function(id) {
             }
             newStatus = "APPROVED";
             const approvedName = (applicant || {}).name || record.name;
-            const approvedMsg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${approvedName},\n\nPermohonan cuti anda telah *DILULUSKAN SEPENUHNYA* oleh HR/Admin.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+            const approvedMsg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${approvedName},\n\nPermohonan cuti anda telah *DILULUSKAN SEPENUHNYA* oleh HR/Admin.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
             if (!WHATSAPP_ENABLED()) {
                 waFinalFeedback = `\n\n⚠️ Token WhatsApp belum dikonfigurasi — ${approvedName} TIDAK dapat notifikasi WA. Sila hubungi Super Admin untuk tetapkan token Fonnte.`;
             } else if (!applicant || !applicant.phone) {
@@ -2619,7 +2619,7 @@ window.finalizeLeave = async function(id) {
                 const admins = window.hrRecipientsForBranch(record.branch).filter(s => s.phone);
                 const p1Label = isTLApprovedOperationBalok ? 'SUPERVISOR (selepas Team Leader)' : (user.role || '').toUpperCase();
                 const p1Title = isTLApprovedOperationBalok ? 'SOKONGAN SUPERVISOR' : `SOKONGAN ${p1Label}`;
-                const msg = `📋 *${p1Title} — PERLU KELULUSAN HR/ADMIN (Peringkat 2)*\n\nPermohonan cuti telah dinilai dan disokong oleh *${user.name} (${p1Label})* dan menunggu kelulusan akhir anda.\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\n🔗 *Log masuk untuk kelulusan akhir:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+                const msg = `📋 *${p1Title} — PERLU KELULUSAN HR/ADMIN (Peringkat 2)*\n\nPermohonan cuti telah dinilai dan disokong oleh *${user.name} (${p1Label})* dan menunggu kelulusan akhir anda.\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\n🔗 *Log masuk untuk kelulusan akhir:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
                 if (!WHATSAPP_ENABLED()) {
                     waHRFeedback = '\n\n⚠️ Token WhatsApp belum dikonfigurasi — HR/Admin TIDAK dapat notifikasi WA. Sila hubungi Super Admin untuk tetapkan token Fonnte.';
                 } else if (admins.length === 0) {
@@ -2635,14 +2635,14 @@ window.finalizeLeave = async function(id) {
                     `${record.name} — ${leaveTypeName} (${record.startDate} → ${record.endDate}) telah disokong ${p1Label}; memerlukan kelulusan akhir HR/Admin.`,
                     id.toString(), record.ic);
                 if (applicant && applicant.phone) {
-                    const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *dinilai dan disokong oleh ${user.name} (${p1Label})*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini sedang menunggu *kelulusan akhir HR/Admin*. Anda akan dimaklumkan selepas kelulusan akhir.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+                    const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *dinilai dan disokong oleh ${user.name} (${p1Label})*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini sedang menunggu *kelulusan akhir HR/Admin*. Anda akan dimaklumkan selepas kelulusan akhir.\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
                     window.sendWhatsApp(applicant.phone, staffMsg);
                 }
             } else {
                 // Tiada Peringkat 2 — terus APPROVED
                 newStatus = "APPROVED";
                 const hodApprovedName = (applicant || {}).name || record.name;
-                const hodApprovedMsg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${hodApprovedName},\n\nPermohonan cuti anda telah *DILULUSKAN* oleh *${user.name}* (${p1Label}).\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+                const hodApprovedMsg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${hodApprovedName},\n\nPermohonan cuti anda telah *DILULUSKAN* oleh *${user.name}* (${p1Label}).\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
                 if (!WHATSAPP_ENABLED()) {
                     waFinalFeedback = `\n\n⚠️ Token WhatsApp belum dikonfigurasi — ${hodApprovedName} TIDAK dapat notifikasi WA. Sila hubungi Super Admin untuk tetapkan token Fonnte.`;
                 } else if (!applicant || !applicant.phone) {
@@ -2721,7 +2721,7 @@ window.resendApprovalWA = async function(id) {
     if (!WHATSAPP_ENABLED()) return alert('Token WhatsApp belum dikonfigurasi.\n\nPergi ke Pengurusan → Tetapan WhatsApp untuk simpan token Fonnte.');
 
     const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
-    const msg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *DILULUSKAN SEPENUHNYA* oleh HR/Admin.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+    const msg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *DILULUSKAN SEPENUHNYA* oleh HR/Admin.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
 
     try {
         await window.sendWhatsApp(applicant.phone, msg, true);
@@ -2757,7 +2757,7 @@ window.cancelLeave = async function(id) {
         const staff = staffList.find(s => s.ic === req.ic);
         if (staff && staff.phone) {
             const leaveTypeName = leaveCategories.find(c => c.id === req.type)?.name || req.type;
-            const msg = `🚩 *PEMBATALAN CUTI*\n\nPermohonan cuti anda (${leaveTypeName}) pada ${req.startDate} telah *DIBATALKAN* oleh ${(user.role || '').toUpperCase()}.\n\nBaki cuti anda telah dikembalikan.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+            const msg = `🚩 *PEMBATALAN CUTI*\n\nPermohonan cuti anda (${leaveTypeName}) pada ${req.startDate} telah *DIBATALKAN* oleh ${(user.role || '').toUpperCase()}.\n\nBaki cuti anda telah dikembalikan.\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
             window.sendWhatsApp(staff.phone, msg);
         }
     } catch (err) {
@@ -2788,7 +2788,7 @@ window.rejectLeave = async function(id) {
         // Notify applicant of rejection
         const applicant = staffList.find(s => s.ic === record.ic);
         if (applicant && applicant.phone) {
-            const msg = `❌ *CUTI TIDAK DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nMaaf, permohonan cuti anda telah *DITOLAK*.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n\nSila hubungi HR/Admin untuk maklumat lanjut.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+            const msg = `❌ *CUTI TIDAK DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nMaaf, permohonan cuti anda telah *DITOLAK*.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n\nSila hubungi HR/Admin untuk maklumat lanjut.\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
             window.sendWhatsApp(applicant.phone, msg);
         }
         alert(`Permohonan cuti ${record.name} telah ditolak.`);
@@ -2803,7 +2803,7 @@ window.resendLeaveWA = function(id) {
     if (!record) return;
     const applicant = staffList.find(s => s.ic === record.ic);
     const leaveTypeName = (leaveCategories.find(c => c.id === record.type) || {}).name || record.type;
-    const info = `\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+    const info = `\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\n🔗 *Log masuk untuk meluluskan:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
 
     let recipients = [];
     let msg = '';
@@ -4276,9 +4276,9 @@ function renderLogin() {
 
         <!-- System URL Badge -->
         <div style="margin-bottom:1rem;text-align:center;">
-          <a href="https://apply-leave-89ebb.web.app" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:0.4rem;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);border-radius:999px;padding:0.35rem 0.9rem;font-size:0.78rem;color:var(--primary);font-weight:700;text-decoration:none;letter-spacing:0.3px;">
+          <a href="https://cuti-staff.ksbsb.com.my" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:0.4rem;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);border-radius:999px;padding:0.35rem 0.9rem;font-size:0.78rem;color:var(--primary);font-weight:700;text-decoration:none;letter-spacing:0.3px;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-            apply-leave-89ebb.web.app
+            cuti-staff.ksbsb.com.my
           </a>
         </div>
         
@@ -5298,17 +5298,17 @@ function renderDashboard() {
         if (_sbmIsOpBalokTL) {
           // Op-balok: notify hanya TL yang dipilih oleh staff (bukan semua TL)
           hodToNotify = staffList.filter(s => s.ic === selectedTL && s.phone);
-          hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 0 (Sokongan Team Leader)*\n\nPermohonan cuti memerlukan sokongan anda (Team Leader) sebelum dihantar ke Supervisor.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+          hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 0 (Sokongan Team Leader)*\n\nPermohonan cuti memerlukan sokongan anda (Team Leader) sebelum dihantar ke Supervisor.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
         } else if (_sbmDirectHR) {
           // Terus ke HR — HR/Admin ialah pelulus (bukan HOD)
           hodToNotify = window.hrRecipientsForBranch(user.branch).filter(s => s.phone);
-          hodMsg = `📩 *PERMOHONAN CUTI BARU — Kelulusan HR (Terus)*\n\nPermohonan cuti ini dilaluankan TERUS kepada HR/Admin untuk kelulusan (tanpa peringkat HOD).\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+          hodMsg = `📩 *PERMOHONAN CUTI BARU — Kelulusan HR (Terus)*\n\nPermohonan cuti ini dilaluankan TERUS kepada HR/Admin untuk kelulusan (tanpa peringkat HOD).\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
         } else if (selectedHOD) {
           hodToNotify = staffList.filter(s => s.ic === selectedHOD && s.phone);
-          hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+          hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
         } else {
           hodToNotify = window.getRoutingP1Approvers(user, selectedLeaveType).filter(s => s.phone);
-          hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+          hodMsg = `📩 *PERMOHONAN CUTI BARU — Peringkat 1 (Sokongan HOD)*\n\nPermohonan cuti memerlukan sokongan anda sebelum dihantar ke HR/Admin.\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n💬 Sebab: ${reason}\n\n🔗 *Log masuk untuk meluluskan:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
         }
   
         hodToNotify.forEach(hod => window.sendWhatsApp(hod.phone, hodMsg));
@@ -5329,7 +5329,7 @@ function renderDashboard() {
             ? 'Sokongan Team Leader (Peringkat 0)'
             : _sbmDirectHR ? 'Kelulusan HR/Admin'
             : 'Sokongan HOD/Supervisor (Peringkat 1)';
-          const confirmMsg = `✅ *PERMOHONAN CUTI DIHANTAR*\n\nSalam ${user.name},\n\nPermohonan cuti anda telah berjaya dihantar dengan sebab: *${reason}*\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${startDate} → ${endDate}\n• Tempoh: ${diffDays} hari\n\nPermohonan sedang menunggu *${nextStage}*. Anda akan dimaklumkan setiap kemaskini status.\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+          const confirmMsg = `✅ *PERMOHONAN CUTI DIHANTAR*\n\nSalam ${user.name},\n\nPermohonan cuti anda telah berjaya dihantar dengan sebab: *${reason}*\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${startDate} → ${endDate}\n• Tempoh: ${diffDays} hari\n\nPermohonan sedang menunggu *${nextStage}*. Anda akan dimaklumkan setiap kemaskini status.\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
           window.sendWhatsApp(user.phone, confirmMsg);
         }
   
@@ -5338,8 +5338,8 @@ function renderDashboard() {
         // (Dulu SEMUA hr disekat untuk cuti Terengganu kerana tiada HR Terengganu.)
         const adminCC = window.hrRecipientsForBranch(user.branch).filter(s => s.phone);
         const adminCCMsg = _sbmIsOpBalokTL
-          ? `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan Team Leader)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan Team Leader (Peringkat 0).\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`
-          : `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan HOD)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan HOD/Supervisor (Peringkat 1).\n\n🔗 *Log masuk:* https://apply-leave-89ebb.web.app\n_— KSB Leave System_`;
+          ? `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan Team Leader)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan Team Leader (Peringkat 0).\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`
+          : `ℹ️ *MAKLUMAN — Permohonan Cuti Baru (Tertunggu Sokongan HOD)*\n\n👤 Pemohon: *${user.name}*\n🏥 Cawangan: ${user.branch}\n📝 Jenis Cuti: *${leaveTypeName}*\n📅 Tarikh: ${startDate} → ${endDate}\n⏱ Tempoh: ${diffDays} hari\n\nPermohonan ini sedang menunggu sokongan HOD/Supervisor (Peringkat 1).\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
         // Untuk laluan "terus ke HR", HR/Admin sudah menerima notifikasi pelulus di atas —
         // elak hantar WA berganda melalui CC.
         if (!_sbmDirectHR) adminCC.forEach(admin => window.sendWhatsApp(admin.phone, adminCCMsg));
@@ -5549,7 +5549,7 @@ function renderDashboard() {
                   // Jika reset ke PENDING (staf/pelulus), maklum semula pelulus peringkat 1.
                   if (!isAdminEditor) {
                       const applicant = staffList.find(s => s.ic === rec.ic) || user;
-                      const info = `\n\n👤 Pemohon: *${applicant.name}*\n📅 Tarikh: ${elStart} → ${elEnd}\n⏱ Tempoh: ${elDays} hari\n\n🔗 https://apply-leave-89ebb.web.app`;
+                      const info = `\n\n👤 Pemohon: *${applicant.name}*\n📅 Tarikh: ${elStart} → ${elEnd}\n⏱ Tempoh: ${elDays} hari\n\n🔗 https://cuti-staff.ksbsb.com.my`;
                       window.getRoutingP1Approvers(applicant, rec.type).filter(s => s.phone).forEach(a =>
                           window.sendWhatsApp(a.phone, `🔁 *PERMOHONAN CUTI DIKEMASKINI — Perlu Sokongan Semula*${info}`));
                       window.notifyApproversInbox(window.getRoutingP1Approvers(applicant, rec.type),

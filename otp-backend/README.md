@@ -30,7 +30,7 @@ full admin access. It never goes in git; it lives only in Vercel.
 |------|-------|
 | `FIREBASE_SERVICE_ACCOUNT` | Paste the **entire** JSON file contents from step 1 (one line is fine). |
 | `FONNTE_TOKEN` | Your existing Fonnte device token (same one the app uses). |
-| `ALLOWED_ORIGIN` | `https://apply-leave-89ebb.web.app` |
+| `ALLOWED_ORIGIN` | `https://cuti-staff.ksbsb.com.my` |
 
 Apply to **Production** (and Preview if you want). **Redeploy** after adding them.
 

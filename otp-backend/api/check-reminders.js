@@ -40,7 +40,7 @@ function buildReminderMsg(record, ageDays, peringkat) {
     `📅 Tarikh : ${record.startDate} → ${record.endDate}\n` +
     `⏱ Tempoh : ${record.days} hari\n\n` +
     `Sila log masuk dan ambil tindakan segera:\n` +
-    `🌐 https://apply-leave-89ebb.web.app\n\n` +
+    `🌐 https://cuti-staff.ksbsb.com.my\n\n` +
     `_— KSB Leave System (Peringatan Automatik)_`
   );
 }
