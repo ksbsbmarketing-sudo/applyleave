@@ -37,3 +37,27 @@ jobs:
           server-dir: ${{ secrets.FTP_SERVER_DIR }}
           local-dir: ./dist/
           protocol: ftps
+
+      # Firebase Hosting mesti dapat dist/ yang SAMA seperti cPanel. Tanpa langkah
+      # ini apply-leave-89ebb.web.app membeku pada deploy manual terakhir sementara
+      # cuti-staff.ksbsb.com.my terus bergerak — kedua-duanya kemudian tersasar.
+      # Konteks `secrets` tidak boleh diguna dalam `if`, jadi ia disalin ke env dulu.
+      - name: Semak rahsia Firebase wujud
+        id: fbcheck
+        env:
+          FB: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -n "$FB" ]; then
+            echo "ada=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ada=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::FIREBASE_SERVICE_ACCOUNT tiada — Firebase Hosting dilangkau, cPanel tetap berjaya."
+          fi
+
+      - name: Deploy ke Firebase Hosting
+        if: steps.fbcheck.outputs.ada == 'true'
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: apply-leave-89ebb
+          channelId: live
