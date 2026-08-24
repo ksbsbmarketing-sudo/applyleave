@@ -11,6 +11,7 @@ import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps,
          findApprovedOverlaps, findOverlapGroups } from './leaveOverlap.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { canSeeAuditLogs, canSeeRegistrations } from './listenerScope.js';
+import { getNoticeDays } from './leaveNotice.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -688,9 +689,9 @@ const HELP_FAQ = [
   { id:'no-submit-cme', cat:'Masalah', keywords:['cme tak hantar','bukti cme','muat naik cme','upload cme','surat jemputan'],
     q:'Cuti CME tak boleh hantar — bukti belum dimuat naik',
     a:'Cuti CME <strong>wajib</strong> ada <strong>bukti program</strong> dimuat naik (surat jemputan atau slip pendaftaran — gambar JPG/PNG atau PDF) sebelum boleh dihantar. Tekan kotak muat naik bukti CME, pilih fail, kemudian hantar.' },
-  { id:'notice-policy', cat:'Masalah', keywords:['notis','policy violation','3 hari','7 hari','days notice','terlalu lewat'],
-    q:'Mesej "Policy Violation — days notice"',
-    a:'Cuti Tahunan (AL) mesti dimohon awal: <strong>3 hari</strong> untuk Staff Admin, <strong>7 hari</strong> untuk Operasi & Doktor, sebelum tarikh cuti. <strong>MC, Cuti Kecemasan & Cuti Ehsan dikecualikan</strong> (boleh hari ini/ke belakang) — tetapi wajib pilih pelulus & muat naik bukti.' },
+  { id:'notice-policy', cat:'Masalah', keywords:['notis','polisi notis','policy violation','3 hari','7 hari','days notice','terlalu lewat'],
+    q:'Mesej "Polisi Notis Minimum — hari sebelum tarikh mula cuti"',
+    a:'Cuti Tahunan (AL) mesti dimohon awal sebelum tarikh cuti: <strong>3 hari</strong> untuk Staff Admin &amp; Staff Operasi di cawangan, <strong>7 hari</strong> untuk Doktor &amp; Staff Operasi di Balok (HQ). <strong>MC, Cuti Kecemasan & Cuti Ehsan dikecualikan</strong> (boleh hari ini/ke belakang) — tetapi wajib pilih pelulus & muat naik bukti.' },
   { id:'balance-insufficient', cat:'Masalah', keywords:['baki tak cukup','unpaid','split','ul','kurang baki'],
     q:'Baki cuti tak cukup / jadi Unpaid Leave',
     a:'Jika hari AL yang dimohon <strong>melebihi baki</strong> anda, sistem akan <strong>bahagikan automatik</strong>: sebahagian sebagai AL (baki yang ada) dan selebihnya sebagai <strong>Unpaid Leave (UL)</strong>. Notis akan dipaparkan semasa hantar.' },
@@ -4798,14 +4799,16 @@ window.getLeaveStats = function(staff, type, year) {
 
 
 
-function validateNotice(startDate, category) {
+// Polisi notis minimum — bilangan hari ditentukan oleh getNoticeDays()
+// (src/leaveNotice.js), sumber tunggal kebenaran. Terima objek staff penuh,
+// bukan `category` sahaja: sejak 2026-08-24 cawangan pemohon turut penting.
+function validateNotice(startDate, staff) {
   const today = new Date();
   const start = new Date(startDate);
   const diffTime = start - today;
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
-  const minDays = (category === 'Admin Staff' || category === 'Admin') ? 3 : 7;
-  return diffDays >= minDays;
+
+  return diffDays >= getNoticeDays(staff);
 }
 
 window.toggleMobileMenu = function(val) {
@@ -5205,13 +5208,11 @@ function renderDashboard() {
           return;
       }
 
-      const isAdmin = user.category === 'Admin Staff' || user.category === 'Admin' || user.role === 'admin' || user.role === 'super_admin';
-
-      // Cuti tak boleh dirancang (MC sakit, Kecemasan, Ehsan/kematian) + CME dan Cuti Ganti (dituntut selepas mesyuarat) dikecualikan dari polisi notis awal (3/7 hari) — tetapi tetap perlu pelulus + bukti.
+      // Cuti tak boleh dirancang (MC sakit, Kecemasan, Ehsan/kematian) + CME dan Cuti Ganti (dituntut selepas mesyuarat) dikecualikan dari polisi notis awal (lihat leaveNotice.js) — tetapi tetap perlu pelulus + bukti.
       const _noticeExempt = ['MC', 'EL_EMG', 'EL', 'CME', 'RL'].includes(selectedLeaveType);
-      if (!_noticeExempt && !validateNotice(startDate, user.category)) {
-        const minDays = isAdmin ? 3 : 7;
-        alert(`Policy Violation: ${user.category} staff require at least ${minDays} days notice.`);
+      if (!_noticeExempt && !validateNotice(startDate, user)) {
+        const minDays = getNoticeDays(user);
+        alert(`Polisi Notis Minimum: permohonan anda mesti dihantar sekurang-kurangnya ${minDays} hari sebelum tarikh mula cuti.`);
         return;
       }
       
@@ -6609,7 +6610,7 @@ function renderView() {
                 <div style="padding:0.85rem 1rem;border-radius:10px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);display:flex;align-items:flex-start;gap:0.75rem;margin-bottom:1rem;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                     <div style="font-size:0.72rem;color:var(--text-muted);line-height:1.4;">
-                        <strong style="color:#3b82f6;">Medical Leave (MC)</strong> — ${(() => { const _b = branches.find(b => b.name === user.branch); const _trg = _b && _b.state === 'Terengganu'; return _trg ? 'Dihantar <strong>terus kepada HOD / PIC_HOD</strong> cawangan anda untuk semakan &amp; kelulusan.' : 'Dihantar <strong>terus kepada HR</strong> untuk semakan &amp; kelulusan, tanpa melalui HOD / Supervisor.'; })()} Tiada had notis 3/7 hari. Sila pastikan Sijil Sakit (MC) disertakan.
+                        <strong style="color:#3b82f6;">Medical Leave (MC)</strong> — ${(() => { const _b = branches.find(b => b.name === user.branch); const _trg = _b && _b.state === 'Terengganu'; return _trg ? 'Dihantar <strong>terus kepada HOD / PIC_HOD</strong> cawangan anda untuk semakan &amp; kelulusan.' : 'Dihantar <strong>terus kepada HR</strong> untuk semakan &amp; kelulusan, tanpa melalui HOD / Supervisor.'; })()} Tiada had notis minimum. Sila pastikan Sijil Sakit (MC) disertakan.
                     </div>
                 </div>
             ` : ''}
@@ -6939,7 +6940,7 @@ function renderView() {
           <!-- Right Panel: Summary Widgets -->
           <div class="info-panel" style="display:flex;flex-direction:column;gap:1.25rem;">
 
-            <!-- Notice: Polisi Notis — sembunyi untuk cuti dikecualikan (MC/Kecemasan/Ehsan — tiada had notis 3/7 hari) -->
+            <!-- Notice: Polisi Notis — sembunyi untuk cuti dikecualikan (MC/Kecemasan/Ehsan — tiada had notis minimum) -->
             ${!isNoticeExempt ? `
             <div class="glass-card" style="padding:1.25rem;border:1px solid rgba(59,130,246,0.2);background:rgba(59,130,246,0.03);">
               <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:1rem;">
@@ -6951,18 +6952,23 @@ function renderView() {
                   <div style="font-size:0.65rem;color:var(--text-muted);">Sila hantar permohonan dalam tempoh ini</div>
                 </div>
               </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.65rem;">
-                <div style="padding:0.75rem;border-radius:10px;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.12);text-align:center;">
-                  <div style="font-size:0.6rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:0.3rem;">Staff Admin</div>
-                  <div style="font-size:1.3rem;font-weight:800;color:#3b82f6;line-height:1;">3</div>
-                  <div style="font-size:0.62rem;color:var(--text-muted);">hari sebelum</div>
+              ${(() => {
+                // Papar nombor yang benar-benar terpakai kepada pengguna ini —
+                // grid statik 3/7 yang lama menipu staf operasi cawangan, yang
+                // kini 3 hari (polisi 2026-08-24). Sumber: getNoticeDays().
+                const _nd = getNoticeDays(user);
+                const _c  = _nd === 3 ? '#3b82f6' : '#8b5cf6';
+                return `
+                <div style="padding:0.9rem;border-radius:10px;background:${_nd === 3 ? 'rgba(59,130,246,0.06)' : 'rgba(139,92,246,0.06)'};border:1px solid ${_nd === 3 ? 'rgba(59,130,246,0.12)' : 'rgba(139,92,246,0.12)'};text-align:center;">
+                  <div style="font-size:0.6rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:0.35rem;">Untuk anda</div>
+                  <div style="font-size:2rem;font-weight:800;color:${_c};line-height:1;">${_nd}</div>
+                  <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.2rem;">hari sebelum tarikh mula cuti</div>
                 </div>
-                <div style="padding:0.75rem;border-radius:10px;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.12);text-align:center;">
-                  <div style="font-size:0.6rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:0.3rem;">Operasi / Doktor</div>
-                  <div style="font-size:1.3rem;font-weight:800;color:#8b5cf6;line-height:1;">7</div>
-                  <div style="font-size:0.62rem;color:var(--text-muted);">hari sebelum</div>
-                </div>
-              </div>
+                <div style="font-size:0.62rem;color:var(--text-muted);line-height:1.5;margin-top:0.75rem;">
+                  <strong>3 hari</strong> — Staff Admin &amp; Staff Operasi cawangan.<br>
+                  <strong>7 hari</strong> — Doktor &amp; Staff Operasi Balok (HQ).
+                </div>`;
+              })()}
             </div>
             ` : ''}
 
