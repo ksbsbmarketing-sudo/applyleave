@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { getNoticeDays } from '../src/leaveNotice.js';
+import { getNoticeDays, isNoticeExempt } from '../src/leaveNotice.js';
 
 // Bentuk objek staff sama seperti dokumen `staff/{ic}` sebenar.
 const S = (over) => ({
@@ -85,4 +85,33 @@ test('Operation Staff tanpa cawangan: 7 hari — tiada bukti dia di cawangan', (
 test('kategori bercelaru ruang/huruf besar tetap dikenali', () => {
   assert.strictEqual(getNoticeDays(S({ category: '  operation staff ' })), 3);
   assert.strictEqual(getNoticeDays(S({ category: ' admin staff ', branch: BALOK })), 3);
+});
+
+// ── Pengecualian jenis cuti daripada polisi notis ──
+test('HL (hospitalisasi) dikecualikan — masuk wad tidak boleh dirancang', () => {
+  assert.strictEqual(isNoticeExempt('HL'), true);
+});
+
+test('jenis cuti tak boleh dirancang kekal dikecualikan', () => {
+  for (const t of ['MC', 'EL_EMG', 'EL', 'CME', 'RL']) {
+    assert.strictEqual(isNoticeExempt(t), true, `${t} sepatutnya dikecualikan`);
+  }
+});
+
+test('AL dan UP TIDAK dikecualikan — kedua-duanya boleh dirancang awal', () => {
+  assert.strictEqual(isNoticeExempt('AL'), false);
+  assert.strictEqual(isNoticeExempt('UP'), false);
+});
+
+test('ML / ML_PL TIDAK dikecualikan — bersalin & paterniti boleh dirancang', () => {
+  assert.strictEqual(isNoticeExempt('ML'), false);
+  assert.strictEqual(isNoticeExempt('ML_PL'), false);
+});
+
+test('isNoticeExempt kebal terhadap nilai pelik', () => {
+  assert.strictEqual(isNoticeExempt(''), false);
+  assert.strictEqual(isNoticeExempt(null), false);
+  assert.strictEqual(isNoticeExempt(undefined), false);
+  assert.strictEqual(isNoticeExempt('hl'), true);   // huruf kecil tetap dikenali
+  assert.strictEqual(isNoticeExempt(' HL '), true); // ruang lebih dibuang
 });

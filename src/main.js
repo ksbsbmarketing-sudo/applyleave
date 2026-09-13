@@ -11,7 +11,7 @@ import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps,
          findApprovedOverlaps, findOverlapGroups } from './leaveOverlap.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { canSeeAuditLogs, canSeeRegistrations } from './listenerScope.js';
-import { getNoticeDays } from './leaveNotice.js';
+import { getNoticeDays, isNoticeExempt } from './leaveNotice.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -691,7 +691,7 @@ const HELP_FAQ = [
     a:'Cuti CME <strong>wajib</strong> ada <strong>bukti program</strong> dimuat naik (surat jemputan atau slip pendaftaran — gambar JPG/PNG atau PDF) sebelum boleh dihantar. Tekan kotak muat naik bukti CME, pilih fail, kemudian hantar.' },
   { id:'notice-policy', cat:'Masalah', keywords:['notis','polisi notis','policy violation','3 hari','7 hari','days notice','terlalu lewat'],
     q:'Mesej "Polisi Notis Minimum — hari sebelum tarikh mula cuti"',
-    a:'Cuti Tahunan (AL) mesti dimohon awal sebelum tarikh cuti: <strong>3 hari</strong> untuk Staff Admin &amp; Staff Operasi di cawangan, <strong>7 hari</strong> untuk Doktor &amp; Staff Operasi di Balok (HQ). <strong>MC, Cuti Kecemasan & Cuti Ehsan dikecualikan</strong> (boleh hari ini/ke belakang) — tetapi wajib pilih pelulus & muat naik bukti.' },
+    a:'Cuti Tahunan (AL) mesti dimohon awal sebelum tarikh cuti: <strong>3 hari</strong> untuk Staff Admin &amp; Staff Operasi di cawangan, <strong>7 hari</strong> untuk Doktor &amp; Staff Operasi di Balok (HQ). <strong>MC, Cuti Kecemasan, Cuti Ehsan & Cuti Hospitalisasi (HL) dikecualikan</strong> (boleh hari ini/ke belakang) — tetapi wajib pilih pelulus & muat naik bukti.' },
   { id:'balance-insufficient', cat:'Masalah', keywords:['baki tak cukup','unpaid','split','ul','kurang baki'],
     q:'Baki cuti tak cukup / jadi Unpaid Leave',
     a:'Jika hari AL yang dimohon <strong>melebihi baki</strong> anda, sistem akan <strong>bahagikan automatik</strong>: sebahagian sebagai AL (baki yang ada) dan selebihnya sebagai <strong>Unpaid Leave (UL)</strong>. Notis akan dipaparkan semasa hantar.' },
@@ -5208,9 +5208,8 @@ function renderDashboard() {
           return;
       }
 
-      // Cuti tak boleh dirancang (MC sakit, Kecemasan, Ehsan/kematian) + CME dan Cuti Ganti (dituntut selepas mesyuarat) dikecualikan dari polisi notis awal (lihat leaveNotice.js) — tetapi tetap perlu pelulus + bukti.
-      const _noticeExempt = ['MC', 'EL_EMG', 'EL', 'CME', 'RL'].includes(selectedLeaveType);
-      if (!_noticeExempt && !validateNotice(startDate, user)) {
+      // Cuti tak boleh dirancang (MC sakit, Kecemasan, Ehsan/kematian, Hospitalisasi) + CME dan Cuti Ganti (dituntut selepas mesyuarat) dikecualikan dari polisi notis awal — senarai penuh di NOTICE_EXEMPT_TYPES (leaveNotice.js), jangan salin semula di sini. Tetap perlu pelulus + bukti.
+      if (!isNoticeExempt(selectedLeaveType) && !validateNotice(startDate, user)) {
         const minDays = getNoticeDays(user);
         alert(`Polisi Notis Minimum: permohonan anda mesti dihantar sekurang-kurangnya ${minDays} hari sebelum tarikh mula cuti.`);
         return;
