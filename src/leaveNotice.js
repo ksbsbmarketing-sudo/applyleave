@@ -4,11 +4,12 @@
 // Tiada import DOM/Firebase di sini — itulah yang menjadikannya boleh diuji
 // unit, sama seperti leaveDays.js dan leaveOverlap.js.
 //
-// Jadual polisi (dikemas kini 2026-08-24):
+// Jadual polisi (dikemas kini 2026-09-28):
 //   Staff Admin (mana-mana lokasi) ................................. 3 hari
-//   Staff Operasi di CAWANGAN (Pahang & Terengganu) ................ 3 hari  ← polisi baru
+//   Staff Operasi di CAWANGAN (Pahang & Terengganu) ................ 3 hari
 //   Staff Operasi di Klinik Syed Badaruddin Balok (HQ) ............. 7 hari
-//   Doktor (mana-mana lokasi, termasuk cawangan) ................... 7 hari
+//   Doktor di Kerteh / Paka / Klinik Rakyat Dungun ................. 3 hari  ← polisi baru
+//   Doktor di mana-mana lokasi lain (termasuk Utama & Balok HQ) .... 7 hari
 //
 // Jenis cuti yang tidak boleh dirancang dikecualikan sepenuhnya daripada
 // polisi ini — lihat NOTICE_EXEMPT_TYPES / isNoticeExempt() di bawah.
@@ -51,11 +52,31 @@ export function isBranchClinic(branch) {
   return !HQ_BRANCH_MARKERS.some(m => b.toLowerCase().includes(m.toLowerCase()));
 }
 
+// Polisi 2026-09-28: doktor di tiga cawangan ini sahaja dapat notis pendek.
+// Padanan NAMA PENUH cawangan (selepas trim + huruf kecil), bukan substring
+// seperti HQ_BRANCH_MARKERS di atas — 'Dungun' juga nama daerah bagi Paka,
+// jadi padanan substring boleh terlanggar cawangan lain kemudian.
+// Utama sengaja TIADA di sini: doktor di Utama kekal 7 hari.
+export const DOCTOR_SHORT_NOTICE_BRANCHES = Object.freeze([
+  'Klinik Syed Badaruddin Kerteh',
+  'Klinik Syed Badaruddin Paka',
+  'Klinik Rakyat dan X-Ray Dungun',
+]);
+
 // Ikut KATEGORI sahaja, bukan jawatan — sama seperti peraturan asal sebelum
 // 2026-08-24. Akaun berkategori 'Super Admin' TIDAK dikira Staff Admin.
 export function isAdminCategory(staff) {
   const cat = norm(staff && staff.category);
   return cat === 'admin staff' || cat === 'admin';
+}
+
+export function isDoctorCategory(staff) {
+  return norm(staff && staff.category) === 'doctor';
+}
+
+export function hasDoctorShortNoticeBranch(branch) {
+  const b = norm(branch);
+  return b !== '' && DOCTOR_SHORT_NOTICE_BRANCHES.some(x => norm(x) === b);
 }
 
 export function getNoticeDays(staff) {
@@ -67,6 +88,11 @@ export function getNoticeDays(staff) {
   // jawatan — juru x-ray/sonographer/pemandu berkategori 'Operation Staff'
   // di cawangan turut terpakai.
   if (norm(staff.category) === 'operation staff' && isBranchClinic(staff.branch)) {
+    return NOTICE_DAYS_SHORT;
+  }
+
+  // Polisi baru: doktor di Kerteh, Paka dan Klinik Rakyat Dungun sahaja.
+  if (isDoctorCategory(staff) && hasDoctorShortNoticeBranch(staff.branch)) {
     return NOTICE_DAYS_SHORT;
   }
 

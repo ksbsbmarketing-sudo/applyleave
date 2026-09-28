@@ -64,12 +64,44 @@ test('Team Leader operasi di Balok HQ: kekal 7 hari', () => {
   assert.strictEqual(getNoticeDays(S({ role: 'team_leader', branch: BALOK })), 7);
 });
 
-test('Doktor di cawangan: kekal 7 hari', () => {
-  assert.strictEqual(getNoticeDays(S({ category: 'Doctor', role: 'doctor_pic' })), 7);
+test('Doktor di cawangan lain (Gebeng): kekal 7 hari', () => {
+  assert.strictEqual(
+    getNoticeDays(S({ category: 'Doctor', branch: 'Klinik Syed Badaruddin Gebeng' })), 7);
+});
+
+test('Doktor di Utama: kekal 7 hari — Utama TIADA dalam senarai polisi baru', () => {
+  assert.strictEqual(
+    getNoticeDays(S({ category: 'Doctor', branch: 'Klinik Syed Badaruddin Utama' })), 7);
 });
 
 test('Doktor di Balok HQ: kekal 7 hari', () => {
   assert.strictEqual(getNoticeDays(S({ category: 'Doctor', branch: BALOK })), 7);
+});
+
+// ── POLISI BARU (2026-09-28): Doktor di Kerteh / Paka / Dungun — 3 hari ──
+test('Doktor di Kerteh: 3 hari', () => {
+  assert.strictEqual(
+    getNoticeDays(S({ category: 'Doctor', role: 'doctor_pic',
+                     branch: 'Klinik Syed Badaruddin Kerteh' })), 3);
+});
+
+test('Doktor di Paka: 3 hari', () => {
+  assert.strictEqual(
+    getNoticeDays(S({ category: 'Doctor', branch: 'Klinik Syed Badaruddin Paka' })), 3);
+});
+
+test('Doktor di Klinik Rakyat dan X-Ray Dungun: 3 hari', () => {
+  assert.strictEqual(
+    getNoticeDays(S({ category: 'Doctor', branch: 'Klinik Rakyat dan X-Ray Dungun' })), 3);
+});
+
+test('Doktor: nama cawangan bercelaru ruang/huruf besar tetap dikenali', () => {
+  assert.strictEqual(
+    getNoticeDays(S({ category: '  doctor ', branch: '  KLINIK SYED BADARUDDIN PAKA  ' })), 3);
+});
+
+test('Doktor tanpa cawangan: 7 hari — tiada bukti dia di Kerteh/Paka/Dungun', () => {
+  assert.strictEqual(getNoticeDays(S({ category: 'Doctor', branch: '' })), 7);
 });
 
 // ── Kes tepi ──
