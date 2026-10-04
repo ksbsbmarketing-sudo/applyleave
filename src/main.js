@@ -144,52 +144,67 @@ const functions = getFunctions(firebaseApp);
 const CLOUDINARY_CLOUD_NAME = 'dgm3fozmu';
 const CLOUDINARY_UPLOAD_PRESET = 'l1mrxwdx';
 
-// ── Semakan & mesej ralat fail bukti (dikongsi oleh SEMUA tempat muat naik bukti:
-// borang mohon cuti + "muat naik semula bukti" di Master Logs) ──
+// ── Semakan & mesej ralat muat naik fail (dikongsi oleh SEMUA tempat muat naik:
+// bukti cuti di borang mohon cuti, "muat naik semula bukti" di Master Logs, dan
+// gambar profil di Tetapan) ──
 // Dulu semua kegagalan dilaporkan sebagai "Gagal memuat naik… semak sambungan
 // internet", jadi staf tidak tahu fail mereka terlalu besar atau salah format.
 // Sekarang setiap punca diberitahu dengan jelas.
-const PROOF_MAX_BYTES = 10 * 1024 * 1024; // had Cloudinary free tier
-const PROOF_ALLOWED_EXT = ['jpg', 'jpeg', 'png', 'pdf'];
-const PROOF_ALLOWED_MIME = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
-const PROOF_ACCEPT = PROOF_ALLOWED_MIME.join(',');
+const PROOF_RULES = {
+  maxMB: 10, // had Cloudinary free tier
+  exts: ['jpg', 'jpeg', 'png', 'pdf'],
+  mimes: ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'],
+  formatsText: 'JPG, PNG atau PDF',
+  subject: 'fail bukti',
+};
+// Gambar profil: tiada PDF; HEIC ditolak kerana URL .heic tidak dipaparkan di kebanyakan pelayar.
+const PHOTO_RULES = {
+  maxMB: 5,
+  exts: ['jpg', 'jpeg', 'png', 'webp'],
+  mimes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
+  formatsText: 'JPG, PNG atau WEBP',
+  subject: 'gambar profil',
+};
+const PROOF_ACCEPT = PROOF_RULES.mimes.join(',');
+const PHOTO_ACCEPT = PHOTO_RULES.mimes.join(',');
 
 const formatFileSize = (bytes) => (bytes / (1024 * 1024)).toFixed(1) + 'MB';
 
-const proofTooLargeMessage = (sizeText) =>
+const fileTooLargeMessage = (sizeText, rules) =>
   '🔴 SAIZ FAIL TERLALU BESAR\n\n' +
   (sizeText ? 'Saiz fail anda: ' + sizeText + '\n' : '') +
-  'Had maksimum: 10MB\n\n' +
-  'Sila kecilkan fail, atau ambil tangkap layar (screenshot) dokumen dan muat naik gambar itu.';
+  'Had maksimum: ' + rules.maxMB + 'MB\n\n' +
+  'Sila kecilkan fail, atau ambil tangkap layar (screenshot) dan muat naik gambar itu.';
 
-const proofBadFormatMessage = (fileName, reasonLine) =>
+const fileBadFormatMessage = (fileName, reasonLine, rules) =>
   '🔴 FORMAT FAIL TIDAK SAH\n\n' +
   (fileName ? 'Fail: ' + fileName + '\n' : '') +
   (reasonLine ? reasonLine + '\n' : '') +
-  'Format yang diterima: JPG, PNG atau PDF sahaja.\n\n' +
-  'Jika ini gambar HEIC (iPhone) atau dokumen Word, sila ambil tangkap layar (screenshot) dan muat naik gambar itu.';
+  'Format yang diterima: ' + rules.formatsText + ' sahaja.\n\n' +
+  'Jika ini gambar HEIC (iPhone) atau jenis fail lain, sila ambil tangkap layar (screenshot) dan muat naik gambar itu.';
 
 // Semak fail SEBELUM dimuat naik. Pulangkan mesej ralat, atau null jika fail OK.
-const validateProofFile = (file) => {
+const validateUploadFile = (file, rules) => {
   if (!file) return null;
   const ext = (String(file.name || '').split('.').pop() || '').toLowerCase();
   const mime = String(file.type || '').toLowerCase();
   // Sesetengah telefon Android hantar MIME kosong — terima jika sambungan nama fail betul.
-  const okType = PROOF_ALLOWED_MIME.includes(mime) || (!mime && PROOF_ALLOWED_EXT.includes(ext))
-              || (PROOF_ALLOWED_EXT.includes(ext) && mime === 'application/octet-stream');
-  if (!okType) return proofBadFormatMessage(file.name, ext ? 'Jenis fail: .' + ext.toUpperCase() : '');
-  if (file.size === 0) return proofBadFormatMessage(file.name, 'Fail kosong (0 bait) — fail mungkin rosak atau belum dimuat turun ke telefon.');
-  if (file.size > PROOF_MAX_BYTES) return proofTooLargeMessage(formatFileSize(file.size));
+  const okType = rules.mimes.includes(mime)
+              || ((!mime || mime === 'application/octet-stream') && rules.exts.includes(ext));
+  if (!okType) return fileBadFormatMessage(file.name, ext ? 'Jenis fail: .' + ext.toUpperCase() : '', rules);
+  if (file.size === 0) return fileBadFormatMessage(file.name, 'Fail kosong (0 bait) — fail mungkin rosak atau belum dimuat turun ke telefon.', rules);
+  if (file.size > rules.maxMB * 1024 * 1024) return fileTooLargeMessage(formatFileSize(file.size), rules);
   return null;
 };
+const validateProofFile = (file) => validateUploadFile(file, PROOF_RULES);
 
 // Mesej bila muat naik ke Cloudinary GAGAL. Ralat asal dilampirkan supaya admin
 // boleh kesan punca dari tangkap layar staf.
-const proofUploadErrorMessage = (err) => {
+const uploadErrorMessage = (err, rules) => {
   const raw = String((err && err.message) || err || '');
-  if (/too large|file size/i.test(raw)) return proofTooLargeMessage('') + '\n\n(Butiran: ' + raw + ')';
+  if (/too large|file size/i.test(raw)) return fileTooLargeMessage('', rules) + '\n\n(Butiran: ' + raw + ')';
   if (/invalid image file|unsupported|format|invalid pdf/i.test(raw)) {
-    return proofBadFormatMessage('', 'Fail tidak dapat dibaca — fail mungkin rosak, atau PDF dikunci dengan kata laluan.') +
+    return fileBadFormatMessage('', 'Fail tidak dapat dibaca — fail mungkin rosak, atau PDF dikunci dengan kata laluan.', rules) +
            '\n\n(Butiran: ' + raw + ')';
   }
   if (/failed to fetch|network|load failed|notreadable|could not be read/i.test(raw)) {
@@ -197,8 +212,9 @@ const proofUploadErrorMessage = (err) => {
            'Sambungan internet terputus, ATAU fail dipilih terus dari Google Drive / WhatsApp. ' +
            'Simpan (download) fail ke telefon dahulu, kemudian pilih semula.\n\n(Butiran: ' + raw + ')';
   }
-  return '🔴 Gagal memuat naik fail bukti. Sila cuba lagi.' + (raw ? '\n\n(Butiran: ' + raw + ')' : '');
+  return '🔴 Gagal memuat naik ' + rules.subject + '. Sila cuba lagi.' + (raw ? '\n\n(Butiran: ' + raw + ')' : '');
 };
+const proofUploadErrorMessage = (err) => uploadErrorMessage(err, PROOF_RULES);
 const AUTH_EMAIL_DOMAIN = 'ksb-leave.local';
 const emailForIC = (ic) => `${String(ic).replace(/[^a-zA-Z0-9]/g, '')}@${AUTH_EMAIL_DOMAIN}`;
 
@@ -5037,8 +5053,8 @@ function escapeHtml(str) {
 window.uploadProfilePhoto = async function(input) {
   if (!input || !input.files || !input.files[0]) return;
   const file = input.files[0];
-  if (!file.type.startsWith('image/')) { alert('Sila pilih fail gambar.'); input.value = ''; return; }
-  if (file.size > 5 * 1024 * 1024) { alert('Saiz gambar terlalu besar. Had maksimum: 5MB'); input.value = ''; return; }
+  const _fileErr = validateUploadFile(file, PHOTO_RULES);
+  if (_fileErr) { alert(_fileErr); input.value = ''; return; }
   if (!user || !user.ic) { alert('Ralat: Sesi tidak sah.'); return; }
   try {
     const fd = new FormData();
@@ -5061,7 +5077,7 @@ window.uploadProfilePhoto = async function(input) {
     render();
   } catch (err) {
     console.error('Profile photo upload failed:', err);
-    alert('Gagal memuat naik gambar profil. Sila cuba lagi.');
+    alert(uploadErrorMessage(err, PHOTO_RULES));
   } finally {
     input.value = '';
   }
@@ -11023,7 +11039,7 @@ function renderSelfProfileModal() {
                     : escapeHtml(((user.name || '?')[0] || '?'))}
                   <span style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.45); color:#fff; font-size:0.7rem; text-align:center; padding:2px 0;">📷 Tukar</span>
                </div>
-               <input type="file" id="settings-avatar-upload" accept="image/*" style="display:none;" onchange="window.uploadProfilePhoto(this)">
+               <input type="file" id="settings-avatar-upload" accept="${PHOTO_ACCEPT}" style="display:none;" onchange="window.uploadProfilePhoto(this)">
                <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.5rem;">Tekan gambar untuk muat naik (maks 5MB)</div>
             </div>
 
