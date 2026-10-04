@@ -143,6 +143,62 @@ const functions = getFunctions(firebaseApp);
 // melalui "unsigned upload" (tiada backend/rahsia perlu — preset selamat didedah).
 const CLOUDINARY_CLOUD_NAME = 'dgm3fozmu';
 const CLOUDINARY_UPLOAD_PRESET = 'l1mrxwdx';
+
+// ── Semakan & mesej ralat fail bukti (dikongsi oleh SEMUA tempat muat naik bukti:
+// borang mohon cuti + "muat naik semula bukti" di Master Logs) ──
+// Dulu semua kegagalan dilaporkan sebagai "Gagal memuat naik… semak sambungan
+// internet", jadi staf tidak tahu fail mereka terlalu besar atau salah format.
+// Sekarang setiap punca diberitahu dengan jelas.
+const PROOF_MAX_BYTES = 10 * 1024 * 1024; // had Cloudinary free tier
+const PROOF_ALLOWED_EXT = ['jpg', 'jpeg', 'png', 'pdf'];
+const PROOF_ALLOWED_MIME = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+const PROOF_ACCEPT = PROOF_ALLOWED_MIME.join(',');
+
+const formatFileSize = (bytes) => (bytes / (1024 * 1024)).toFixed(1) + 'MB';
+
+const proofTooLargeMessage = (sizeText) =>
+  '🔴 SAIZ FAIL TERLALU BESAR\n\n' +
+  (sizeText ? 'Saiz fail anda: ' + sizeText + '\n' : '') +
+  'Had maksimum: 10MB\n\n' +
+  'Sila kecilkan fail, atau ambil tangkap layar (screenshot) dokumen dan muat naik gambar itu.';
+
+const proofBadFormatMessage = (fileName, reasonLine) =>
+  '🔴 FORMAT FAIL TIDAK SAH\n\n' +
+  (fileName ? 'Fail: ' + fileName + '\n' : '') +
+  (reasonLine ? reasonLine + '\n' : '') +
+  'Format yang diterima: JPG, PNG atau PDF sahaja.\n\n' +
+  'Jika ini gambar HEIC (iPhone) atau dokumen Word, sila ambil tangkap layar (screenshot) dan muat naik gambar itu.';
+
+// Semak fail SEBELUM dimuat naik. Pulangkan mesej ralat, atau null jika fail OK.
+const validateProofFile = (file) => {
+  if (!file) return null;
+  const ext = (String(file.name || '').split('.').pop() || '').toLowerCase();
+  const mime = String(file.type || '').toLowerCase();
+  // Sesetengah telefon Android hantar MIME kosong — terima jika sambungan nama fail betul.
+  const okType = PROOF_ALLOWED_MIME.includes(mime) || (!mime && PROOF_ALLOWED_EXT.includes(ext))
+              || (PROOF_ALLOWED_EXT.includes(ext) && mime === 'application/octet-stream');
+  if (!okType) return proofBadFormatMessage(file.name, ext ? 'Jenis fail: .' + ext.toUpperCase() : '');
+  if (file.size === 0) return proofBadFormatMessage(file.name, 'Fail kosong (0 bait) — fail mungkin rosak atau belum dimuat turun ke telefon.');
+  if (file.size > PROOF_MAX_BYTES) return proofTooLargeMessage(formatFileSize(file.size));
+  return null;
+};
+
+// Mesej bila muat naik ke Cloudinary GAGAL. Ralat asal dilampirkan supaya admin
+// boleh kesan punca dari tangkap layar staf.
+const proofUploadErrorMessage = (err) => {
+  const raw = String((err && err.message) || err || '');
+  if (/too large|file size/i.test(raw)) return proofTooLargeMessage('') + '\n\n(Butiran: ' + raw + ')';
+  if (/invalid image file|unsupported|format|invalid pdf/i.test(raw)) {
+    return proofBadFormatMessage('', 'Fail tidak dapat dibaca — fail mungkin rosak, atau PDF dikunci dengan kata laluan.') +
+           '\n\n(Butiran: ' + raw + ')';
+  }
+  if (/failed to fetch|network|load failed|notreadable|could not be read/i.test(raw)) {
+    return '🔴 FAIL TIDAK DAPAT DIHANTAR\n\n' +
+           'Sambungan internet terputus, ATAU fail dipilih terus dari Google Drive / WhatsApp. ' +
+           'Simpan (download) fail ke telefon dahulu, kemudian pilih semula.\n\n(Butiran: ' + raw + ')';
+  }
+  return '🔴 Gagal memuat naik fail bukti. Sila cuba lagi.' + (raw ? '\n\n(Butiran: ' + raw + ')' : '');
+};
 const AUTH_EMAIL_DOMAIN = 'ksb-leave.local';
 const emailForIC = (ic) => `${String(ic).replace(/[^a-zA-Z0-9]/g, '')}@${AUTH_EMAIL_DOMAIN}`;
 
@@ -1187,9 +1243,10 @@ window.canManageRequest = function(user, req) {
 
 window.handleFileSelect = function(input, displayId, noticeId) {
     if (input.files.length > 0) {
-        // Had saiz 10MB (selaras dengan had Cloudinary free tier).
-        if (input.files[0].size > 10 * 1024 * 1024) {
-            alert('Saiz fail terlalu besar. Had maksimum: 10MB');
+        // Semak format (JPG/PNG/PDF) & saiz (10MB) — beritahu punca sebenar.
+        const _fileErr = validateProofFile(input.files[0]);
+        if (_fileErr) {
+            alert(_fileErr);
             input.value = '';
             const _d = document.getElementById(displayId);
             if (_d) _d.innerText = 'Tiada fail dipilih';
@@ -1240,7 +1297,7 @@ function renderProofSection(code) {
               <div style="padding:1rem;border-radius:12px;border:1.5px dashed rgba(${rgb},0.3);background:rgba(${rgb},0.03);">
                 <div style="font-size:0.75rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;">${need.hint}</div>
                 <div style="display:flex;align-items:center;gap:0.75rem;">
-                  <input type="file" id="${need.inputId}" accept="image/jpeg,image/png,image/jpg,application/pdf" style="display:none;" onchange="window.handleFileSelect(this, '${stem}-filename', '${stem}-notice')">
+                  <input type="file" id="${need.inputId}" accept="${PROOF_ACCEPT}" style="display:none;" onchange="window.handleFileSelect(this, '${stem}-filename', '${stem}-notice')">
                   <button type="button" onclick="document.getElementById('${need.inputId}').click()" style="padding:0.55rem 1rem;border-radius:8px;border:1px solid rgba(${rgb},0.3);background:rgba(${rgb},0.1);color:${need.boxColor};font-size:0.75rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;white-space:nowrap;">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                     ${need.buttonLabel}
@@ -1263,11 +1320,12 @@ window.reuploadProof = function(id) {
   if (!rec) return;
   const inp = document.createElement('input');
   inp.type = 'file';
-  inp.accept = 'image/jpeg,image/png,image/jpg,application/pdf';
+  inp.accept = PROOF_ACCEPT;
   inp.onchange = async () => {
     const file = inp.files && inp.files[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { alert('Saiz fail terlalu besar. Had maksimum: 10MB'); return; }
+    const _fileErr = validateProofFile(file);
+    if (_fileErr) { alert(_fileErr); return; }
     try {
       const fd = new FormData();
       fd.append('file', file);
@@ -1281,7 +1339,7 @@ window.reuploadProof = function(id) {
       alert('✅ Bukti berjaya dimuat naik & disimpan.');
     } catch (err) {
       console.error('Re-upload proof failed:', err);
-      alert('🔴 Gagal memuat naik fail bukti. Sila cuba lagi atau semak sambungan internet anda.');
+      alert(proofUploadErrorMessage(err));
     }
   };
   inp.click();
@@ -5238,6 +5296,9 @@ function renderDashboard() {
         const _proofInput = _proofNeed ? document.getElementById(_proofNeed.inputId) : null;
         if (_proofInput && _proofInput.files.length > 0) {
           const _proofFile = _proofInput.files[0];
+          // Semak semula sebelum hantar (jaga-jaga jika semakan semasa pilih fail terlepas).
+          const _fileErr = validateProofFile(_proofFile);
+          if (_fileErr) { alert(_fileErr); return; }
           try {
             const _fd = new FormData();
             _fd.append('file', _proofFile);
@@ -5257,7 +5318,7 @@ function renderDashboard() {
             proofName = _proofFile.name;
           } catch (err) {
             console.error('Proof upload failed:', err);
-            alert('🔴 Gagal memuat naik fail bukti. Sila cuba lagi atau semak sambungan internet anda.');
+            alert(proofUploadErrorMessage(err));
             return;
           }
         }
