@@ -12,6 +12,7 @@ import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps,
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { canSeeAuditLogs, canSeeRegistrations } from './listenerScope.js';
 import { getNoticeDays, isNoticeExempt } from './leaveNotice.js';
+import { validateLeaveReason } from './leaveReason.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -2522,6 +2523,8 @@ window.staffEditOwnLeave = async function(id) {
   if (newEnd === null) return;
   const newReason = prompt('Sebab:', rec.reason);
   if (newReason === null) return;
+  const _reasonErr = validateLeaveReason(newReason);
+  if (_reasonErr) { alert(_reasonErr); return; }
 
   // Build a diff of only what changed.
   const changes = [];
@@ -5169,8 +5172,15 @@ function renderDashboard() {
       const leaveTypeName = leaveCategories.find(c => c.id === selectedLeaveType)?.name || selectedLeaveType;
       const startDate = leaveStartDate;
       const endDate = leaveEndDate;
-      const reason = leaveForm.querySelector('textarea').value;
+      const reason = leaveForm.querySelector('textarea').value.trim();
       const handover = leaveForm.querySelector('#handover-input')?.value || '';
+      // Sebab mesti perkataan sebenar — bukan `""`, `''`, `-` sahaja (src/leaveReason.js).
+      const _reasonErr = validateLeaveReason(reason);
+      if (_reasonErr) {
+        alert(_reasonErr);
+        leaveForm.querySelector('textarea')?.focus();
+        return;
+      }
       
       let diffDays = window.computeLeaveDays(leaveStartDate, leaveEndDate, user, selectedLeaveType);
       if (diffDays <= 0) {
@@ -5613,8 +5623,15 @@ function renderDashboard() {
                         'Sila batalkan permohonan berkenaan terlebih dahulu.');
                   return;
               }
+              // Semak sebab hanya jika diubah — rekod lama dengan sebab tidak sah
+              // masih boleh dikemas kini tarikh/status oleh HR tanpa disekat.
+              const _elReason = document.querySelector('#el-reason').value.trim();
+              if (_elReason !== String(rec.reason || '').trim()) {
+                  const _reasonErr = validateLeaveReason(_elReason);
+                  if (_reasonErr) { alert(_reasonErr); return; }
+              }
               const updates = {
-                reason: document.querySelector('#el-reason').value,
+                reason: _elReason,
                 startDate: elStart,
                 endDate: elEnd,
                 days: elDays
@@ -6745,7 +6762,7 @@ function renderView() {
               <div style="display:flex;flex-direction:column;gap:0.85rem;">
                 <div>
                   <label style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);display:block;margin-bottom:0.4rem;">Sebab Permohonan</label>
-                  <textarea class="neu-inset" placeholder="Nyatakan sebab permohonan cuti..." style="height:90px;font-size:0.85rem;resize:vertical;"></textarea>
+                  <textarea class="neu-inset" placeholder="Nyatakan sebab permohonan cuti (wajib, dengan perkataan — cth. Demam, Urusan keluarga)..." style="height:90px;font-size:0.85rem;resize:vertical;"></textarea>
                 </div>
                 <div>
                   <label style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);display:block;margin-bottom:0.4rem;">Pengganti Tugas (Handover)</label>
