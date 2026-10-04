@@ -14,9 +14,15 @@ test('empty / missing reasons are rejected', () => {
   assert.match(validateLeaveReason(undefined), /WAJIB/);
 });
 
-test('fewer than 3 letters is rejected', () => {
-  assert.match(validateLeaveReason('ok'), /TIDAK SAH/);
+test('fewer than 2 letters is rejected', () => {
+  assert.match(validateLeaveReason('a'), /TIDAK SAH/);
   assert.match(validateLeaveReason('"a"'), /TIDAK SAH/);
+  assert.match(validateLeaveReason('- x -'), /TIDAK SAH/);
+});
+
+test('"MC" alone is accepted (2-letter minimum)', () => {
+  assert.strictEqual(validateLeaveReason('MC'), null);
+  assert.strictEqual(validateLeaveReason('"MC"'), null);
 });
 
 test('real reasons pass, with or without punctuation and numbers', () => {

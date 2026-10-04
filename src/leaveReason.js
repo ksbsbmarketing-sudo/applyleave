@@ -7,7 +7,8 @@
 //
 // Tiada import DOM/Firebase di sini — boleh diuji unit seperti leaveNotice.js.
 
-export const REASON_MIN_LETTERS = 3;
+// 2, bukan 3 — supaya "MC" sahaja diterima (diputuskan 2026-10-04).
+export const REASON_MIN_LETTERS = 2;
 
 export const countReasonLetters = (text) =>
   (String(text || '').match(/\p{L}/gu) || []).length;
