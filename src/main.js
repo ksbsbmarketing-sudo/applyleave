@@ -14,6 +14,7 @@ import { canSeeAuditLogs, canSeeRegistrations } from './listenerScope.js';
 import { getNoticeDays, isNoticeExempt } from './leaveNotice.js';
 import { validateLeaveReason } from './leaveReason.js';
 import { showToast, showConfirm, restorePendingToasts } from './notify.js';
+import { statusBadge } from './statusBadge.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -6279,7 +6280,7 @@ function renderBranchDashboard() {
                 <td style="padding:0.45rem 0.5rem;">${leaveTypeName(r.type)}</td>
                 <td style="padding:0.45rem 0.5rem;color:var(--text-muted);">${r.startDate} → ${r.endDate}</td>
                 <td style="padding:0.45rem 0.5rem;">${r.days}</td>
-                <td style="padding:0.45rem 0.5rem;"><span class="status-badge ${(r.status || '').toLowerCase()}">${r.status}</span></td>
+                <td style="padding:0.45rem 0.5rem;">${statusBadge(r.status)}</td>
                 <td style="padding:0.45rem 0.5rem;white-space:nowrap;">
                   ${window.canCorrectBranchLeave(user, r) ? `
                     ${!['APPROVED', 'REJECTED', 'CANCELLED'].includes(r.status)
@@ -6431,7 +6432,7 @@ function renderPersonalDashboard() {
                     <td style="font-weight: 700;">${leaveTypeName(act.type)}</td>
                     <td style="color: var(--text-muted); font-size: 1rem;">${act.startDate} → ${act.endDate}</td>
                     <td style="font-weight: 600;">${act.days} Hari</td>
-                    <td><span class="status-badge ${(act.status || '').toLowerCase()}">${act.status}</span></td>
+                    <td>${statusBadge(act.status)}</td>
                     <td>${act.ic === user.ic && !['APPROVED','REJECTED','CANCELLED'].includes(act.status) ? `<button class="neu-btn" onclick="window.editLeave(${act.id})" style="color:#60a5fa;">✏️ Edit Cuti</button>` : ''}</td>
                   </tr>
                 `).join('')}
@@ -7176,7 +7177,6 @@ function renderView() {
               </div>
               <div style="display:flex;flex-direction:column;gap:0.55rem;">
                 ${leaveRecords.filter(r => r.ic === user.ic).reverse().slice(0,5).map(act => {
-                  const sc = act.status === 'APPROVED' ? '#10b981' : (act.status||'').includes('REJECT') ? '#ef4444' : '#f59e0b';
                   const catC = leaveCategories.find(c => c.id === act.type);
                   return `
                   <div style="display:flex;justify-content:space-between;align-items:center;padding:0.6rem 0.75rem;border-radius:9px;background:rgba(163,177,198,0.06);border:1px solid rgba(163,177,198,0.1);">
@@ -7187,7 +7187,7 @@ function renderView() {
                         <div style="font-size:0.62rem;color:var(--text-muted);">${act.startDate || ''}</div>
                       </div>
                     </div>
-                    <span style="font-size:0.6rem;font-weight:700;padding:0.15rem 0.45rem;border:1px solid ${sc}44;border-radius:6px;color:${sc};background:${sc}12;white-space:nowrap;margin-left:0.5rem;">${(act.status||'').replace('TL APPROVED','TL OK').replace('HOD APPROVED','HOD OK').replace('RECOMMENDED','RECOM')}</span>
+                    <span style="margin-left:0.5rem;flex-shrink:0;">${statusBadge(act.status, { compact: true })}</span>
                   </div>`;
                 }).join('')}
                 ${leaveRecords.filter(r => r.ic === user.ic).length === 0 ? '<div style="font-size:0.75rem;color:var(--text-muted);text-align:center;padding:1rem;">Tiada rekod setakat ini.</div>' : ''}
@@ -7725,10 +7725,7 @@ function renderView() {
                   })()}
 
                   ${req.status !== 'PENDING' ? `
-                  <div style="margin-top: 1rem; color: var(--primary); font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; text-transform: uppercase;">
-                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                     ${req.status}
-                  </div>` : ''}
+                  <div style="margin-top: 1rem;">${statusBadge(req.status)}</div>` : ''}
                 </div>
               `;
             }).join('')}
@@ -7978,9 +7975,7 @@ function renderView() {
                           <span style="font-weight: 600; font-size: 0.875rem;">${req.name}</span>
                           <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;">${req.ic} — ${req.branch}</span>
                         </div>
-                        <span style="padding: 0.2rem 0.75rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; ${req.status === 'approved' ? 'background: rgba(16,185,129,0.15); color: #10b981;' : 'background: rgba(239,68,68,0.1); color: #ef4444;'}">
-                          ${req.status === 'approved' ? 'Diluluskan' : 'Ditolak'}
-                        </span>
+                        ${statusBadge(req.status, { label: req.status === 'approved' ? 'Diluluskan' : 'Ditolak' })}
                       </div>
                     `).join('')}
                   </div>
@@ -8137,13 +8132,7 @@ function renderView() {
                                   ${r.reason}
                               </td>
                               <td style="padding: 1.5rem 1rem;">
-                                  <span style="font-size: 0.6rem; font-weight: 700; text-transform: uppercase; padding: 0.35rem 0.75rem; border-radius: 20px; 
-                                      ${r.status === 'REJECTED' || r.status === 'CANCELLED' ? 'color: var(--danger); background: rgba(239, 68, 68, 0.1);' :
-                                        r.status.includes('HOD') || r.status === 'TL APPROVED' ? 'color: #eab308; background: rgba(234, 179, 8, 0.1);' :
-                                        r.status === 'PENDING' ? 'color: #eab308; border: 1px solid rgba(234, 179, 8, 0.4);' :
-                                        'color: var(--accent); background: rgba(34, 197, 94, 0.1);'}">
-                                      ${r.status}
-                                  </span>
+                                  ${statusBadge(r.status)}
                               </td>
                               <td style="padding: 1.5rem 1rem; text-align: right;">
                                   <div style="display: flex; gap: 1.25rem; justify-content: flex-end;">
@@ -8250,10 +8239,7 @@ function renderView() {
                     </div>
                   </div>
                   <div style="display:flex;gap:0.5rem;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">
-                    <span style="font-size:0.65rem;font-weight:700;padding:0.25rem 0.6rem;border-radius:999px;
-                      ${r.status === 'APPROVED' ? 'background:#dcfce7;color:#14532d;' : 'background:#dbeafe;color:#1e40af;'}">
-                      ${r.status}
-                    </span>
+                    ${statusBadge(r.status)}
                     <button onclick="window.printLocumForm(${r.id})" style="background:rgba(13,148,136,0.08);border:1px solid rgba(13,148,136,0.25);border-radius:8px;padding:0.35rem 0.75rem;cursor:pointer;color:#0d9488;font-size:0.72rem;font-weight:700;display:flex;align-items:center;gap:0.3rem;">
                       🖨️ Print
                     </button>
@@ -8608,10 +8594,7 @@ function renderView() {
                     <td style="padding:1.5rem 1rem;font-size:0.75rem;font-style:italic;color:var(--text-muted);max-width:250px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.reason}</td>
                     <td style="padding:1.5rem 1rem;font-weight:700;font-size:1.1rem;">${r.days}</td>
                     <td style="padding:1.5rem 1rem;">
-                      <span style="font-size:0.6rem;font-weight:700;text-transform:uppercase;padding:0.35rem 0.75rem;border-radius:20px;
-                        ${r.status==='REJECTED'?'color:var(--danger);background:rgba(239,68,68,0.1);':r.status.includes('HOD')||r.status==='TL APPROVED'?'color:#eab308;background:rgba(234,179,8,0.1);':r.status==='PENDING'?'color:#eab308;border:1px solid rgba(234,179,8,0.4);':'color:var(--accent);background:rgba(34,197,94,0.1);'}">
-                        ${r.status}
-                      </span>
+                      ${statusBadge(r.status)}
                     </td>
                   </tr>`).join('')}
                 </tbody>

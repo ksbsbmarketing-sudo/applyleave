@@ -550,21 +550,41 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
 .data-table tbody tr:hover td { background: rgba(255,255,255,0.5); }
 
 /* ── Badges ─────────────────────────────────────────── */
+/* Badge status — dijana oleh statusBadge() (src/statusBadge.js). Jangan
+   tulis warna status secara inline; tambah varian di sini. */
 .status-badge {
-  padding: 0.3rem 0.8rem;
-  border-radius: 20px;
-  font-size: 0.8rem;
+  --sb: #64748b;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
   font-weight: 800;
+  line-height: 1.2;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  display: inline-block;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  color: var(--sb);
+  background: rgba(100,116,139,0.1); /* fallback: browser tanpa color-mix */
+  background: color-mix(in srgb, var(--sb) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sb) 28%, transparent);
 }
-.status-badge.approved  { background: rgba(5,150,105,0.12);  color: var(--accent);   border: 1px solid rgba(5,150,105,0.25); }
-.status-badge.pending   { background: rgba(217,119,6,0.12);  color: var(--warning);  border: 1px solid rgba(217,119,6,0.25); }
-.status-badge.rejected  { background: rgba(220,38,38,0.1);   color: var(--danger);   border: 1px solid rgba(220,38,38,0.2); }
-.status-badge.cancelled { background: rgba(100,116,139,0.1); color: #64748b;         border: 1px solid rgba(100,116,139,0.2); }
-.status-badge.hod       { background: rgba(217,119,6,0.12);  color: var(--warning);  border: 1px solid rgba(217,119,6,0.25); }
-.status-badge.tl        { background: rgba(217,119,6,0.12);  color: var(--warning);  border: 1px solid rgba(217,119,6,0.25); }
+.status-badge::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.status-badge.sm { padding: 0.15rem 0.5rem; font-size: 0.6rem; gap: 0.3rem; }
+.status-badge.sm::before { width: 5px; height: 5px; }
+.status-badge.is-approved  { --sb: var(--accent); }
+.status-badge.is-pending   { --sb: #b45309; }
+.status-badge.is-progress  { --sb: var(--info); }
+.status-badge.is-rejected  { --sb: var(--danger); }
+.status-badge.is-cancelled { --sb: #64748b; opacity: 0.85; }
+.status-badge.is-neutral   { --sb: #64748b; }
 
 /* ── Management Tabs ────────────────────────────────── */
 .neu-tab {
