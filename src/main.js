@@ -13,8 +13,14 @@ import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { canSeeAuditLogs, canSeeRegistrations } from './listenerScope.js';
 import { getNoticeDays, isNoticeExempt } from './leaveNotice.js';
 import { validateLeaveReason } from './leaveReason.js';
+import { showToast, showConfirm, restorePendingToasts } from './notify.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
+
+// Toast/dialog menggantikan alert()/confirm() — didedahkan pada window untuk onclick inline.
+window.showToast = showToast;
+window.showConfirm = showConfirm;
+restorePendingToasts();
 
 import { initializeApp } from "firebase/app";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
@@ -317,10 +323,10 @@ window.sendWhatsApp = async function(toPhone, message, throwOnError = false) {
 };
 
 window.clearWALogs = async function() {
-  if (!confirm('Padam semua log notifikasi WhatsApp? Tindakan ini tidak boleh dibatalkan.')) return;
+  if (!await showConfirm('Padam semua log notifikasi WhatsApp? Tindakan ini tidak boleh dibatalkan.')) return;
   try {
     const snap = await getDocs(collection(db, 'wa_logs'));
-    if (snap.empty) { alert('Tiada log untuk dipadam.'); return; }
+    if (snap.empty) { showToast('Tiada log untuk dipadam.'); return; }
     let batch = writeBatch(db), count = 0;
     const commits = [];
     snap.docs.forEach(d => {
@@ -331,8 +337,8 @@ window.clearWALogs = async function() {
     await Promise.all(commits);
     waLogs = [];
     render();
-    alert('✅ Log WhatsApp berjaya dipadam.');
-  } catch(e) { alert('Ralat memadam log: ' + e.message); }
+    showToast('✅ Log WhatsApp berjaya dipadam.');
+  } catch(e) { showToast('Ralat memadam log: ' + e.message); }
 };
 
 window.saveWAToken = async function(token) {
@@ -344,7 +350,7 @@ window.saveWAToken = async function(token) {
   } catch(e) {
     console.warn('Failed to save WA token to Firestore:', e);
   }
-  alert('✅ Token WhatsApp berjaya disimpan!');
+  showToast('✅ Token WhatsApp berjaya disimpan!');
 };
 
 // Self-service password reset via WhatsApp OTP. Runs pre-login, so it talks to
@@ -381,9 +387,9 @@ async function otpPost(path, payload) {
 
 window.forgotPassword = async function() {
   const ic = (document.querySelector('#login-staff')?.value || selectedLoginStaffIC || '').trim();
-  if (!ic) { alert('Sila pilih nama anda dari senarai (dropdown) dahulu, kemudian tekan "Lupa Kata Laluan?".'); return; }
+  if (!ic) { showToast('Sila pilih nama anda dari senarai (dropdown) dahulu, kemudian tekan "Lupa Kata Laluan?".'); return; }
   if (!OTP_API_BASE) {
-    alert('ℹ️ Set semula kata laluan sendiri belum diaktifkan. Sila hubungi HR/Admin untuk reset kata laluan anda.');
+    showToast('ℹ️ Set semula kata laluan sendiri belum diaktifkan. Sila hubungi HR/Admin untuk reset kata laluan anda.');
     return;
   }
 
@@ -457,7 +463,7 @@ window.forgotPassword = async function() {
         const r = await otpPost('/api/confirm-otp', { ic, otp, newPassword: pw1 });
         if (r.ok && r.data.ok) {
           close();
-          alert('✅ Kata laluan anda telah ditetapkan semula. Sila log masuk dengan kata laluan baharu.');
+          showToast('✅ Kata laluan anda telah ditetapkan semula. Sila log masuk dengan kata laluan baharu.');
           const pf = document.querySelector('#password'); if (pf) pf.value = '';
           return;
         }
@@ -475,10 +481,10 @@ window.forgotPassword = async function() {
 
 window.testWANotification = async function() {
   const phone = document.getElementById('wa-test-phone')?.value;
-  if (!phone) return alert('Sila masukkan nombor telefon untuk ujian.');
-  if (!WHATSAPP_TOKEN) return alert('Sila simpan token Fonnte dahulu.');
+  if (!phone) return showToast('Sila masukkan nombor telefon untuk ujian.');
+  if (!WHATSAPP_TOKEN) return showToast('Sila simpan token Fonnte dahulu.');
   await window.sendWhatsApp(phone, `✅ *Ujian Notifikasi KSB Leave Apply*\n\nSistem notifikasi WhatsApp berfungsi dengan baik.\n\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`);
-  alert('Mesej ujian telah dihantar ke ' + phone);
+  showToast('Mesej ujian telah dihantar ke ' + phone);
 };
 
 window.setWaSettingsSubTab = function(tab) {
@@ -501,7 +507,7 @@ window.saveWaNotifRbac = async function(zone) {
     const btn = document.getElementById('save-rbac-' + zone);
     if (btn) { btn.textContent = '✅ Tersimpan'; btn.disabled = true; }
     setTimeout(() => render(), 1500);
-  } catch(e) { alert('Ralat menyimpan: ' + e.message); }
+  } catch(e) { showToast('Ralat menyimpan: ' + e.message); }
 };
 
 // ============================================================
@@ -977,10 +983,10 @@ window.toggleRbac = function(role, module) {
 window.saveRbac = async function() {
     try {
         await setDoc(doc(db, "settings", "rbac"), window.rbacMatrix);
-        alert('Kebenaran Akses (RBAC) berjaya disimpan ke Firestore!');
+        showToast('Kebenaran Akses (RBAC) berjaya disimpan ke Firestore!');
     } catch (e) {
         console.error("Error persisting RBAC Matrix:", e);
-        alert('Ralat: Gagal menyimpan tetapan matrix. Sila semak sambungan internet.');
+        showToast('Ralat: Gagal menyimpan tetapan matrix. Sila semak sambungan internet.');
     }
     render();
 };
@@ -988,21 +994,21 @@ window.saveRbac = async function() {
 // Togol mod "Guna Dalam Sistem": manual (HR isi sendiri) ↔ auto (kira dari rekod diluluskan).
 window.toggleAutoSystemUsage = async function() {
     if (!['admin', 'super_admin'].includes(user?.role)) {
-        alert('Hanya Super Admin / Admin boleh menukar tetapan ini.');
+        showToast('Hanya Super Admin / Admin boleh menukar tetapan ini.');
         return;
     }
     const turningOn = !autoSystemUsage;
     const msg = turningOn
         ? '⚠️ HIDUPKAN MOD AUTO?\n\nBaki "Guna Dalam Sistem" untuk AL/MC/EL akan dikira AUTOMATIK daripada rekod cuti yang DILULUSKAN dalam sistem. Nilai "Guna Dalam Sistem (Manual)" yang HR isi akan DIABAIKAN.\n\nPastikan SEMUA cuti sedia ada sudah direkod & diluluskan dalam sistem (sync penuh) sebelum hidupkan.\n\nTeruskan?'
         : '↩️ MATIKAN MOD AUTO (kembali manual)?\n\nBaki "Guna Dalam Sistem" akan kembali ikut nilai manual yang HR isi (rekod diluluskan TIDAK dikira automatik).\n\nTeruskan?';
-    if (!confirm(msg)) return;
+    if (!await showConfirm(msg)) return;
     try {
         await setDoc(doc(db, 'settings', 'leaveConfig'), { autoSystemUsage: turningOn, updatedAt: Date.now(), updatedBy: user.name || user.ic }, { merge: true });
         window.logSystemActivity(`Set AUTO "Guna Dalam Sistem" = ${turningOn ? 'ON (auto rekod)' : 'OFF (manual)'}`);
-        alert(turningOn ? '✅ Mod AUTO dihidupkan. Baki kini dikira dari rekod diluluskan.' : '✅ Mod manual dihidupkan semula.');
+        showToast(turningOn ? '✅ Mod AUTO dihidupkan. Baki kini dikira dari rekod diluluskan.' : '✅ Mod manual dihidupkan semula.');
     } catch (e) {
         console.error('Error toggling autoSystemUsage:', e);
-        alert('Ralat: Gagal menyimpan tetapan. Sila semak sambungan internet.');
+        showToast('Ralat: Gagal menyimpan tetapan. Sila semak sambungan internet.');
     }
 };
 
@@ -1016,8 +1022,8 @@ window.staffConfig = {
     roleLabels: { super_admin:'Super Admin', admin:'Admin', hr:'HR', hod_cawangan:'HOD Cawangan', hod_balok:'HOD Balok', doctor_pic:'Doctor PIC', supervisor:'Supervisor', team_leader:'Team Leader', staff:'Staff', juru_xray:'Juru X-Ray', sonographer:'Sonographer', juru_audio:'Juru Audio', pemandu:'Pemandu' },
     customRoles: []
 };
-window.resetRbac = function() {
-    if (!confirm('Reset semua kebenaran ke nilai lalai kod? Perubahan yang belum disimpan akan hilang.')) return;
+window.resetRbac = async function() {
+    if (!await showConfirm('Reset semua kebenaran ke nilai lalai kod? Perubahan yang belum disimpan akan hilang.')) return;
     window.rbacMatrix = JSON.parse(JSON.stringify(_rbacCodeDefaults));
     render();
 };
@@ -1263,7 +1269,7 @@ window.handleFileSelect = function(input, displayId, noticeId) {
         // Semak format (JPG/PNG/PDF) & saiz (10MB) — beritahu punca sebenar.
         const _fileErr = validateProofFile(input.files[0]);
         if (_fileErr) {
-            alert(_fileErr);
+            showToast(_fileErr);
             input.value = '';
             const _d = document.getElementById(displayId);
             if (_d) _d.innerText = 'Tiada fail dipilih';
@@ -1342,7 +1348,7 @@ window.reuploadProof = function(id) {
     const file = inp.files && inp.files[0];
     if (!file) return;
     const _fileErr = validateProofFile(file);
-    if (_fileErr) { alert(_fileErr); return; }
+    if (_fileErr) { showToast(_fileErr); return; }
     try {
       const fd = new FormData();
       fd.append('file', file);
@@ -1353,10 +1359,10 @@ window.reuploadProof = function(id) {
       if (!resp.ok || !data.secure_url) throw new Error((data.error && data.error.message) || ('Cloudinary HTTP ' + resp.status));
       await updateDoc(doc(db, 'leaves', rec.docId), { proofUrl: data.secure_url, proofName: file.name });
       if (window.logSystemActivity) window.logSystemActivity(`Re-uploaded proof for leave ${id} (${rec.type})`);
-      alert('✅ Bukti berjaya dimuat naik & disimpan.');
+      showToast('✅ Bukti berjaya dimuat naik & disimpan.');
     } catch (err) {
       console.error('Re-upload proof failed:', err);
-      alert(proofUploadErrorMessage(err));
+      showToast(proofUploadErrorMessage(err));
     }
   };
   inp.click();
@@ -1452,7 +1458,7 @@ window.printLocumForm = function(id) {
 
 window.printAllLocum = function() {
     const recs = leaveRecords.filter(r => r.locum1Name);
-    if (recs.length === 0) { alert('Tiada rekod locum untuk dicetak.'); return; }
+    if (recs.length === 0) { showToast('Tiada rekod locum untuk dicetak.'); return; }
     const pw = window.open('', '_blank');
     const rows = recs.map(r => {
         const locums = [];
@@ -1497,7 +1503,7 @@ window.saveLocumEdit = async function(id) {
   if (!record) return;
   const hasLocum2 = showLocum2Set.has(id) || record.locum2Name;
   if (hasLocum2 && record.locum2Name && (!record.locum2Phone || !record.locum2Date || !record.locum2TimeStart || !record.locum2TimeEnd)) {
-      alert('⚠️ Locum 2 tidak lengkap. Sila isi semua maklumat atau buang Locum 2.');
+      showToast('⚠️ Locum 2 tidak lengkap. Sila isi semua maklumat atau buang Locum 2.');
       return;
   }
   try {
@@ -1509,9 +1515,9 @@ window.saveLocumEdit = async function(id) {
       };
       await updateDoc(doc(db, 'leaves', id.toString()), upd);
       window.logSystemActivity(`Dikemaskini maklumat Locum untuk cuti ${record.name}`);
-      alert('✅ Maklumat locum berjaya dikemaskini.');
+      showToast('✅ Maklumat locum berjaya dikemaskini.');
   } catch(e) {
-      alert('Ralat menyimpan: ' + e.message);
+      showToast('Ralat menyimpan: ' + e.message);
   }
 };
 
@@ -1526,45 +1532,45 @@ window.changePassword = async function(event) {
   const next    = document.getElementById('pwd-new')?.value;
   const confirm  = document.getElementById('pwd-confirm')?.value;
 
-  if (!user) { alert('Sesi tidak sah. Sila log masuk semula.'); return; }
-  if (!auth.currentUser || auth.currentUser.isAnonymous) { alert('Sesi tidak sah. Sila log masuk semula.'); return; }
-  if (next !== confirm) { alert('❌ Kata laluan baharu tidak sepadan. Sila cuba lagi.'); return; }
-  if ((next || '').length < 6) { alert('❌ Kata laluan baharu mesti sekurang-kurangnya 6 aksara.'); return; }
+  if (!user) { showToast('Sesi tidak sah. Sila log masuk semula.'); return; }
+  if (!auth.currentUser || auth.currentUser.isAnonymous) { showToast('Sesi tidak sah. Sila log masuk semula.'); return; }
+  if (next !== confirm) { showToast('❌ Kata laluan baharu tidak sepadan. Sila cuba lagi.'); return; }
+  if ((next || '').length < 6) { showToast('❌ Kata laluan baharu mesti sekurang-kurangnya 6 aksara.'); return; }
 
   try {
     const cred = EmailAuthProvider.credential(emailForIC(user.ic), current);
     await reauthenticateWithCredential(auth.currentUser, cred);
     await updatePassword(auth.currentUser, next);
-    alert('✅ Kata laluan berjaya ditukar!');
+    showToast('✅ Kata laluan berjaya ditukar!');
     document.getElementById('pwd-current').value = '';
     document.getElementById('pwd-new').value = '';
     document.getElementById('pwd-confirm').value = '';
   } catch (err) {
     console.error('changePassword error:', err);
     if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-      alert('❌ Kata laluan semasa tidak betul. Sila cuba lagi.');
+      showToast('❌ Kata laluan semasa tidak betul. Sila cuba lagi.');
     } else {
-      alert('Ralat menukar kata laluan. Sila cuba lagi.');
+      showToast('Ralat menukar kata laluan. Sila cuba lagi.');
     }
   }
 };
 
 window.adminSetPassword = async function(ic, newPassword) {
-  if (!newPassword || newPassword.length < 6) { alert('Kata laluan mesti sekurang-kurangnya 6 aksara.'); return false; }
+  if (!newPassword || newPassword.length < 6) { showToast('Kata laluan mesti sekurang-kurangnya 6 aksara.'); return false; }
   // Setting another user's password needs the Admin SDK. If the Cloud Function is
   // deployed (Blaze), this works from the app. If NOT deployed (no-Blaze setup),
   // we fall back to guiding IT to use the local reset-password.js script.
   try {
     const fn = httpsCallable(functions, 'setStaffPassword');
     await fn({ ic, newPassword });
-    alert('✅ Kata laluan staf berjaya ditetapkan.');
+    showToast('✅ Kata laluan staf berjaya ditetapkan.');
     return true;
   } catch (err) {
     console.error('adminSetPassword error:', err);
     if (['functions/not-found', 'functions/internal', 'functions/unavailable', 'functions/failed-precondition'].includes(err.code)) {
-      alert(`ℹ️ Set kata laluan dari aplikasi tidak tersedia (Cloud Function tidak di-deploy).\n\nIT boleh reset kata laluan staf ini melalui skrip di komputer:\n\nnode reset-password.js ${ic} <kata-laluan-baharu>`);
+      showToast(`ℹ️ Set kata laluan dari aplikasi tidak tersedia (Cloud Function tidak di-deploy).\n\nIT boleh reset kata laluan staf ini melalui skrip di komputer:\n\nnode reset-password.js ${ic} <kata-laluan-baharu>`);
     } else {
-      alert('Ralat menetapkan kata laluan: ' + (err.message || err.code));
+      showToast('Ralat menetapkan kata laluan: ' + (err.message || err.code));
     }
     return false;
   }
@@ -1582,24 +1588,24 @@ window.saveSelfProfile = async function(event) {
     const address = document.getElementById('self-address')?.value?.trim() || '';
 
     if (!user || !user.ic) {
-        alert('Ralat: Sesi tidak sah. Sila log masuk semula.');
+        showToast('Ralat: Sesi tidak sah. Sila log masuk semula.');
         return;
     }
 
     const name = window.formatPersonName(rawName);
     if (name.length < 3) {
-        alert('⚠️ Nama terlalu pendek. Sila masukkan nama penuh anda.');
+        showToast('⚠️ Nama terlalu pendek. Sila masukkan nama penuh anda.');
         return;
     }
     if (name.length > 80) {
-        alert('⚠️ Nama terlalu panjang (maksimum 80 aksara).');
+        showToast('⚠️ Nama terlalu panjang (maksimum 80 aksara).');
         return;
     }
     // Nama ialah identiti rasmi pada rekod cuti — sahkan perubahan sebenar,
     // bukan sekadar pembetulan huruf besar/kecil.
     const nameChanged = name !== (user.name || '');
     if (nameChanged && name.toLowerCase() !== String(user.name || '').toLowerCase()) {
-        if (!confirm(`Tukar nama daripada:\n\n"${user.name}"\n\nkepada:\n\n"${name}"\n\nNama ini akan digunakan di skrin log masuk dan pada permohonan cuti anda. Teruskan?`)) return;
+        if (!await showConfirm(`Tukar nama daripada:\n\n"${user.name}"\n\nkepada:\n\n"${name}"\n\nNama ini akan digunakan di skrin log masuk dan pada permohonan cuti anda. Teruskan?`)) return;
     }
 
     // "013-652 9531" dibetulkan kepada "60136529531" — bukan ditolak. Rekod lama
@@ -1607,7 +1613,7 @@ window.saveSelfProfile = async function(event) {
     // tidak boleh menyimpan profil (nama sekalipun) sehingga telefon dibetulkan.
     const phone = normalizePhone(rawPhone);
     if (!isValidPhone(phone)) {
-        alert('⚠️ Nombor telefon tidak sah.\n\nContoh: 0171234678 atau 60171234678');
+        showToast('⚠️ Nombor telefon tidak sah.\n\nContoh: 0171234678 atau 60171234678');
         return;
     }
 
@@ -1634,17 +1640,17 @@ window.saveSelfProfile = async function(event) {
                 await updateDoc(doc(db, "directory", user.ic), { name });
             } catch (dirErr) {
                 console.error("Error syncing directory name:", dirErr);
-                alert('⚠️ Nama disimpan pada profil, tetapi gagal dikemas kini pada senarai log masuk.\nSila maklumkan HR/IT — nama lama mungkin masih dipaparkan semasa log masuk.');
+                showToast('⚠️ Nama disimpan pada profil, tetapi gagal dikemas kini pada senarai log masuk.\nSila maklumkan HR/IT — nama lama mungkin masih dipaparkan semasa log masuk.');
             }
             window.logSystemActivity(`Staff renamed self: "${previousName}" → "${name}" (${user.ic})`);
         }
     } catch (err) {
         console.error("Error saving profile:", err);
-        alert('Ralat menyimpan profil ke pangkalan data.');
+        showToast('Ralat menyimpan profil ke pangkalan data.');
         return;
     }
 
-    alert('✅ Profil berjaya dikemaskini!');
+    showToast('✅ Profil berjaya dikemaskini!');
     window.setProfileSettings(false);
 };
 
@@ -1719,16 +1725,16 @@ window.submitRegister = async function(event) {
   const phone = normalizePhone(form.querySelector('#reg-phone').value);
 
   if (!name || !ic || !branch || !category || !phone) {
-    alert('Sila lengkapkan semua maklumat yang diperlukan.');
+    showToast('Sila lengkapkan semua maklumat yang diperlukan.');
     return;
   }
   if (staffList.find(s => s.ic === ic)) {
-    alert('No. IC ini sudah berdaftar dalam sistem. Sila log masuk atau hubungi HR/Admin.');
+    showToast('No. IC ini sudah berdaftar dalam sistem. Sila log masuk atau hubungi HR/Admin.');
     return;
   }
   const existing = registrationRequests.find(r => r.ic === ic && r.status === 'pending');
   if (existing) {
-    alert('Permohonan anda sedang dalam semakan. Sila tunggu kelulusan daripada HR/Admin.');
+    showToast('Permohonan anda sedang dalam semakan. Sila tunggu kelulusan daripada HR/Admin.');
     return;
   }
 
@@ -1745,11 +1751,11 @@ window.submitRegister = async function(event) {
       await window.sendWhatsApp(admin.phone, msg);
     }
 
-    alert('✅ Permohonan anda telah dihantar!\n\nHR/Admin akan menyemak dan meluluskan akaun anda tidak lama lagi. Anda akan dihubungi melalui WhatsApp.');
+    showToast('✅ Permohonan anda telah dihantar!\n\nHR/Admin akan menyemak dan meluluskan akaun anda tidak lama lagi. Anda akan dihubungi melalui WhatsApp.');
     window.closeRegisterModal();
   } catch (err) {
     console.error('submitRegister error:', err);
-    alert('Ralat menghantar permohonan. Sila cuba lagi.');
+    showToast('Ralat menghantar permohonan. Sila cuba lagi.');
   }
 };
 
@@ -1757,7 +1763,7 @@ window.approveRegistration = async function(docId) {
   const req = registrationRequests.find(r => r.docId === docId);
   if (!req) return;
   if (staffList.find(s => s.ic === req.ic)) {
-    alert('No. IC ini sudah wujud dalam sistem.');
+    showToast('No. IC ini sudah wujud dalam sistem.');
     await updateDoc(doc(db, 'registration_requests', docId), { status: 'rejected', rejectedAt: Date.now(), rejectedReason: 'IC sudah wujud' });
     return;
   }
@@ -1771,10 +1777,10 @@ window.approveRegistration = async function(docId) {
     await updateDoc(doc(db, 'registration_requests', docId), { status: 'approved', approvedAt: Date.now() });
     window.logSystemActivity(`Approved registration: ${req.name} (${req.ic})`);
     await window.sendWhatsApp(req.phone, `✅ *Selamat datang ke KSB Leave System!*\n\nNama: ${req.name}\nKata Laluan: ${req.ic}\n\nAkaun anda sedang diaktifkan. Sila log masuk sebentar lagi dan tukar kata laluan anda.`);
-    alert(`✅ Permohonan ${req.name} telah diluluskan!\n\n⚠️ IT perlu jalankan "node provision-auth.js" untuk mengaktifkan akaun log masuk. Kata laluan awal ialah No. IC (${req.ic}).`);
+    showToast(`✅ Permohonan ${req.name} telah diluluskan!\n\n⚠️ IT perlu jalankan "node provision-auth.js" untuk mengaktifkan akaun log masuk. Kata laluan awal ialah No. IC (${req.ic}).`);
   } catch (err) {
     console.error('approveRegistration error:', err);
-    alert('Ralat meluluskan permohonan.');
+    showToast('Ralat meluluskan permohonan.');
   }
 };
 
@@ -1787,10 +1793,10 @@ window.rejectRegistration = async function(docId) {
     await updateDoc(doc(db, 'registration_requests', docId), { status: 'rejected', rejectedAt: Date.now(), rejectedReason: reason || 'Tidak dinyatakan' });
     window.logSystemActivity(`Rejected registration: ${req.name} (${req.ic})`);
     await window.sendWhatsApp(req.phone, `❌ *Permohonan Daftar Ditolak*\n\nNama: ${req.name}\nSebab: ${reason || 'Tidak dinyatakan'}\n\nSila hubungi HR/Admin untuk maklumat lanjut.`);
-    alert(`Permohonan ${req.name} telah ditolak.`);
+    showToast(`Permohonan ${req.name} telah ditolak.`);
   } catch (err) {
     console.error('rejectRegistration error:', err);
-    alert('Ralat menolak permohonan.');
+    showToast('Ralat menolak permohonan.');
   }
 };
 
@@ -1808,15 +1814,15 @@ window.submitAddStaff = async function(event) {
   const initialPassword = form.querySelector('#as-password')?.value || ic;
 
   if (!name || !ic || !branch) {
-    alert('Sila lengkapkan Nama, No. IC, dan Cawangan.');
+    showToast('Sila lengkapkan Nama, No. IC, dan Cawangan.');
     return;
   }
   if (!isValidPhone(phone)) {
-    alert('⚠️ Nombor telefon tidak sah.\n\nContoh: 0171234678 atau 60171234678');
+    showToast('⚠️ Nombor telefon tidak sah.\n\nContoh: 0171234678 atau 60171234678');
     return;
   }
   if (staffList.find(s => s.ic === ic)) {
-    alert('No. IC ini sudah wujud dalam sistem. Sila semak semula.');
+    showToast('No. IC ini sudah wujud dalam sistem. Sila semak semula.');
     return;
   }
 
@@ -1827,11 +1833,11 @@ window.submitAddStaff = async function(event) {
     window.logSystemActivity(`Added new staff: ${name}`);
     // No-Blaze setup: the login account is created when IT runs provision-auth.js.
     // Initial password defaults to the staff's IC; IT can change it via reset-password.js.
-    alert(`✅ Staf baharu "${name}" berjaya ditambah!\n\n⚠️ IT perlu jalankan "node provision-auth.js" untuk mengaktifkan akaun log masuk. Kata laluan awal ialah No. IC (${ic}).`);
+    showToast(`✅ Staf baharu "${name}" berjaya ditambah!\n\n⚠️ IT perlu jalankan "node provision-auth.js" untuk mengaktifkan akaun log masuk. Kata laluan awal ialah No. IC (${ic}).`);
     window.closeAddStaff();
   } catch (err) {
     console.error('submitAddStaff error:', err);
-    alert('Ralat menyimpan staf. Sila cuba lagi.');
+    showToast('Ralat menyimpan staf. Sila cuba lagi.');
   }
 };
 
@@ -1968,8 +1974,8 @@ window.toggleRouting = function(group, field) {
 window.saveRouting = async function() {
   try {
     await setDoc(doc(db, 'config', 'approvalRouting'), approvalRouting);
-    alert('✅ Laluan Kelulusan berjaya disimpan!');
-  } catch(e) { alert('Ralat menyimpan: ' + e.message); }
+    showToast('✅ Laluan Kelulusan berjaya disimpan!');
+  } catch(e) { showToast('Ralat menyimpan: ' + e.message); }
 };
 
 window.buildStateSelect = function(selectedState, docId) {
@@ -1981,7 +1987,7 @@ window.saveBranchState = async function(docId, newState) {
   try {
     await updateDoc(doc(db, 'branches', docId), { state: newState, daerah: '' });
     render();
-  } catch(e) { alert('Gagal simpan negeri: ' + e.message); }
+  } catch(e) { showToast('Gagal simpan negeri: ' + e.message); }
 };
 
 window.buildDaerahSelect = function(selectedDaerah, docId, state) {
@@ -1994,7 +2000,7 @@ window.buildDaerahSelect = function(selectedDaerah, docId, state) {
 window.saveBranchDaerah = async function(docId, daerah) {
   try {
     await updateDoc(doc(db, 'branches', docId), { daerah });
-  } catch(e) { alert('Gagal simpan daerah: ' + e.message); }
+  } catch(e) { showToast('Gagal simpan daerah: ' + e.message); }
 };
 
 window.updateDaerahOptions = function() {
@@ -2020,14 +2026,14 @@ window.addNewBranch = async function() {
     await setDoc(doc(db, 'branches', id), { name, state, daerah, manager: user ? user.name : 'Admin' });
     nameEl.value = '';
     if (daerahEl) daerahEl.value = '';
-  } catch(e) { alert('Gagal tambah: ' + e.message); }
+  } catch(e) { showToast('Gagal tambah: ' + e.message); }
 };
 
 window.deleteBranchById = async function(docId, name) {
-  if (!confirm('Padam cawangan "' + name + '"?')) return;
+  if (!await showConfirm('Padam cawangan "' + name + '"?')) return;
   try {
     await deleteDoc(doc(db, 'branches', docId));
-  } catch(e) { alert('Gagal padam: ' + e.message); }
+  } catch(e) { showToast('Gagal padam: ' + e.message); }
 };
 
 
@@ -2057,15 +2063,15 @@ async function saveStaffConfig() {
 window.addStaffCategory = async function() {
   const name = (prompt('Nama kategori baru:') || '').trim();
   if (!name) return;
-  if (window.staffConfig.staffCategories.includes(name)) { alert('Kategori sudah wujud.'); return; }
+  if (window.staffConfig.staffCategories.includes(name)) { showToast('Kategori sudah wujud.'); return; }
   window.staffConfig.staffCategories.push(name);
   await saveStaffConfig();
   render();
 };
 
 window.deleteStaffCategory = async function(name) {
-  if (CORE_CATEGORIES.includes(name)) { alert('Kategori teras tidak boleh dipadam.'); return; }
-  if (!confirm('Padam kategori "' + name + '"?')) return;
+  if (CORE_CATEGORIES.includes(name)) { showToast('Kategori teras tidak boleh dipadam.'); return; }
+  if (!await showConfirm('Padam kategori "' + name + '"?')) return;
   window.staffConfig.staffCategories = window.staffConfig.staffCategories.filter(c => c !== name);
   await saveStaffConfig();
   render();
@@ -2074,7 +2080,7 @@ window.deleteStaffCategory = async function(name) {
 window.addCustomRole = async function() {
   const key = (prompt('Kunci peranan (huruf kecil, tiada ruang, contoh: ketua_unit):') || '').trim().toLowerCase().replace(/\s+/g, '_');
   if (!key) return;
-  if (window.rbacMatrix[key]) { alert('Peranan sudah wujud.'); return; }
+  if (window.rbacMatrix[key]) { showToast('Peranan sudah wujud.'); return; }
   const label = (prompt('Nama paparan peranan (contoh: Ketua Unit):') || '').trim();
   if (!label) return;
   // Add to rbacMatrix with zeroed permissions
@@ -2087,8 +2093,8 @@ window.addCustomRole = async function() {
 };
 
 window.deleteCustomRole = async function(key) {
-  if (CORE_ROLES.includes(key)) { alert('Peranan teras tidak boleh dipadam.'); return; }
-  if (!confirm('Padam peranan "' + key + '"? Staff dengan peranan ini perlu dikemas kini secara manual.')) return;
+  if (CORE_ROLES.includes(key)) { showToast('Peranan teras tidak boleh dipadam.'); return; }
+  if (!await showConfirm('Padam peranan "' + key + '"? Staff dengan peranan ini perlu dikemas kini secara manual.')) return;
   delete window.rbacMatrix[key];
   delete window.staffConfig.roleLabels[key];
   window.staffConfig.customRoles = window.staffConfig.customRoles.filter(r => r.key !== key);
@@ -2119,15 +2125,15 @@ window.setEditingStaff = function(ic) {
 window.deleteStaff = async function(ic) {
     const staff = staffList.find(s => s.ic === ic);
     if (!staff) return;
-    const confirmed = confirm(`Adakah anda pasti untuk BUANG "${staff.name}" daripada sistem?\n\nTindakan ini tidak boleh dibatalkan.`);
+    const confirmed = await showConfirm(`Adakah anda pasti untuk BUANG "${staff.name}" daripada sistem?\n\nTindakan ini tidak boleh dibatalkan.`);
     if (!confirmed) return;
     try {
         await deleteDoc(doc(db, 'staff', ic));
         window.logSystemActivity(`Deleted staff record: ${staff.name} (${ic})`);
-        alert(`"${staff.name}" berjaya dibuang dari sistem.`);
+        showToast(`"${staff.name}" berjaya dibuang dari sistem.`);
     } catch (err) {
         console.error('deleteStaff error:', err);
-        alert('Ralat semasa membuang rekod. Sila cuba lagi.');
+        showToast('Ralat semasa membuang rekod. Sila cuba lagi.');
     }
 };
 
@@ -2425,8 +2431,8 @@ window.editLeave = function(id) {
     const isApprover = window.canManageRequest(user, rec) || window.canCorrectBranchLeave(user, rec);
     const finalized = ['APPROVED', 'REJECTED', 'CANCELLED'].includes(rec.status);
     // Staf/pelulus hanya boleh ubah semasa belum diluluskan muktamad; HR/Admin boleh bila-bila (pembetulan rekod).
-    if (!isAdminEditor && finalized) { alert('Permohonan ini sudah selesai dan tidak boleh diubah.'); return; }
-    if (!isAdminEditor && !isOwner && !isApprover) { alert('Anda tidak mempunyai kebenaran untuk mengubah permohonan ini.'); return; }
+    if (!isAdminEditor && finalized) { showToast('Permohonan ini sudah selesai dan tidak boleh diubah.'); return; }
+    if (!isAdminEditor && !isOwner && !isApprover) { showToast('Anda tidak mempunyai kebenaran untuk mengubah permohonan ini.'); return; }
     editingLeaveId = id;
     render();
 };
@@ -2512,9 +2518,9 @@ function selfHealPendingLeaveDays() {
 window.staffEditOwnLeave = async function(id) {
   const rec = leaveRecords.find(r => r.id === id);
   if (!rec) return;
-  if (rec.ic !== user.ic) { alert('Anda hanya boleh mengubah permohonan anda sendiri.'); return; }
+  if (rec.ic !== user.ic) { showToast('Anda hanya boleh mengubah permohonan anda sendiri.'); return; }
   if (['APPROVED', 'REJECTED', 'CANCELLED'].includes(rec.status)) {
-    alert('Permohonan ini sudah selesai dan tidak boleh diubah.'); return;
+    showToast('Permohonan ini sudah selesai dan tidak boleh diubah.'); return;
   }
 
   const newStart = prompt('Tarikh Mula (YYYY-MM-DD):', rec.startDate);
@@ -2524,25 +2530,25 @@ window.staffEditOwnLeave = async function(id) {
   const newReason = prompt('Sebab:', rec.reason);
   if (newReason === null) return;
   const _reasonErr = validateLeaveReason(newReason);
-  if (_reasonErr) { alert(_reasonErr); return; }
+  if (_reasonErr) { showToast(_reasonErr); return; }
 
   // Build a diff of only what changed.
   const changes = [];
   if (newStart !== rec.startDate) changes.push(`• Tarikh Mula: ${rec.startDate} → ${newStart}`);
   if (newEnd !== rec.endDate)     changes.push(`• Tarikh Akhir: ${rec.endDate} → ${newEnd}`);
   if (newReason !== rec.reason)   changes.push(`• Sebab: "${rec.reason}" → "${newReason}"`);
-  if (!changes.length) { alert('Tiada perubahan dibuat.'); return; }
+  if (!changes.length) { showToast('Tiada perubahan dibuat.'); return; }
 
   const days = window.computeLeaveDays(newStart, newEnd, staffList.find(s => s.ic === rec.ic) || user, rec.type);
   if (days <= 0) {
-    alert('Tarikh yang dipilih tiada hari bekerja untuk staf pentadbiran. Sila pilih tarikh yang merangkumi hari bekerja (Isnin–Jumaat).');
+    showToast('Tarikh yang dipilih tiada hari bekerja untuk staf pentadbiran. Sila pilih tarikh yang merangkumi hari bekerja (Isnin–Jumaat).');
     return;
   }
 
   const warn = rec.status !== 'PENDING'
     ? '\n\n⚠️ Permohonan ini telah disokong/diluluskan separa. Mengubahnya akan MENETAPKAN SEMULA status ke PENDING dan proses kelulusan akan bermula semula.'
     : '';
-  if (!confirm(`Sahkan perubahan berikut?\n\n${changes.join('\n')}\n\nTempoh baharu: ${days} hari${warn}`)) return;
+  if (!await showConfirm(`Sahkan perubahan berikut?\n\n${changes.join('\n')}\n\nTempoh baharu: ${days} hari${warn}`)) return;
 
   try {
     await updateDoc(doc(db, 'leaves', id.toString()), {
@@ -2558,21 +2564,21 @@ window.staffEditOwnLeave = async function(id) {
       '🔁 Cuti Dikemaskini — Perlu Sokongan Semula',
       `${applicant.name} mengubah permohonan cuti (kini ${newStart} → ${newEnd}); memerlukan sokongan semula.`,
       id.toString(), rec.ic);
-    alert('✅ Permohonan dikemaskini. Status ditetapkan semula ke PENDING untuk kelulusan semula.');
+    showToast('✅ Permohonan dikemaskini. Status ditetapkan semula ke PENDING untuk kelulusan semula.');
   } catch (err) {
     console.error('staffEditOwnLeave error:', err);
-    alert('Ralat mengemaskini permohonan. (Mungkin status telah berubah — sila muat semula.)');
+    showToast('Ralat mengemaskini permohonan. (Mungkin status telah berubah — sila muat semula.)');
   }
 };
 
 window.deleteLeave = async function(id) {
-    if(confirm("Are you sure you want to delete this leave record?")) {
+    if(await showConfirm("Padam rekod cuti ini? Tindakan ini tidak boleh dibatalkan.")) {
         try {
             await deleteDoc(doc(db, "leaves", id.toString()));
-            alert("Rekod cuti berjaya dipadam.");
+            showToast("Rekod cuti berjaya dipadam.");
         } catch (err) {
             console.error("Error deleting document: ", err);
-            alert("Ralat memadam rekod.");
+            showToast("Ralat memadam rekod.");
         }
     }
 };
@@ -2583,7 +2589,7 @@ window.finalizeLeave = async function(id) {
         // Kebenaran: hanya pelulus yang menguruskan staf/cawangan ini boleh meluluskan/menyokong.
         // Selari dengan tapisan UI senarai kelulusan dan guard rejectLeave/cancelLeave.
         if (!window.canManageRequest(user, record)) {
-            alert('Anda tidak mempunyai kebenaran untuk meluluskan permohonan cawangan/staf ini.');
+            showToast('Anda tidak mempunyai kebenaran untuk meluluskan permohonan cawangan/staf ini.');
             return;
         }
 
@@ -2605,7 +2611,7 @@ window.finalizeLeave = async function(id) {
             leaveRecords, record.ic, record.startDate, record.endDate, { excludeId: record.id }
         );
         if (_apprDup.length > 0) {
-            alert('⛔ TIDAK BOLEH DILULUSKAN — BERTINDIH\n\n' +
+            showToast('⛔ TIDAK BOLEH DILULUSKAN — BERTINDIH\n\n' +
                   'Staf ini sudah ada cuti DILULUSKAN untuk tarikh yang sama:\n\n' +
                   describeOverlaps(_apprDup, leaveTypeLabel) + '\n\n' +
                   'Meluluskan permohonan ini akan menolak baki dua kali.\n' +
@@ -2618,7 +2624,7 @@ window.finalizeLeave = async function(id) {
         if (applicant && applicant.category === 'Doctor') {
             const hasLocum2 = showLocum2Set.has(record.id) || record.locum2Name;
             if (hasLocum2 && record.locum2Name && (!record.locum2Phone || !record.locum2Date || !record.locum2TimeStart || !record.locum2TimeEnd)) {
-                alert("⚠️ Locum Kedua tidak lengkap. Sila lengkapkan atau buang Locum Kedua sebelum meneruskan.");
+                showToast("⚠️ Locum Kedua tidak lengkap. Sila lengkapkan atau buang Locum Kedua sebelum meneruskan.");
                 return;
             }
         }
@@ -2662,7 +2668,7 @@ window.finalizeLeave = async function(id) {
             if (record.status === 'TL APPROVED' && (approvalRouting['operation_balok'] || {}).needs_tl) {
                 const _ap = applicant || staffList.find(s => s.ic === record.ic);
                 if (_ap && window.getStaffGroup(_ap) === 'operation_balok') {
-                    alert('⛔ Permohonan ini masih menunggu kelulusan Supervisor (Peringkat 1). HR/Admin hanya boleh luluskan selepas Supervisor lulus.');
+                    showToast('⛔ Permohonan ini masih menunggu kelulusan Supervisor (Peringkat 1). HR/Admin hanya boleh luluskan selepas Supervisor lulus.');
                     return;
                 }
             }
@@ -2676,7 +2682,7 @@ window.finalizeLeave = async function(id) {
                     : _noP1
                     ? `Staf ${record.name} tiada Pelulus Peringkat 1 (HOD/Supervisor) berdaftar untuk cawangan/kategori ini.\n\nLuluskan terus sebagai HR/Admin?`
                     : `⚠️ Permohonan ini BELUM dinilai oleh HOD/Supervisor.\n\nAdakah anda pasti mahu luluskan terus (bypass) bagi ${record.name}?`;
-                if (!confirm(_confirmMsg)) return;
+                if (!await showConfirm(_confirmMsg)) return;
             }
             newStatus = "APPROVED";
             const approvedName = (applicant || {}).name || record.name;
@@ -2783,36 +2789,36 @@ window.finalizeLeave = async function(id) {
                 .forEach(s => window.addNotification(s.ic, 'approval_made', '🗂️ Rekod Kelulusan',
                     `${user.name} telah ${_actionLabel} permohonan ${_leaveInfo}.`, id.toString()));
 
-            alert(isFinalApproval
+            showToast(isFinalApproval
                 ? `✅ Cuti Diluluskan!${waFinalFeedback}`
                 : isTLApproval
                 ? `📋 Sokongan Team Leader (Peringkat 0) Berjaya! Permohonan dihantar kepada Supervisor untuk dinilai.${tlWaFeedback}`
                 : `📋 Sokongan Peringkat 1 Berjaya! Permohonan dihantar kepada HR/Admin untuk kelulusan akhir.${waHRFeedback}`);
         } catch (err) {
             console.error("Error updating document: ", err);
-            alert("Ralat mengemaskini status cuti.");
+            showToast("Ralat mengemaskini status cuti.");
         }
     }
 };
 
 window.resendApprovalWA = async function(id) {
     const record = leaveRecords.find(r => r.id === id);
-    if (!record) return alert('Rekod tidak dijumpai.');
-    if (record.status !== 'APPROVED') return alert('Hanya rekod yang sudah DILULUSKAN boleh dihantar semula.');
+    if (!record) return showToast('Rekod tidak dijumpai.');
+    if (record.status !== 'APPROVED') return showToast('Hanya rekod yang sudah DILULUSKAN boleh dihantar semula.');
 
     const applicant = staffList.find(s => s.ic === record.ic);
-    if (!applicant) return alert('Maklumat staf tidak dijumpai.');
-    if (!applicant.phone) return alert(`Nombor telefon ${applicant.name} belum didaftarkan dalam sistem.\n\nSila kemaskini nombor telefon dalam profil staf.`);
-    if (!WHATSAPP_ENABLED()) return alert('Token WhatsApp belum dikonfigurasi.\n\nPergi ke Pengurusan → Tetapan WhatsApp untuk simpan token Fonnte.');
+    if (!applicant) return showToast('Maklumat staf tidak dijumpai.');
+    if (!applicant.phone) return showToast(`Nombor telefon ${applicant.name} belum didaftarkan dalam sistem.\n\nSila kemaskini nombor telefon dalam profil staf.`);
+    if (!WHATSAPP_ENABLED()) return showToast('Token WhatsApp belum dikonfigurasi.\n\nPergi ke Pengurusan → Tetapan WhatsApp untuk simpan token Fonnte.');
 
     const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
     const msg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *DILULUSKAN SEPENUHNYA* oleh HR/Admin.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
 
     try {
         await window.sendWhatsApp(applicant.phone, msg, true);
-        alert(`✅ Notifikasi WhatsApp berjaya dihantar semula kepada ${applicant.name}.`);
+        showToast(`✅ Notifikasi WhatsApp berjaya dihantar semula kepada ${applicant.name}.`);
     } catch(err) {
-        alert(`❌ Gagal menghantar WhatsApp.\n\nRalat: ${err.message}\n\nSila pastikan token Fonnte masih sah.`);
+        showToast(`❌ Gagal menghantar WhatsApp.\n\nRalat: ${err.message}\n\nSila pastikan token Fonnte masih sah.`);
     }
 };
 
@@ -2823,21 +2829,21 @@ window.cancelLeave = async function(id) {
     const rKey = window.rbacMatrix[user.role] ? user.role : 'staff';
     const finalRbac = window.rbacMatrix[rKey] || {};
     if (!finalRbac.can_cancel) {
-        alert('Anda tidak mempunyai kebenaran (RBAC) untuk membatalkan cuti ini.');
+        showToast('Anda tidak mempunyai kebenaran (RBAC) untuk membatalkan cuti ini.');
         return;
     }
 
     if (!window.canManageRequest(user, req) && !window.canCorrectBranchLeave(user, req)) {
-        alert('Anda tidak mempunyai kebenaran untuk menguruskan cawangan/staf ini.');
+        showToast('Anda tidak mempunyai kebenaran untuk menguruskan cawangan/staf ini.');
         return;
     }
 
-    if (!confirm(`Adakah anda pasti mahu MEMBATALKAN cuti ${req.name}?\nStatus akan ditukar ke BATAL.`)) return;
+    if (!await showConfirm(`Adakah anda pasti mahu MEMBATALKAN cuti ${req.name}?\nStatus akan ditukar ke BATAL.`)) return;
 
     try {
         await updateDoc(doc(db, "leaves", id.toString()), { status: 'CANCELLED' });
         window.logSystemActivity(`Cancelled Leave for ${req.name}`);
-        alert(`Cuti ${req.name} berjaya dibatalkan.`);
+        showToast(`Cuti ${req.name} berjaya dibatalkan.`);
         
         const staff = staffList.find(s => s.ic === req.ic);
         if (staff && staff.phone) {
@@ -2847,7 +2853,7 @@ window.cancelLeave = async function(id) {
         }
     } catch (err) {
         console.error("Error cancelling leave: ", err);
-        alert("Ralat membatalkan cuti.");
+        showToast("Ralat membatalkan cuti.");
     }
 };
 
@@ -2858,12 +2864,12 @@ window.rejectLeave = async function(id) {
     // Kebenaran: hanya pelulus yang menguruskan staf/cawangan ini boleh menolak.
     // canManageRequest membenarkan Team Leader menolak rekod PENDING op-Balok yang diuruskannya.
     if (!window.canManageRequest(user, record)) {
-        alert('Anda tidak mempunyai kebenaran untuk menolak permohonan cawangan/staf ini.');
+        showToast('Anda tidak mempunyai kebenaran untuk menolak permohonan cawangan/staf ini.');
         return;
     }
 
     const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
-    if (!confirm(`Adakah anda pasti mahu MENOLAK permohonan cuti ${record.name}?\n(${leaveTypeName}, ${record.startDate} → ${record.endDate})\n\nStatus akan ditukar ke DITOLAK dan pemohon akan dimaklumkan.`)) return;
+    if (!await showConfirm(`Adakah anda pasti mahu MENOLAK permohonan cuti ${record.name}?\n(${leaveTypeName}, ${record.startDate} → ${record.endDate})\n\nStatus akan ditukar ke DITOLAK dan pemohon akan dimaklumkan.`)) return;
 
     try {
         await updateDoc(doc(db, "leaves", id.toString()), { status: "REJECTED" });
@@ -2876,10 +2882,10 @@ window.rejectLeave = async function(id) {
             const msg = `❌ *CUTI TIDAK DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nMaaf, permohonan cuti anda telah *DITOLAK*.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n\nSila hubungi HR/Admin untuk maklumat lanjut.\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
             window.sendWhatsApp(applicant.phone, msg);
         }
-        alert(`Permohonan cuti ${record.name} telah ditolak.`);
+        showToast(`Permohonan cuti ${record.name} telah ditolak.`);
     } catch (err) {
         console.error("Error rejecting leave: ", err);
-        alert("Ralat menolak permohonan cuti.");
+        showToast("Ralat menolak permohonan cuti.");
     }
 };
 
@@ -2924,12 +2930,12 @@ window.resendLeaveWA = function(id) {
     }
 
     if (!recipients.length) {
-        alert('⚠️ Tiada penerima dijumpai untuk dihantar peringatan WA.');
+        showToast('⚠️ Tiada penerima dijumpai untuk dihantar peringatan WA.');
         return;
     }
     recipients.forEach(r => window.sendWhatsApp(r.phone, msg));
     const names = recipients.map(r => r.name).join(', ');
-    alert(`📲 Peringatan WA dihantar semula kepada:\n${names}`);
+    showToast(`📲 Peringatan WA dihantar semula kepada:\n${names}`);
 };
 
 window.setHrReportTab = function(tab) { hrReportTab = tab; render(); };
@@ -2959,11 +2965,11 @@ window.confirmYearEnd = async function() {
       { lastClosed: plan.year, closedAt: Date.now(), closedBy: user?.name || user?.ic || '' },
       { merge: true });
     yearEndPreview = null; yearEndProcessing = false; render();
-    alert(`Tutup Tahun ${plan.year} selesai. ${plan.rows.length} staf dikemaskini · CF ${plan.year + 1} = ${plan.totals.totalCF} hari · ${plan.totals.totalForfeited} hari hangus.`);
+    showToast(`Tutup Tahun ${plan.year} selesai. ${plan.rows.length} staf dikemaskini · CF ${plan.year + 1} = ${plan.totals.totalCF} hari · ${plan.totals.totalForfeited} hari hangus.`);
   } catch (e) {
     console.error('Tutup Tahun gagal:', e);
     yearEndProcessing = false; render();
-    alert('Ralat semasa Tutup Tahun: ' + (e?.message || e) + '\nSebahagian staf mungkin sudah dikemaskini — semak sebelum cuba semula.');
+    showToast('Ralat semasa Tutup Tahun: ' + (e?.message || e) + '\nSebahagian staf mungkin sudah dikemaskini — semak sebelum cuba semula.');
   }
 };
 window.setBalanceReportBranch = function(val) { balanceReportBranch = val; render(); };
@@ -4323,7 +4329,7 @@ function render() {
     console.error("[CRITICAL] Render error:", err);
     // Fallback to login if fatal error in dashboard
     if (view !== 'login') {
-        alert("⚠️ Ralat Sistem: Gagal memaparkan dashboard. Memulakan semula...");
+        showToast("⚠️ Ralat Sistem: Gagal memaparkan dashboard. Memulakan semula...");
         view = 'login';
         render();
     }
@@ -4353,15 +4359,17 @@ function renderLogin() {
       <div class="glass-pane auth-card fade-in">
         <div class="logo-group">
           <div class="logo-circle"><img src="${logos.ksb}" alt="KSB"></div>
-          <div class="logo-circle"><img src="${logos.kr}" alt="KR"></div>
+          <span class="logo-sep"></span>
+          <div class="logo-circle logo-square"><img src="${logos.kr}" alt="KR"></div>
+          <span class="logo-sep"></span>
           <div class="logo-circle"><img src="${logos.bentong}" alt="Bentong"></div>
         </div>
         <h1 class="auth-title">KLINIK SYED BADARUDDIN</h1>
-        <p class="auth-subtitle">Leave Tracking System</p>
+        <p class="auth-subtitle">Sistem Permohonan Cuti Staf</p>
 
         <!-- System URL Badge -->
         <div style="margin-bottom:1rem;text-align:center;">
-          <a href="https://cuti-staff.ksbsb.com.my" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:0.4rem;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);border-radius:999px;padding:0.35rem 0.9rem;font-size:0.78rem;color:var(--primary);font-weight:700;text-decoration:none;letter-spacing:0.3px;">
+          <a href="https://cuti-staff.ksbsb.com.my" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:0.4rem;background:var(--primary-glow);border:1px solid var(--primary-glow);border-radius:999px;padding:0.35rem 0.9rem;font-size:0.78rem;color:var(--primary);font-weight:700;text-decoration:none;letter-spacing:0.3px;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
             cuti-staff.ksbsb.com.my
           </a>
@@ -4411,18 +4419,18 @@ function renderLogin() {
           </div>
 
           <div class="form-group">
-            <label>Password</label>
+            <label>Kata Laluan</label>
             <div style="position: relative;">
               <input type="password" id="password" placeholder="••••••••" required style="width: 100%;">
             </div>
             <div style="text-align: right; margin-top: 0.5rem;">
-              <button type="button" onclick="window.forgotPassword()" style="background: none; border: none; cursor: pointer; color: var(--primary); font-size: 1rem; font-weight: 600; text-decoration: underline; padding: 0; display: inline-flex; align-items: center; gap: 0.3rem;">
+              <button type="button" onclick="window.forgotPassword()" style="background: none; border: none; cursor: pointer; color: var(--primary); font-family: inherit; font-size: 0.9rem; font-weight: 600; padding: 0.25rem 0; display: inline-flex; align-items: center; gap: 0.35rem;">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                 Lupa Kata Laluan?
               </button>
             </div>
           </div>
-          <button type="submit" class="btn-primary">Login</button>
+          <button type="submit" class="btn-primary">Log Masuk</button>
         </form>
 
         <div style="margin-top: 1.25rem; text-align: center;">
@@ -4540,21 +4548,21 @@ function renderLogin() {
       if (matched) ic = matched.ic;
     }
 
-    if (!ic) { alert('Sila pilih nama anda dari senarai (dropdown) atau pastikan ejaan nama betul.'); return; }
-    if (!pwd) { alert('Sila masukkan kata laluan.'); return; }
+    if (!ic) { showToast('Sila pilih nama anda dari senarai (dropdown) atau pastikan ejaan nama betul.'); return; }
+    if (!pwd) { showToast('Sila masukkan kata laluan.'); return; }
 
     try {
       await signInWithEmailAndPassword(auth, emailForIC(ic), pwd);
     } catch (err) {
       console.warn('[AUTH_FAIL]', err.code);
-      if (err.code === 'auth/user-disabled') alert('⚠️ Akaun anda tidak aktif. Sila hubungi HR/Admin.');
-      else alert('⚠️ RALAT: IC atau kata laluan tidak sah. Sila cuba lagi.');
+      if (err.code === 'auth/user-disabled') showToast('⚠️ Akaun anda tidak aktif. Sila hubungi HR/Admin.');
+      else showToast('⚠️ RALAT: IC atau kata laluan tidak sah. Sila cuba lagi.');
       return;
     }
 
     // Load the staff profile for the now-authenticated user.
     const snap = await getDoc(doc(db, 'staff', ic));
-    if (!snap.exists()) { alert('Profil staf tidak dijumpai. Sila hubungi HR/Admin.'); await signOut(auth); return; }
+    if (!snap.exists()) { showToast('Profil staf tidak dijumpai. Sila hubungi HR/Admin.'); await signOut(auth); return; }
     user = snap.data();
     initData(); // subscribe to live data now that we have a real (non-anonymous) session
 
@@ -4984,14 +4992,14 @@ window.toggleSelectAllNotifs = function() {
 window.deleteSelectedNotifs = async function() {
   const ids = [...inboxSelected].filter(id => inboxNotifs.some(n => n.id === id));
   if (!ids.length) return;
-  if (!confirm(`Padam ${ids.length} notifikasi? Tindakan ini kekal dan tidak boleh dibatalkan.`)) return;
+  if (!await showConfirm(`Padam ${ids.length} notifikasi? Tindakan ini kekal dan tidak boleh dibatalkan.`)) return;
   try {
     const batch = writeBatch(db);
     ids.forEach(id => batch.delete(doc(db, 'notifications', id)));
     await batch.commit();
     inboxSelected.clear();
     render();
-  } catch(e) { console.warn('deleteSelectedNotifs failed:', e); alert('Gagal memadam sebahagian notifikasi. Sila cuba lagi.'); }
+  } catch(e) { console.warn('deleteSelectedNotifs failed:', e); showToast('Gagal memadam sebahagian notifikasi. Sila cuba lagi.'); }
 };
 
 // ── Inbox: browser notification ──
@@ -5057,8 +5065,8 @@ window.uploadProfilePhoto = async function(input) {
   if (!input || !input.files || !input.files[0]) return;
   const file = input.files[0];
   const _fileErr = validateUploadFile(file, PHOTO_RULES);
-  if (_fileErr) { alert(_fileErr); input.value = ''; return; }
-  if (!user || !user.ic) { alert('Ralat: Sesi tidak sah.'); return; }
+  if (_fileErr) { showToast(_fileErr); input.value = ''; return; }
+  if (!user || !user.ic) { showToast('Ralat: Sesi tidak sah.'); return; }
   try {
     const fd = new FormData();
     fd.append('file', file);
@@ -5080,7 +5088,7 @@ window.uploadProfilePhoto = async function(input) {
     render();
   } catch (err) {
     console.error('Profile photo upload failed:', err);
-    alert(uploadErrorMessage(err, PHOTO_RULES));
+    showToast(uploadErrorMessage(err, PHOTO_RULES));
   } finally {
     input.value = '';
   }
@@ -5177,14 +5185,14 @@ function renderDashboard() {
       // Sebab mesti perkataan sebenar — bukan `""`, `''`, `-` sahaja (src/leaveReason.js).
       const _reasonErr = validateLeaveReason(reason);
       if (_reasonErr) {
-        alert(_reasonErr);
+        showToast(_reasonErr);
         leaveForm.querySelector('textarea')?.focus();
         return;
       }
       
       let diffDays = window.computeLeaveDays(leaveStartDate, leaveEndDate, user, selectedLeaveType);
       if (diffDays <= 0) {
-        alert('Tarikh yang dipilih tiada hari bekerja untuk staf pentadbiran. Sila pilih tarikh yang merangkumi hari bekerja (Isnin–Jumaat).');
+        showToast('Tarikh yang dipilih tiada hari bekerja untuk staf pentadbiran. Sila pilih tarikh yang merangkumi hari bekerja (Isnin–Jumaat).');
         return;
       }
       // ── Halang permohonan bertindih ──
@@ -5195,7 +5203,7 @@ function renderDashboard() {
       // oleh const tempatan di atas yang memegang nama jenis cuti semasa.
       const _overlaps = findOverlappingLeaves(leaveRecords, user.ic, startDate, endDate);
       if (_overlaps.length > 0) {
-        alert('🔴 PERMOHONAN BERTINDIH\n\n' +
+        showToast('🔴 PERMOHONAN BERTINDIH\n\n' +
               'Anda sudah ada permohonan cuti untuk tarikh ini:\n\n' +
               describeOverlaps(_overlaps, leaveTypeLabel) + '\n\n' +
               'Permohonan baharu tidak boleh dihantar. Sila batalkan permohonan asal ' +
@@ -5213,7 +5221,7 @@ function renderDashboard() {
               const unpaidDays = diffDays - Math.max(0, currentBal);
               const paidDays = diffDays - unpaidDays;
               leaveBreakdown = "\n*SPLIT LEAVE DETECTED*\nEarned AL Used: " + paidDays + " days\nUnpaid Leave (UL): " + unpaidDays + " days\n(Automatic split due to insufficient earned prorate)";
-              alert("Notis: Baki prorate (Earned) anda ialah " + currentBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan dibahagikan kepada " + paidDays + " hari AL dan " + unpaidDays + " hari Unpaid Leave (UL).");
+              showToast("Notis: Baki prorate (Earned) anda ialah " + currentBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan dibahagikan kepada " + paidDays + " hari AL dan " + unpaidDays + " hari Unpaid Leave (UL).");
           }
       }
       if (selectedLeaveType === 'EL') {
@@ -5228,7 +5236,7 @@ function renderDashboard() {
               if (toAL > alBal) {
                   elMsg += "\n\n⚠️ Baki AL juga tidak mencukupi (baki AL: " + alBal.toFixed(2) + " hari).";
               }
-              alert(elMsg);
+              showToast(elMsg);
           }
       }
       if (selectedLeaveType === 'EL_EMG') {
@@ -5248,7 +5256,7 @@ function renderDashboard() {
               if (toAL > alBal) {
                   emgMsg += "\n\n⚠️ Baki AL tidak mencukupi (baki AL: " + alBal.toFixed(2) + " hari).";
               }
-              alert(emgMsg);
+              showToast(emgMsg);
           }
       }
 
@@ -5259,7 +5267,7 @@ function renderDashboard() {
       if (_proofNeed) {
           const _inp = document.getElementById(_proofNeed.inputId);
           if (!_inp || _inp.files.length === 0) {
-              alert(_proofNeed.error);
+              showToast(_proofNeed.error);
               return;
           }
       }
@@ -5278,7 +5286,7 @@ function renderDashboard() {
       // (MC kini ikut step kelulusan penuh sama seperti AL — tiada lagi laluan terus ke HR)
       const selectedTL = leaveForm.querySelector('#tl-select')?.value;
       if (_sbmIsOpBalokTL && !selectedTL) {
-          alert('🔴 WAJIB: Sila pilih Team Leader (Pelulus Peringkat 0) sebelum menghantar permohonan cuti.\n\nPermohonan tidak dapat diproses tanpa sokongan Team Leader.');
+          showToast('🔴 WAJIB: Sila pilih Team Leader (Pelulus Peringkat 0) sebelum menghantar permohonan cuti.\n\nPermohonan tidak dapat diproses tanpa sokongan Team Leader.');
           leaveForm.querySelector('#tl-select')?.focus();
           return;
       }
@@ -5287,7 +5295,7 @@ function renderDashboard() {
       const selectedHODCheck = leaveForm.querySelector('#hod-select')?.value;
       const _hasP1Approvers = window.getRoutingP1Approvers(user, selectedLeaveType).length > 0;
       if (!_sbmIsOpBalokTL && _hasP1Approvers && !selectedHODCheck) {
-          alert('🔴 WAJIB: Sila pilih Pelulus Peringkat 1 (HOD / PIC_HOD / Supervisor) sebelum menghantar permohonan cuti.\n\nPermohonan tidak dapat diproses tanpa kelulusan Peringkat 1.');
+          showToast('🔴 WAJIB: Sila pilih Pelulus Peringkat 1 (HOD / PIC_HOD / Supervisor) sebelum menghantar permohonan cuti.\n\nPermohonan tidak dapat diproses tanpa kelulusan Peringkat 1.');
           leaveForm.querySelector('#hod-select')?.focus();
           return;
       }
@@ -5295,7 +5303,7 @@ function renderDashboard() {
       // Cuti tak boleh dirancang (MC sakit, Kecemasan, Ehsan/kematian, Hospitalisasi) + CME dan Cuti Ganti (dituntut selepas mesyuarat) dikecualikan dari polisi notis awal — senarai penuh di NOTICE_EXEMPT_TYPES (leaveNotice.js), jangan salin semula di sini. Tetap perlu pelulus + bukti.
       if (!isNoticeExempt(selectedLeaveType) && !validateNotice(startDate, user)) {
         const minDays = getNoticeDays(user);
-        alert(`Polisi Notis Minimum: permohonan anda mesti dihantar sekurang-kurangnya ${minDays} hari sebelum tarikh mula cuti.`);
+        showToast(`Polisi Notis Minimum: permohonan anda mesti dihantar sekurang-kurangnya ${minDays} hari sebelum tarikh mula cuti.`);
         return;
       }
       
@@ -5324,7 +5332,7 @@ function renderDashboard() {
           const _proofFile = _proofInput.files[0];
           // Semak semula sebelum hantar (jaga-jaga jika semakan semasa pilih fail terlepas).
           const _fileErr = validateProofFile(_proofFile);
-          if (_fileErr) { alert(_fileErr); return; }
+          if (_fileErr) { showToast(_fileErr); return; }
           try {
             const _fd = new FormData();
             _fd.append('file', _proofFile);
@@ -5344,7 +5352,7 @@ function renderDashboard() {
             proofName = _proofFile.name;
           } catch (err) {
             console.error('Proof upload failed:', err);
-            alert(proofUploadErrorMessage(err));
+            showToast(proofUploadErrorMessage(err));
             return;
           }
         }
@@ -5382,7 +5390,7 @@ function renderDashboard() {
             window.addNotification(user.ic, 'leave_submitted', '📋 Permohonan Cuti Dihantar', `Permohonan ${leaveTypeName} anda (${startDate} → ${endDate}, ${diffDays} hari) telah berjaya dihantar dan sedang menunggu kelulusan.`, newRecord.id.toString());
         } catch (err) {
             console.error("Error adding leave record: ", err);
-            alert("Ralat menghantar permohonan ke pangkalan data.");
+            showToast("Ralat menghantar permohonan ke pangkalan data.");
             return;
         }
   
@@ -5453,7 +5461,7 @@ function renderDashboard() {
         }
   
         navigator.clipboard.writeText(copyText).catch(() => {});
-        alert(statusMsg);
+        showToast(statusMsg);
         view = 'dashboard';
         render();
       } finally {
@@ -5476,7 +5484,7 @@ function renderDashboard() {
       const input = e.target.querySelector('input[type="text"]');
       if (input.value.trim()) {
         branches.push({ name: input.value.trim(), state: 'Active', manager: user.name });
-        alert(`Branch "${input.value.trim()}" added successfully!`);
+        showToast(`Branch "${input.value.trim()}" added successfully!`);
         input.value = '';
         render(); // re-render to show updated list
       }
@@ -5572,11 +5580,11 @@ function renderDashboard() {
                       window.logSystemActivity(`Updated System Profile details for ${staffObj.name}`);
                       const newPwd = passwordInput && passwordInput.value.trim();
                       if (newPwd) { await window.adminSetPassword(staffObj.ic, newPwd); }
-                      alert('Profil pekerja berjaya dikemaskini!');
+                      showToast('Profil pekerja berjaya dikemaskini!');
                       closeEditModal();
                   } catch (err) {
                       console.error("Error updating staff: ", err);
-                      alert("Ralat mengemaskini profil pekerja.");
+                      showToast("Ralat mengemaskini profil pekerja.");
                   }
               }
           });
@@ -5601,23 +5609,23 @@ function renderDashboard() {
               const isOwner = rec.ic === user.ic;
               const isApprover = window.canManageRequest(user, rec) || window.canCorrectBranchLeave(user, rec);
               if (!isAdminEditor && ['APPROVED', 'REJECTED', 'CANCELLED'].includes(rec.status)) {
-                  alert('Permohonan ini sudah selesai dan tidak boleh diubah.'); return;
+                  showToast('Permohonan ini sudah selesai dan tidak boleh diubah.'); return;
               }
               if (!isAdminEditor && !isOwner && !isApprover) {
-                  alert('Anda tidak mempunyai kebenaran untuk mengubah permohonan ini.'); return;
+                  showToast('Anda tidak mempunyai kebenaran untuk mengubah permohonan ini.'); return;
               }
               const elStart = document.querySelector('#el-start').value;
               const elEnd = document.querySelector('#el-end').value;
               const elDays = parseFloat(document.querySelector('#el-days').value);
               if (!(elDays > 0)) {
-                  alert('Bilangan hari mesti lebih daripada 0. Sila betulkan.'); return;
+                  showToast('Bilangan hari mesti lebih daripada 0. Sila betulkan.'); return;
               }
               // `rec.ic` bukan `user.ic` — HR dan pelulus mengedit rekod orang lain di sini.
               // `excludeId` menghalang rekod daripada bertindih dengan dirinya sendiri.
               const _editOverlaps = findOverlappingLeaves(leaveRecords, rec.ic, elStart, elEnd,
                                                           { excludeId: editingLeaveId });
               if (_editOverlaps.length > 0) {
-                  alert('🔴 TARIKH BERTINDIH\n\n' +
+                  showToast('🔴 TARIKH BERTINDIH\n\n' +
                         'Staf ini sudah ada permohonan cuti lain untuk tarikh tersebut:\n\n' +
                         describeOverlaps(_editOverlaps, leaveTypeName) + '\n\n' +
                         'Sila batalkan permohonan berkenaan terlebih dahulu.');
@@ -5628,7 +5636,7 @@ function renderDashboard() {
               const _elReason = document.querySelector('#el-reason').value.trim();
               if (_elReason !== String(rec.reason || '').trim()) {
                   const _reasonErr = validateLeaveReason(_elReason);
-                  if (_reasonErr) { alert(_reasonErr); return; }
+                  if (_reasonErr) { showToast(_reasonErr); return; }
               }
               const updates = {
                 reason: _elReason,
@@ -5658,11 +5666,11 @@ function renderDashboard() {
                           `${applicant.name} mengubah permohonan cuti (kini ${elStart} → ${elEnd}, ${elDays} hari); memerlukan sokongan semula.`,
                           editingLeaveId.toString(), rec.ic);
                   }
-                  alert('✅ Permohonan cuti dikemaskini.');
+                  showToast('✅ Permohonan cuti dikemaskini.');
                   closeLeaveModal();
               } catch (err) {
                   console.error("Error updating leave: ", err);
-                  alert("Ralat mengemaskini rekod cuti.");
+                  showToast("Ralat mengemaskini rekod cuti.");
               }
           }
       });
@@ -8067,7 +8075,7 @@ function renderView() {
                 <h2 style="font-size: 1.25rem; font-weight: 600;">Master Logs</h2>
               </div>
               ${user.ic === 'super_admin' || user.ic === 'Super Admin' ? `
-              <button onclick="if(confirm('Teruskan madam semua cache?')) { localStorage.clear(); window.location.reload(); }" class="neu-btn" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); font-size: 0.75rem; padding: 0.5rem 1rem; border-radius: 8px; margin-left: auto;">
+              <button onclick="showConfirm('Padam semua cache sistem?').then(ok => { if (ok) { localStorage.clear(); window.location.reload(); } })" class="neu-btn" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); font-size: 0.75rem; padding: 0.5rem 1rem; border-radius: 8px; margin-left: auto;">
                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                  Reset System Cache
               </button>
@@ -9967,7 +9975,7 @@ function renderView() {
                   <span style="font-size:0.9rem;font-weight:700;color:var(--text);">Peranan (Roles)</span>
                   <span style="font-size:0.72rem;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.1rem 0.5rem;border-radius:999px;">${allRoleKeys.length} peranan</span>
                 </div>
-                <button onclick="window.addCustomRole()" style="padding:0.3rem 0.8rem;border-radius:999px;border:1px solid rgba(67,97,238,0.4);background:rgba(67,97,238,0.08);font-size:0.78rem;font-weight:600;color:#4361ee;cursor:pointer;">+ Tambah</button>
+                <button onclick="window.addCustomRole()" style="padding:0.3rem 0.8rem;border-radius:999px;border:1px solid rgba(155,44,44,0.4);background:rgba(155,44,44,0.08);font-size:0.78rem;font-weight:600;color:#4361ee;cursor:pointer;">+ Tambah</button>
               </div>
               ${(() => {
                 const renderRow = (key) => {
@@ -9985,7 +9993,7 @@ function renderView() {
                       ${desc ? `<span style="font-size:0.7rem;color:var(--text-muted);line-height:1.35;">${desc}</span>` : ''}
                     </div>
                     <div style="display:flex;gap:0.4rem;align-items:center;flex-shrink:0;">
-                      <button onclick="window.setManageTab(\'access_control\')" title="Tetapkan kebenaran" style="padding:0.2rem 0.55rem;border-radius:6px;border:1px solid rgba(67,97,238,0.3);background:rgba(67,97,238,0.07);font-size:0.72rem;color:#4361ee;cursor:pointer;">
+                      <button onclick="window.setManageTab(\'access_control\')" title="Tetapkan kebenaran" style="padding:0.2rem 0.55rem;border-radius:6px;border:1px solid rgba(155,44,44,0.3);background:rgba(155,44,44,0.07);font-size:0.72rem;color:#4361ee;cursor:pointer;">
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                         RBAC
                       </button>
@@ -9993,7 +10001,7 @@ function renderView() {
                     </div>
                   </div>`;
                 };
-                const groupHeader = (t) => `<div style="padding:0.45rem 1rem;background:rgba(67,97,238,0.05);border-bottom:1px solid rgba(163,177,198,0.12);font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:#4361ee;">${t}</div>`;
+                const groupHeader = (t) => `<div style="padding:0.45rem 1rem;background:rgba(155,44,44,0.05);border-bottom:1px solid rgba(163,177,198,0.12);font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:#4361ee;">${t}</div>`;
                 const grouped = new Set();
                 roleGroups.forEach(g => g.keys.forEach(k => grouped.add(k)));
                 let html = '';
@@ -10299,7 +10307,7 @@ function renderView() {
                    <div style="margin-bottom: 2rem;">
                      <h3 style="color: var(--primary); font-size: 1rem; margin-bottom: 0.5rem;">Negeri Pahang</h3>
                      <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted);">
-                       <thead><tr style="background: rgba(67,97,238,0.07); color: var(--text);">
+                       <thead><tr style="background: rgba(155,44,44,0.07); color: var(--text);">
                          <th style="padding: 0.5rem; border: 1px solid var(--border);">Tempoh Berkhidmat</th>
                          <th style="padding: 0.5rem; border: 1px solid var(--border);">Kelayakan Tahunan (AL)</th>
                        </tr></thead>
@@ -10316,7 +10324,7 @@ function renderView() {
                    <div>
                      <h3 style="color: var(--accent); font-size: 1rem; margin-bottom: 0.5rem;">Negeri Terengganu</h3>
                      <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted);">
-                       <thead><tr style="background: rgba(67,97,238,0.07); color: var(--text);">
+                       <thead><tr style="background: rgba(155,44,44,0.07); color: var(--text);">
                          <th style="padding: 0.5rem; border: 1px solid var(--border);">Tempoh Berkhidmat</th>
                          <th style="padding: 0.5rem; border: 1px solid var(--border);">Kelayakan Tahunan (AL)</th>
                        </tr></thead>
@@ -10333,7 +10341,7 @@ function renderView() {
                    <div style="margin-top: 2rem;">
                      <h3 style="color: var(--danger); font-size: 1rem; margin-bottom: 0.5rem;">Kategori Doktor (Semua Kawasan)</h3>
                      <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted);">
-                       <thead><tr style="background: rgba(67,97,238,0.07); color: var(--text);">
+                       <thead><tr style="background: rgba(155,44,44,0.07); color: var(--text);">
                          <th style="padding: 0.5rem; border: 1px solid var(--border);">Peringkat Cuti Tahunan (AL)</th>
                        </tr></thead>
                        <tbody>${policyContent.entitlementDoktor.map((r,i) => `
@@ -10383,7 +10391,7 @@ function renderView() {
                           <h3 style="font-size: 1rem; color: var(--danger); margin-bottom: 0.5rem;">3. Perbandingan: Cuti Kecemasan (EMG) vs Cuti Ehsan (EL)</h3>
                           <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted); margin-top: 1rem;">
                             <thead>
-                                <tr style="background: rgba(67,97,238,0.07); color: var(--text);">
+                                <tr style="background: rgba(155,44,44,0.07); color: var(--text);">
                                     <th style="padding: 0.5rem; border: 1px solid var(--border);">Aspek</th>
                                     <th style="padding: 0.5rem; border: 1px solid var(--border); color: var(--danger);">Cuti Kecemasan (EMG)</th>
                                     <th style="padding: 0.5rem; border: 1px solid var(--border); color: var(--secondary);">Cuti Ehsan (Compassionate)</th>
@@ -11190,7 +11198,7 @@ window.savePublicHolidays = async function(state) {
   const list = publicHolidays[state];
   for (let i = 0; i < list.length; i++) {
     if (!list[i].date || !list[i].name.trim()) {
-      alert('Sila lengkapkan semua tarikh dan nama cuti sebelum menyimpan.');
+      showToast('Sila lengkapkan semua tarikh dan nama cuti sebelum menyimpan.');
       return;
     }
   }
@@ -11199,11 +11207,11 @@ window.savePublicHolidays = async function(state) {
     const payload = {};
     payload[state] = publicHolidays[state];
     await setDoc(doc(db, 'config', 'publicHolidays'), payload, { merge: true });
-    alert(`✅ Cuti Umum ${state === 'pahang' ? 'Pahang' : 'Terengganu'} berjaya disimpan!`);
+    showToast(`✅ Cuti Umum ${state === 'pahang' ? 'Pahang' : 'Terengganu'} berjaya disimpan!`);
     render();
   } catch(e) {
     console.error('savePublicHolidays error:', e);
-    alert('Ralat menyimpan. Sila cuba lagi.');
+    showToast('Ralat menyimpan. Sila cuba lagi.');
   }
 };
 
@@ -11291,7 +11299,7 @@ window.savePolicySection = async function(section) {
     const btn = document.getElementById('save-policy-' + section);
     if (btn) { btn.textContent = '✅ Tersimpan'; btn.disabled = true; }
     setTimeout(() => render(), 1200);
-  } catch(e) { alert('Ralat menyimpan: ' + e.message); }
+  } catch(e) { showToast('Ralat menyimpan: ' + e.message); }
 };
 
 window.dismissPhoneReminder = function() { showPhoneReminderModal = false; render(); };
@@ -11299,9 +11307,9 @@ window.savePhoneFromReminder = async function() {
   const input = document.getElementById('reminder-phone-input');
   if (!input) return;
   const clean = normalizePhone(input.value);
-  if (!clean) { alert('Sila masukkan nombor telefon.'); return; }
+  if (!clean) { showToast('Sila masukkan nombor telefon.'); return; }
   if (!isValidPhone(clean)) {
-    alert('⚠️ Nombor telefon tidak sah.\n\nContoh: 0171234678 atau 60171234678');
+    showToast('⚠️ Nombor telefon tidak sah.\n\nContoh: 0171234678 atau 60171234678');
     return;
   }
   try {
@@ -11311,10 +11319,10 @@ window.savePhoneFromReminder = async function() {
     if (s) s.phone = clean;
     showPhoneReminderModal = false;
     render();
-    alert('✅ Nombor WhatsApp berjaya disimpan! Anda kini akan menerima notifikasi kelulusan cuti.');
+    showToast('✅ Nombor WhatsApp berjaya disimpan! Anda kini akan menerima notifikasi kelulusan cuti.');
   } catch(err) {
     console.error('savePhoneFromReminder error:', err);
-    alert('Ralat menyimpan nombor. Sila cuba lagi.');
+    showToast('Ralat menyimpan nombor. Sila cuba lagi.');
   }
 };
 

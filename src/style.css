@@ -11,10 +11,11 @@
   /* Palette */
   --bg:           #e0e5ec;
   --surface:      #e0e5ec;
-  --primary:      #4361ee;
-  --primary-dark: #3451d1;
-  --primary-glow: rgba(67,97,238,0.22);
-  --secondary:    #7c3aed;
+  /* Maroon KSB — sama dengan header PDF korporat (printHeaderHTML) */
+  --primary:      #9b2c2c;
+  --primary-dark: #7f1d1d;
+  --primary-glow: rgba(155,44,44,0.22);
+  --secondary:    #c2410c;
   --accent:       #059669;
   --danger:       #dc2626;
   --warning:      #d97706;
@@ -23,7 +24,7 @@
   /* Text */
   --text:         #1e293b;
   --text-soft:    #475569;
-  --text-muted:   #94a3b8;
+  --text-muted:   #5a6678;   /* ≥4.5:1 atas --bg (dulu #94a3b8 ≈ 2:1, kabur) */
 
   /* Shadow system (pure neumorphism) */
   --sh-light:  #ffffff;
@@ -111,25 +112,31 @@ h1, h2, h3, h4 {
   text-align: center;
 }
 
+/* Jalur logo: tiga logo dalam satu panel putih (KSB & U.n.i ialah logo lebar,
+   jadi kotak segi empat berasingan membuatnya terlalu kecil). */
 .logo-group {
   display: flex;
-  justify-content: center;
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.logo-circle {
-  width: 82px; height: 82px;
-  background: var(--surface);
-  border-radius: 18px;
-  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  padding: 10px;
-  box-shadow: var(--shadow-raised);
+  gap: 0.75rem;
+  margin: 0 auto 2rem;
+  padding: 0.85rem 1.1rem;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: var(--shadow-raised-sm);
   border: 1px solid rgba(255,255,255,0.8);
 }
-.logo-circle img { width: 100%; height: auto; object-fit: contain; }
+.logo-circle { display: flex; align-items: center; }
+.logo-circle img { height: 30px; width: auto; max-width: 130px; object-fit: contain; display: block; }
+.logo-circle.logo-square img { height: 38px; }
+.logo-group .logo-sep { width: 1px; align-self: stretch; background: #e2e8f0; }
+@media (max-width: 420px) {
+  .logo-group { gap: 0.9rem; padding: 0.7rem 0.8rem; }
+  .logo-group .logo-sep { display: none; }
+  .logo-circle img { height: 22px; max-width: 100px; }
+  .logo-circle.logo-square img { height: 30px; }
+}
 
 .auth-title {
   font-size: 1.85rem;
@@ -212,14 +219,14 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   font-size: 1.05rem;
   font-family: inherit;
   cursor: pointer;
-  box-shadow: 4px 4px 10px rgba(67,97,238,0.3), -2px -2px 6px rgba(255,255,255,0.8);
+  box-shadow: 4px 4px 10px var(--primary-glow), -2px -2px 6px rgba(255,255,255,0.8);
   transition: all 0.25s ease;
   letter-spacing: 0.3px;
 }
 .btn-primary:hover {
   background: var(--primary-dark);
   transform: translateY(-2px);
-  box-shadow: 6px 6px 14px rgba(67,97,238,0.35), -3px -3px 8px rgba(255,255,255,0.9);
+  box-shadow: 6px 6px 14px var(--primary-glow), -3px -3px 8px rgba(255,255,255,0.9);
 }
 .btn-primary:active {
   transform: translateY(1px);
@@ -474,7 +481,7 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   font-weight: 800;
   font-size: 1rem;
   color: #fff;
-  box-shadow: 3px 3px 8px rgba(67,97,238,0.3);
+  box-shadow: 3px 3px 8px rgba(155,44,44,0.3);
   flex-shrink: 0;
 }
 
@@ -610,12 +617,12 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .neu-toggle.active {
-  box-shadow: var(--shadow-inset), 0 0 0 2px rgba(67,97,238,0.2);
+  box-shadow: var(--shadow-inset), 0 0 0 2px rgba(155,44,44,0.2);
 }
 .neu-toggle.active::after {
   left: 23px;
   background: var(--primary);
-  box-shadow: 0 0 8px rgba(67,97,238,0.4);
+  box-shadow: 0 0 8px rgba(155,44,44,0.4);
 }
 
 /* ── Modal ──────────────────────────────────────────── */
@@ -710,7 +717,7 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   box-shadow: var(--shadow-raised-sm);
 }
 .notice-banner.orange { background: rgba(217,119,6,0.08);  border: 1px solid rgba(217,119,6,0.2);  color: #b45309; }
-.notice-banner.blue   { background: rgba(67,97,238,0.08);  border: 1px solid rgba(67,97,238,0.2);  color: var(--primary); }
+.notice-banner.blue   { background: rgba(155,44,44,0.08);  border: 1px solid rgba(155,44,44,0.2);  color: var(--primary); }
 .notice-banner.green  { background: rgba(5,150,105,0.08);  border: 1px solid rgba(5,150,105,0.2);  color: var(--accent); }
 
 /* ── Upload Section ─────────────────────────────────── */
@@ -780,7 +787,7 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   background: var(--primary) !important;
   border-radius: 18px !important; border: none !important;
   color: #fff !important;
-  box-shadow: 6px 6px 14px rgba(67,97,238,0.35), -3px -3px 8px rgba(255,255,255,0.9) !important;
+  box-shadow: 6px 6px 14px rgba(155,44,44,0.35), -3px -3px 8px rgba(255,255,255,0.9) !important;
   display: flex !important; align-items: center !important;
   justify-content: center !important; cursor: pointer !important;
   transition: transform 0.2s ease !important;
@@ -908,3 +915,77 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   }
   html, body { background: white !important; }
 }
+
+/* ── Toast & dialog pengesahan (src/notify.js) ─────────── */
+#toast-stack {
+  position: fixed; top: max(1rem, env(safe-area-inset-top)); right: 1rem; left: auto;
+  z-index: 100000; display: flex; flex-direction: column; gap: 0.6rem;
+  width: min(380px, calc(100vw - 2rem)); pointer-events: none;
+}
+.toast {
+  --tc: var(--info);
+  position: relative; overflow: hidden; pointer-events: auto; cursor: pointer;
+  display: flex; align-items: flex-start; gap: 0.75rem;
+  padding: 0.9rem 2.2rem 1rem 0.95rem;
+  background: #fff; color: var(--text);
+  border-radius: 14px; border-left: 4px solid var(--tc);
+  box-shadow: 0 10px 30px rgba(15,23,42,0.18), 0 2px 6px rgba(15,23,42,0.08);
+  animation: toast-in 0.28s cubic-bezier(.2,.9,.3,1.2);
+}
+.toast-success { --tc: var(--accent); }
+.toast-error   { --tc: var(--danger); }
+.toast-warning { --tc: var(--warning); }
+.toast-icon { color: var(--tc); flex-shrink: 0; margin-top: 1px; }
+.toast-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.15rem; color: var(--tc); }
+.toast-msg { font-size: 0.88rem; line-height: 1.45; color: var(--text-soft); white-space: pre-line; word-break: break-word; }
+.toast-close {
+  position: absolute; top: 0.45rem; right: 0.6rem; background: none; border: none;
+  font-size: 1.3rem; line-height: 1; color: var(--text-muted); cursor: pointer; padding: 0.15rem;
+}
+.toast-bar {
+  position: absolute; left: 0; bottom: 0; height: 3px; width: 100%;
+  background: var(--tc); opacity: 0.35; transform-origin: left;
+  animation: toast-bar linear forwards;
+}
+.toast-out { animation: toast-out 0.25s ease forwards; }
+@keyframes toast-in  { from { opacity: 0; transform: translateX(24px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateX(24px); } }
+@keyframes toast-bar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@media (max-width: 720px) {
+  #toast-stack { left: 1rem; right: 1rem; width: auto; }
+}
+
+.confirm-overlay {
+  position: fixed; inset: 0; z-index: 100001;
+  display: flex; align-items: center; justify-content: center; padding: 1rem;
+  background: rgba(15,23,42,0.45); backdrop-filter: blur(3px);
+  animation: confirm-fade 0.18s ease;
+}
+.confirm-box {
+  width: min(420px, 100%); max-height: 85vh; overflow-y: auto;
+  background: var(--surface); border-radius: 20px; padding: 1.6rem 1.5rem 1.25rem;
+  box-shadow: 0 20px 50px rgba(15,23,42,0.3); text-align: center;
+  animation: confirm-pop 0.22s cubic-bezier(.2,.9,.3,1.2);
+}
+.confirm-icon {
+  width: 52px; height: 52px; margin: 0 auto 0.9rem; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--primary); background: var(--primary-glow);
+}
+.confirm-icon.is-danger { color: var(--danger); background: rgba(220,38,38,0.14); }
+.confirm-icon svg { width: 26px; height: 26px; }
+.confirm-msg { font-size: 0.95rem; line-height: 1.55; color: var(--text); white-space: pre-line; word-break: break-word; margin-bottom: 1.4rem; }
+.confirm-actions { display: flex; gap: 0.7rem; }
+.confirm-actions button {
+  flex: 1; padding: 0.8rem; border-radius: 12px; font-family: inherit;
+  font-size: 0.95rem; font-weight: 700; cursor: pointer; border: none;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+.confirm-actions button:active { transform: translateY(1px); }
+.confirm-cancel { background: var(--surface); color: var(--text-soft); box-shadow: var(--shadow-raised-sm); }
+.confirm-ok { background: var(--primary); color: #fff; box-shadow: 0 4px 12px var(--primary-glow); }
+.confirm-ok.is-danger { background: var(--danger); box-shadow: 0 4px 12px rgba(220,38,38,0.3); }
+.confirm-actions button:hover { filter: brightness(1.06); }
+.confirm-out { animation: confirm-fade 0.18s ease reverse forwards; }
+@keyframes confirm-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes confirm-pop  { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
