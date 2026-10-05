@@ -15,6 +15,8 @@ import { getNoticeDays, isNoticeExempt } from './leaveNotice.js';
 import { validateLeaveReason } from './leaveReason.js';
 import { showToast, showConfirm, restorePendingToasts } from './notify.js';
 import { statusBadge } from './statusBadge.js';
+import { emptyState, emptyRow, dashboardSkeleton } from './uiStates.js';
+import { monthGrid, leavesByDay, shiftMonth, monthLabel } from './leaveCalendar.js';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -571,7 +573,13 @@ let managementTab = 'pending';
 let managementGroup = 'approvals'; // 'approvals' | 'people' | 'reports' | 'config'
 let hrReportTab = 'all'; // 'all' | 'approved' | 'balance' | 'jenis'
 let masterLogState = SCOPE_ALL;   // SCOPE_ALL | 'Pahang' | 'Terengganu'
-let masterLogBranch = SCOPE_ALL;  // SCOPE_ALL | NO_BRANCH | nama cawangan
+let masterLogBranch = SCOPE_ALL;
+// Kalendar cuti (view 'calendar')
+let calMonth = new Date().toISOString().slice(0, 7);             // 'YYYY-MM'
+let calState = SCOPE_ALL;                                        // SCOPE_ALL | 'Pahang' | 'Terengganu' (admin sahaja)
+let calBranch = SCOPE_ALL;                                       // SCOPE_ALL | nama cawangan
+let calSelected = new Date().toISOString().slice(0, 10);         // hari dipilih (senarai butiran)
+  // SCOPE_ALL | NO_BRANCH | nama cawangan
 // Penapis "⚠️ Bertindih sahaja" pada Master Logs. Sengaja TIDAK di-reset oleh
 // setMasterLogState/setMasterLogBranch — ia penyempitan pandangan di atas tab,
 // bukan sebahagian daripada tab itu. Jadual kosong dilindungi oleh mesej
@@ -2280,6 +2288,9 @@ window.logSystemActivity = async function(activityDesc, overrideUser) {
 };
 
 let leaveRecords = [];
+// false sehingga snapshot pertama `leaves` sampai — dashboard tunjuk skeleton,
+// bukan angka 0 yang mengelirukan. Ralat/timeout juga set true supaya tidak tersekat.
+let leavesLoaded = false;
 let staffList = [];
 
 // Header korporat SERAGAM untuk SEMUA PDF/print. Gaya inline penuh supaya berfungsi
@@ -3887,13 +3898,20 @@ async function initData() {
   ensureAuditLogListener();
 
   // Real-time Leave Records
+  setTimeout(() => { if (!leavesLoaded) { leavesLoaded = true; render(); } }, 10000);
   onSnapshot(collection(db, "leaves"), (snapshot) => {
     leaveRecords = snapshot.docs.map(doc => ({
       ...doc.data(),
       docId: doc.id
     })).sort((a, b) => b.id - a.id);
+    leavesLoaded = true;
     console.log('Leave records updated from Firestore');
     selfHealPendingLeaveDays();
+    render();
+  }, (err) => {
+    // Contoh: kuota Spark habis. Jangan biar skeleton berpusing selama-lamanya.
+    console.error('leaves listener failed:', err);
+    leavesLoaded = true;
     render();
   });
 
@@ -5110,6 +5128,7 @@ function renderDashboard() {
           return `
             ${rbac.dashboard ? `<div class="fab-item" onclick="window.setView('dashboard'); window.toggleMobileMenu(false)">Dashboard</div>` : ''}
             ${rbac.leave_request ? `<div class="fab-item" onclick="window.setView('leave-form'); window.toggleMobileMenu(false)">Borang Cuti</div>` : ''}
+            ${window.canSeeLeaveCalendar(user) ? `<div class="fab-item" onclick="window.setView('calendar'); window.toggleMobileMenu(false)">Kalendar Cuti</div>` : ''}
             ${rbac.management || rbac.manage_pending ? `<div class="fab-item" onclick="window.setView('management'); window.toggleMobileMenu(false)">Management</div>` : ''}
             ${rbac.inbox ? `<div class="fab-item" onclick="window.setView('inbox'); window.toggleMobileMenu(false)">Inbox${inboxNotifs.filter(n=>!n.read).length > 0 ? ' 🔴' : ''}</div>` : ''}
             <div class="fab-item" onclick="window.setView('settings'); window.toggleMobileMenu(false)">Settings</div>
@@ -5136,6 +5155,7 @@ function renderDashboard() {
             return `
               ${dashboardRbac.dashboard ? `<div class="nav-item ${view === 'dashboard' ? 'active' : ''}" onclick="window.setView('dashboard')"><i data-lucide="layout-dashboard" width="18" height="18"></i> Dashboard</div>` : ''}
               ${dashboardRbac.leave_request ? `<div class="nav-item ${view === 'leave-form' ? 'active' : ''}" onclick="window.setView('leave-form')"><i data-lucide="calendar-plus" width="18" height="18"></i> Borang Cuti</div>` : ''}
+              ${window.canSeeLeaveCalendar(user) ? `<div class="nav-item ${view === 'calendar' ? 'active' : ''}" onclick="window.setView('calendar')"><i data-lucide="calendar-days" width="18" height="18"></i> Kalendar Cuti</div>` : ''}
               ${(dashboardRbac.management || dashboardRbac.manage_pending || dashboardRbac.manage_staff || dashboardRbac.manage_branches || dashboardRbac.manage_audit || dashboardRbac.manage_login_audit || dashboardRbac.manage_reports || dashboardRbac.manage_access) ? `<div class="nav-item ${view === 'management' ? 'active' : ''}" onclick="window.setView('management')"><i data-lucide="shield-check" width="18" height="18"></i> Management</div>` : ''}
               ${dashboardRbac.inbox ? (() => { const inboxUnread = inboxNotifs.filter(n => !n.read).length; return `<div class="nav-item ${view === 'inbox' ? 'active' : ''}" onclick="window.setView('inbox')" style="position:relative;"><i data-lucide="inbox" width="18" height="18"></i> Inbox${inboxUnread > 0 ? `<span style="position:absolute;top:4px;right:6px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:var(--danger);color:#fff;font-size:0.6rem;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1;">${inboxUnread}</span>` : ''}</div>`; })() : ''}
               ${dashboardRbac.policy ? `<div class="nav-item ${view === 'policy' ? 'active' : ''}" onclick="window.setView('policy')"><i data-lucide="book-open" width="18" height="18"></i> Polisi</div>` : ''}
@@ -5157,7 +5177,7 @@ function renderDashboard() {
       </aside>
 
       <main class="content-area">
-        ${renderView()}
+        ${leavesLoaded || !['dashboard', 'management', 'calendar'].includes(view) ? renderView() : dashboardSkeleton()}
       </main>
     </div>
     ${renderModal()}
@@ -6168,7 +6188,7 @@ function renderBranchDashboard() {
         <div class="glass-card" style="padding:1.5rem;">
           <h3 style="font-size:0.95rem;font-weight:700;margin:0 0 1rem;">Jenis Cuti</h3>
           ${Object.entries(typeMap).length === 0
-            ? `<div style="text-align:center;padding:2rem;color:var(--text-muted);font-size:0.8rem;">Tiada rekod</div>`
+            ? emptyState({ compact: true, icon: 'calendar', title: 'Tiada rekod' })
             : `<div style="display:flex;flex-direction:column;gap:0.65rem;">
                 ${Object.entries(typeMap).map(([id, count], idx) => {
                   const pct = total > 0 ? Math.round(count / total * 100) : 0;
@@ -6209,7 +6229,7 @@ function renderBranchDashboard() {
             </div>
           </div>
           ${staffRanking.length === 0
-            ? `<div style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:0.8rem;">Tiada rekod cuti diluluskan</div>`
+            ? emptyState({ compact: true, icon: 'calendar', title: 'Tiada cuti diluluskan lagi' })
             : `<div style="display:flex;flex-direction:column;gap:0.6rem;">
                 ${staffRanking.map((s, i) => {
                   const medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
@@ -6246,10 +6266,7 @@ function renderBranchDashboard() {
             </div>
           </div>
           ${pendingList.length === 0
-            ? `<div style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:0.8rem;">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3;margin-bottom:0.5rem;"><polyline points="20 6 9 17 4 12"/></svg>
-                <div>Tiada permohonan menunggu</div>
-              </div>`
+            ? emptyState({ compact: true, icon: 'check', title: 'Tiada permohonan menunggu', text: 'Semua permohonan cawangan sudah diproses.' })
             : `<div style="display:flex;flex-direction:column;gap:0.55rem;">
                 ${pendingList.map(p => `
                   <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(245,158,11,0.06);padding:0.6rem 0.8rem;border-radius:9px;border:1px solid rgba(245,158,11,0.15);">
@@ -6273,7 +6290,7 @@ function renderBranchDashboard() {
           </tr></thead>
           <tbody>
             ${branchRecords.length === 0
-              ? '<tr><td colspan="6" style="text-align:center;padding:1.5rem;color:var(--text-muted);">Tiada rekod cuti untuk cawangan ini.</td></tr>'
+              ? emptyRow(6, { icon: 'calendar', title: 'Tiada rekod cuti untuk cawangan ini' })
               : branchRecords.map(r => `
               <tr style="border-top:1px solid rgba(163,177,198,0.18);">
                 <td style="padding:0.45rem 0.5rem;font-weight:600;">${r.name || ''}</td>
@@ -6355,13 +6372,13 @@ function renderPersonalDashboard() {
     <div class="personal-dashboard fade-in" style="padding-top: 1rem;">
       <header class="top-bar" style="margin-bottom: 2rem;">
         <div>
-          <h1 style="font-size: 1.75rem; letter-spacing: -0.5px;">Welcome back, ${(user.name || '').split(' ')[0]}!</h1>
-          <p style="color: var(--text-muted); font-size: 1.05rem;">Here's a summary of your leave status and activity.</p>
+          <h1 style="font-size: 1.75rem; letter-spacing: -0.5px;">Selamat kembali, ${(user.name || '').split(' ')[0]}!</h1>
+          <p style="color: var(--text-muted); font-size: 1.05rem;">Ringkasan baki dan aktiviti cuti anda.</p>
         </div>
         <div class="action-buttons">
           <button class="btn-primary" style="width: auto; padding: 0.75rem 1.5rem; border-radius: 14px; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;" onclick="window.setView('leave-form')">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            APPLY LEAVE
+            MOHON CUTI
           </button>
         </div>
       </header>
@@ -6426,7 +6443,7 @@ function renderPersonalDashboard() {
               </thead>
               <tbody>
                 ${myRecords.length === 0
-                  ? '<tr><td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-muted);">Tiada rekod permohonan ditemui.</td></tr>'
+                  ? emptyRow(5, { icon: 'calendar', title: 'Anda belum memohon cuti', text: 'Permohonan cuti anda akan dipaparkan di sini.', action: { label: 'Mohon Cuti', onclick: "window.setView('leave-form')" } })
                   : myRecords.slice(0, 5).map(act => `
                   <tr>
                     <td style="font-weight: 700;">${leaveTypeName(act.type)}</td>
@@ -6466,8 +6483,139 @@ function renderPersonalDashboard() {
   `;
 }
 
+// ── Kalendar Cuti ───────────────────────────────────────────────────────────
+// Siapa boleh lihat: admin/super_admin/HR (ikut zon) dan pelulus Peringkat 0/1
+// (cawangan sendiri sahaja). Staf biasa tidak nampak cuti orang lain.
+window.canSeeLeaveCalendar = function(u) {
+  if (!u) return false;
+  if (['super_admin', 'admin', 'hr'].includes(u.role)) return true;
+  const rb = window.rbacMatrix[u.role] || {};
+  return !!rb.manage_pending && !!u.branch;
+};
+window.calShift = function(delta) { calMonth = shiftMonth(calMonth, delta); render(); };
+window.calToday = function() {
+  const t = new Date().toISOString();
+  calMonth = t.slice(0, 7); calSelected = t.slice(0, 10); render();
+};
+window.setCalBranch = function(v) { calBranch = v; render(); };
+// Tukar negeri → reset cawangan, supaya cawangan negeri lain tidak tertinggal dipilih.
+window.setCalState = function(v) { calState = v; calBranch = SCOPE_ALL; render(); };
+window.calSelectDay = function(d) { calSelected = d; render(); };
+
+function renderLeaveCalendar() {
+  if (!window.canSeeLeaveCalendar(user)) {
+    return emptyState({ icon: 'calendar', title: 'Tiada akses', text: 'Kalendar cuti hanya untuk pelulus dan HR.' });
+  }
+  const isZoneViewer = ['super_admin', 'admin', 'hr'].includes(user.role);
+  const scope = window.getUserStateScope(user);
+  // Pelulus cawangan dikunci pada cawangannya sendiri — tidak percaya calBranch.
+  const branchFilter = isZoneViewer ? calBranch : user.branch;
+  // Zon ialah sempadan keselamatan (filterByScope): HR Pahang hanya Pahang
+  // (termasuk Utama), HR Terengganu hanya Terengganu. Tab negeri hanya untuk
+  // admin (skop 'all') — dan filterByScope tetap tidak mempercayai nilainya.
+  const stateTabs = isZoneViewer ? visibleStates(scope) : [];
+  const stateFilter = stateTabs.length > 1 && stateTabs.includes(calState) ? calState : SCOPE_ALL;
+  const scoped = isZoneViewer
+    ? filterByScope(leaveRecords, { userScope: scope, state: stateFilter, branch: branchFilter, stateOfBranch: window.scopeStateOfBranch })
+    : leaveRecords.filter(r => r.branch === user.branch);
+  const branchList = isZoneViewer
+    ? branchOptions(branches, { userScope: scope, state: stateFilter, stateOfBranch: window.scopeStateOfBranch })
+    : [];
+
+  const [y, m] = calMonth.split('-').map(Number);
+  const weeks = monthGrid(y, m);
+  const from = weeks[0][0].date, to = weeks[weeks.length - 1][6].date;
+  const byDay = leavesByDay(scoped, from, to);
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Cuti umum: hanya bila negeri dapat ditentukan (satu cawangan, atau zon tunggal).
+  // Cuti umum ikut negeri SEBENAR cawangan (Utama = Terengganu walaupun kelulusannya ikut Pahang).
+  const holState = branchFilter !== SCOPE_ALL ? ((branches.find(b => b.name === branchFilter) || {}).state || window.scopeStateOfBranch(branchFilter))
+                 : stateFilter !== SCOPE_ALL ? stateFilter
+                 : (scope && scope !== 'all' ? scope : null);
+  const holList = holState === 'Terengganu' ? publicHolidays.terengganu : holState === 'Pahang' ? publicHolidays.pahang : [];
+  const holidays = new Map((holList || []).map(h => [h.date, h.name]));
+
+  const color = (r) => (leaveCategories.find(c => c.id === r.type) || {}).color || '#94a3b8';
+  const esc = (t) => String(t || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const firstName = (n) => esc(String(n || '').split(' ').slice(0, 2).join(' '));
+
+  const monthTotal = new Set(weeks.flat().filter(c => c.inMonth).flatMap(c => (byDay.get(c.date) || []).map(r => r.id))).size;
+  const selList = byDay.get(calSelected) || [];
+
+  return `
+    <div class="leave-cal fade-in">
+      <div class="cal-header">
+        <div>
+          <h2 class="cal-title">Kalendar Cuti</h2>
+          <div class="cal-sub">${isZoneViewer ? (scope === 'all' ? (stateFilter === SCOPE_ALL ? 'Pahang & Terengganu' : esc(stateFilter)) : 'Zon ' + esc(scope)) : esc(user.branch)} · ${monthTotal} permohonan bulan ini</div>
+        </div>
+        <div class="cal-controls">
+          ${stateTabs.length > 1 ? `
+          <div class="cal-state-tabs" role="tablist">
+            ${[SCOPE_ALL, ...stateTabs].map(st => `<button role="tab" class="cal-state-tab ${stateFilter === st ? 'active' : ''}" onclick="window.setCalState('${st}')">${st === SCOPE_ALL ? 'Semua' : st}</button>`).join('')}
+          </div>` : ''}
+          ${isZoneViewer ? `
+          <select class="neu-inset cal-branch" onchange="window.setCalBranch(this.value)">
+            <option value="${SCOPE_ALL}" ${calBranch === SCOPE_ALL ? 'selected' : ''}>Semua cawangan</option>
+            ${branchList.map(b => `<option value="${esc(b)}" ${calBranch === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}
+          </select>` : ''}
+          <div class="cal-nav">
+            <button class="icon-btn" onclick="window.calShift(-1)" title="Bulan sebelum" aria-label="Bulan sebelum"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <div class="cal-month">${monthLabel(calMonth)}</div>
+            <button class="icon-btn" onclick="window.calShift(1)" title="Bulan seterusnya" aria-label="Bulan seterusnya"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg></button>
+            <button class="neu-btn sm is-print" onclick="window.calToday()">Hari Ini</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cal-legend">
+        <span><i class="cal-chip-demo"></i> Diluluskan</span>
+        <span><i class="cal-chip-demo is-pending"></i> Dalam proses</span>
+        ${holidays.size ? '<span><i class="cal-hol-demo"></i> Cuti umum</span>' : ''}
+      </div>
+
+      <div class="cal-grid glass-card">
+        ${['Isn', 'Sel', 'Rab', 'Kha', 'Jum', 'Sab', 'Ahd'].map(d => `<div class="cal-dow">${d}</div>`).join('')}
+        ${weeks.flat().map(c => {
+          const list = byDay.get(c.date) || [];
+          const hol = holidays.get(c.date);
+          const cls = ['cal-cell', c.inMonth ? '' : 'is-out', c.date === today ? 'is-today' : '', c.date === calSelected ? 'is-selected' : '', hol ? 'is-holiday' : ''].join(' ');
+          return `<div class="${cls}" onclick="window.calSelectDay('${c.date}')">
+            <div class="cal-day"><span>${c.day}</span>${list.length ? `<b class="cal-count">${list.length}</b>` : ''}</div>
+            ${hol ? `<div class="cal-hol" title="${esc(hol)}">${esc(hol)}</div>` : ''}
+            <div class="cal-chips">
+              ${list.slice(0, 3).map(r => `<div class="cal-chip${r.status === 'APPROVED' ? '' : ' is-pending'}" style="--lc:${color(r)}" title="${esc(r.name)} — ${esc(leaveTypeName(r.type))} (${esc(r.status)})">${firstName(r.name)}</div>`).join('')}
+              ${list.length > 3 ? `<div class="cal-more">+${list.length - 3} lagi</div>` : ''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+
+      <div class="cal-detail glass-card">
+        <div class="cal-detail-head">
+          ${new Date(calSelected + 'T00:00:00').toLocaleDateString('ms-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          ${holidays.get(calSelected) ? `<span class="cal-hol-tag">${esc(holidays.get(calSelected))}</span>` : ''}
+        </div>
+        ${selList.length === 0
+          ? emptyState({ compact: true, icon: 'check', title: 'Tiada staf bercuti pada hari ini' })
+          : selList.map(r => `
+            <div class="cal-detail-row">
+              <span class="cal-dot" style="background:${color(r)}"></span>
+              <div class="cal-detail-main">
+                <div class="cal-detail-name">${esc(r.name)}</div>
+                <div class="cal-detail-meta">${esc(leaveTypeName(r.type))} · ${esc(r.branch)} · ${esc(r.startDate)}${r.endDate && r.endDate !== r.startDate ? ' → ' + esc(r.endDate) : ''} (${esc(r.days)} hari)</div>
+              </div>
+              ${statusBadge(r.status, { compact: true })}
+            </div>`).join('')}
+      </div>
+    </div>`;
+}
+
 function renderView() {
   switch (view) {
+    case 'calendar':
+      return renderLeaveCalendar();
     case 'dashboard':
       const finalRKey = window.rbacMatrix[user.role] ? user.role : 'staff';
       const dashboardRbac = window.rbacMatrix[finalRKey];
@@ -6488,7 +6636,7 @@ function renderView() {
           ${showSwitcher ? `
             <div style="display:flex;gap:0.6rem;margin-bottom:2rem;background:rgba(163,177,198,0.12);padding:0.4rem;border-radius:12px;width:fit-content;border:1px solid rgba(163,177,198,0.5);">
                 ${canSeeAnalytics ? `
-                <button onclick="window.setDashboardTab('analytics')" style="border:none;padding:0.6rem 1.4rem;border-radius:8px;font-size:0.92rem;font-weight:700;cursor:pointer;transition:all 0.2s;${dashboardTab === 'analytics' ? 'background:var(--primary);color:var(--text);box-shadow:0 4px 12px rgba(59,130,246,0.3);' : 'background:transparent;color:var(--text-muted);'}">
+                <button onclick="window.setDashboardTab('analytics')" style="border:none;padding:0.6rem 1.4rem;border-radius:8px;font-size:0.92rem;font-weight:700;cursor:pointer;transition:all 0.2s;${dashboardTab === 'analytics' ? 'background:var(--primary);color:#fff;box-shadow:0 4px 12px var(--primary-glow);' : 'background:transparent;color:var(--text-muted);'}">
                   📊 ANALISA (ADMIN)
                 </button>` : ''}
                 ${canSeeBranchAnalytics ? `
@@ -6496,10 +6644,10 @@ function renderView() {
                   📊 ANALISA CAWANGAN
                 </button>` : ''}
                 ${canSeeBranch ? `
-                <button onclick="window.setDashboardTab('branch')" style="border:none;padding:0.6rem 1.4rem;border-radius:8px;font-size:0.92rem;font-weight:700;cursor:pointer;transition:all 0.2s;${dashboardTab === 'branch' ? 'background:var(--primary);color:var(--text);box-shadow:0 4px 12px rgba(59,130,246,0.3);' : 'background:transparent;color:var(--text-muted);'}">
+                <button onclick="window.setDashboardTab('branch')" style="border:none;padding:0.6rem 1.4rem;border-radius:8px;font-size:0.92rem;font-weight:700;cursor:pointer;transition:all 0.2s;${dashboardTab === 'branch' ? 'background:var(--primary);color:#fff;box-shadow:0 4px 12px var(--primary-glow);' : 'background:transparent;color:var(--text-muted);'}">
                   🏠 CAWANGAN SAYA
                 </button>` : ''}
-                <button onclick="window.setDashboardTab('personal')" style="border:none;padding:0.6rem 1.4rem;border-radius:8px;font-size:0.92rem;font-weight:700;cursor:pointer;transition:all 0.2s;${dashboardTab === 'personal' ? 'background:var(--primary);color:var(--text);box-shadow:0 4px 12px rgba(59,130,246,0.3);' : 'background:transparent;color:var(--text-muted);'}">
+                <button onclick="window.setDashboardTab('personal')" style="border:none;padding:0.6rem 1.4rem;border-radius:8px;font-size:0.92rem;font-weight:700;cursor:pointer;transition:all 0.2s;${dashboardTab === 'personal' ? 'background:var(--primary);color:#fff;box-shadow:0 4px 12px var(--primary-glow);' : 'background:transparent;color:var(--text-muted);'}">
                   👤 PERSONAL
                 </button>
             </div>
@@ -7190,7 +7338,7 @@ function renderView() {
                     <span style="margin-left:0.5rem;flex-shrink:0;">${statusBadge(act.status, { compact: true })}</span>
                   </div>`;
                 }).join('')}
-                ${leaveRecords.filter(r => r.ic === user.ic).length === 0 ? '<div style="font-size:0.75rem;color:var(--text-muted);text-align:center;padding:1rem;">Tiada rekod setakat ini.</div>' : ''}
+                ${leaveRecords.filter(r => r.ic === user.ic).length === 0 ? emptyState({ compact: true, icon: 'calendar', title: 'Tiada aktiviti lagi' }) : ''}
               </div>
             </div>
 
@@ -7506,11 +7654,11 @@ function renderView() {
         ${managementTab === 'pending' ? `
             <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--warning, #f59e0b)" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-              <h2 style="font-size: 1.25rem; font-weight: 600;">Awaiting Authorization</h2>
+              <h2 style="font-size: 1.25rem; font-weight: 600;">Menunggu Kelulusan</h2>
             </div>
             
             <div class="approval-grid">
-              ${leaveRecords.filter(r => {
+              ${(html => html || emptyState({ icon: 'check', title: 'Tiada permohonan menunggu kelulusan', text: 'Semua permohonan sudah diproses. Kerja yang baik!' }))(leaveRecords.filter(r => {
                   if (['REJECTED', 'CANCELLED', 'APPROVED'].includes(r.status)) return false;
                   if (!window.canManageRequest(user, r)) return false;
                   const isFullBoss = ['admin', 'hr', 'super_admin'].includes(user.role);
@@ -7728,7 +7876,7 @@ function renderView() {
                   <div style="margin-top: 1rem;">${statusBadge(req.status)}</div>` : ''}
                 </div>
               `;
-            }).join('')}
+            }).join(''))}
           </div>
         ` : ''}
 
@@ -7930,12 +8078,7 @@ function renderView() {
             const pending = registrationRequests.filter(r => r.status === 'pending');
             const done = registrationRequests.filter(r => r.status !== 'pending');
             return `
-              ${pending.length === 0 ? `
-                <div style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity: 0.3; margin-bottom: 1rem;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
-                  <p>Tiada permohonan baharu yang menunggu kelulusan.</p>
-                </div>
-              ` : `
+              ${pending.length === 0 ? emptyState({ icon: 'users', title: 'Tiada pendaftaran baharu', text: 'Tiada permohonan pendaftaran staf yang menunggu kelulusan.' }) : `
                 <div style="display: grid; gap: 1rem; margin-bottom: 2rem;">
                   ${pending.map(req => `
                     <div class="glass-card fade-in" style="padding: 1.25rem 1.5rem; border-left: 4px solid #8b5cf6;">
@@ -8150,7 +8293,7 @@ function renderView() {
                           `).join('')}
                       </tbody>
                   </table>
-                  ${_mlRows.length === 0 ? `<div style="padding:2.5rem 1rem;text-align:center;font-size:0.8rem;color:var(--text-muted);">${masterLogOverlapOnly ? 'Tiada rekod bertindih untuk pilihan ini.' : 'Tiada rekod untuk pilihan ini.'}</div>` : ''}
+                  ${_mlRows.length === 0 ? (masterLogOverlapOnly ? emptyState({ icon: 'check', title: 'Tiada cuti bertindih', text: 'Tiada rekod bertindih untuk pilihan ini.' }) : emptyState({ icon: 'search', title: 'Tiada rekod dijumpai', text: 'Cuba tukar penapis cawangan, tahun atau carian.' })) : ''}
               </div>
           </section>
         `; })() : ''}
@@ -8218,11 +8361,7 @@ function renderView() {
             </button>
           </div>
 
-          ${locumRecs.length === 0 ? `
-            <div class="glass-card" style="padding:2.5rem;text-align:center;color:var(--text-muted);">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 1rem;display:block;opacity:0.3;"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"></path><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"></path></svg>
-              Tiada rekod locum lagi.
-            </div>` : `
+          ${locumRecs.length === 0 ? `<div class="glass-card">${emptyState({ icon: 'file', title: 'Tiada rekod locum lagi' })}</div>` : `
           <div style="display:flex;flex-direction:column;gap:1rem;">
             ${locumRecs.map(r => {
               const locums = [];
@@ -8672,7 +8811,7 @@ function renderView() {
                 </thead>
                 <tbody>
                   ${approvedFiltered.length === 0
-                    ? `<tr><td colspan="6" style="padding:3rem;text-align:center;color:var(--text-muted);font-size:0.85rem;">Tiada rekod diluluskan dijumpai</td></tr>`
+                    ? emptyRow(6, { icon: 'search', title: 'Tiada rekod diluluskan dijumpai', text: 'Cuba tukar penapis atau carian.' })
                     : approvedFiltered.slice().sort((a,b)=>(b.id||0)-(a.id||0)).map(r => `
                   <tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
                     <td style="padding:1.1rem 1rem;">
@@ -8781,7 +8920,7 @@ function renderView() {
             <section class="glass-card fade-in" style="padding:0;overflow:hidden;">
               <div style="overflow-x:auto;">
                 ${jeniFiltered.length === 0
-                  ? `<div style="padding:3rem;text-align:center;color:var(--text-muted);">Tiada rekod diluluskan untuk ditunjukkan</div>`
+                  ? emptyState({ icon: 'search', title: 'Tiada rekod diluluskan', text: 'Cuba tukar penapis atau carian.' })
                   : `<table style="width:100%;border-collapse:collapse;font-size:0.73rem;">
                   <thead>
                     <tr style="border-bottom:2px solid rgba(163,177,198,0.2);">
@@ -8985,7 +9124,7 @@ function renderView() {
                   </thead>
                   <tbody>
                     ${balanceRows.length === 0
-                      ? `<tr><td colspan="16" style="padding:3rem;text-align:center;color:var(--text-muted);font-size:0.85rem;">Tiada rekod untuk ditunjukkan</td></tr>`
+                      ? emptyRow(16, { icon: 'search', title: 'Tiada rekod untuk ditunjukkan', text: 'Cuba tukar penapis atau carian.' })
                       : (balanceReportBranch !== 'SEMUA'
                         ? balanceRows
                         : Object.entries(groupedByBranch).flatMap(([branch, rows]) => [
@@ -9891,7 +10030,7 @@ function renderView() {
                   <span>Tarikh</span><span>Nama Cuti</span><span></span>
                 </div>
               </div>
-              ${list.length === 0 ? `<div style="padding:1.5rem;text-align:center;color:var(--text-muted);font-size:0.85rem;">Tiada cuti umum ditetapkan. Klik "+ Tambah" untuk mula.</div>` : ''}
+              ${list.length === 0 ? emptyState({ compact: true, icon: 'calendar', title: 'Tiada cuti umum ditetapkan', text: 'Klik "+ Tambah" untuk mula.' }) : ''}
               ${list.map((h, i) => `
                 <div style="${rowStyle}">
                   ${canEdit
