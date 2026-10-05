@@ -275,6 +275,61 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
 .neu-btn.primary-text { color: var(--secondary); }
 .neu-btn.success-text { color: var(--accent); }
 .neu-btn.danger-text  { color: var(--danger); }
+.neu-btn svg { flex-shrink: 0; }
+
+/* ── Butang tindakan cuti — satu warna bagi setiap jenis tindakan ──
+   Lulus = hijau padu (tindakan utama); Tolak = merah; Batal = kelabu;
+   Edit = biru-teal; Cetak = warna utama; WhatsApp = hijau WA; Locum = teal.
+   Guna kelas ini, jangan tulis warna butang inline. */
+.neu-btn[class*=" is-"] {
+  --bt: var(--text-soft);
+  color: var(--bt);
+  background: var(--surface); /* fallback: browser tanpa color-mix */
+  background: color-mix(in srgb, var(--bt) 7%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--bt) 28%, transparent);
+}
+.neu-btn.is-edit   { --bt: var(--info); }
+.neu-btn.is-reject { --bt: var(--danger); }
+.neu-btn.is-cancel { --bt: #64748b; }
+.neu-btn.is-print  { --bt: var(--primary); }
+.neu-btn.is-wa     { --bt: #15803d; }
+.neu-btn.is-locum  { --bt: #0d9488; }
+.neu-btn.is-approve {
+  --bt: var(--accent);
+  color: #fff;
+  background: var(--accent);
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(5,150,105,0.28);
+}
+.neu-btn.is-approve:hover { filter: brightness(1.06); box-shadow: 0 6px 16px rgba(5,150,105,0.34); }
+.neu-btn.sm {
+  flex: none; width: auto; display: inline-flex;
+  padding: 0.3rem 0.7rem; font-size: 0.75rem; border-radius: 8px; gap: 0.3rem;
+}
+
+/* Butang ikon (jadual Master Logs) */
+.icon-btn {
+  --bt: var(--text-soft);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0;
+  border-radius: 8px; border: 1px solid transparent;
+  background: transparent; color: var(--bt);
+  cursor: pointer; text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.icon-btn:hover {
+  background: rgba(100,116,139,0.1);
+  background: color-mix(in srgb, var(--bt) 12%, transparent);
+  border-color: color-mix(in srgb, var(--bt) 25%, transparent);
+  transform: translateY(-1px);
+}
+.icon-btn svg { width: 17px; height: 17px; }
+.icon-btn.is-edit   { --bt: var(--info); }
+.icon-btn.is-delete { --bt: var(--danger); }
+.icon-btn.is-cancel { --bt: #64748b; }
+.icon-btn.is-print  { --bt: var(--primary); }
+.icon-btn.is-proof  { --bt: var(--accent); }
+.icon-btn.is-upload { --bt: var(--warning); }
 
 /* ── Dashboard Layout ───────────────────────────────── */
 .dashboard-layout {
