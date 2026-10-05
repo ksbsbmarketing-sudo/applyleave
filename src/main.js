@@ -6544,6 +6544,11 @@ function renderLeaveCalendar() {
 
   const monthTotal = new Set(weeks.flat().filter(c => c.inMonth).flatMap(c => (byDay.get(c.date) || []).map(r => r.id))).size;
   const selList = byDay.get(calSelected) || [];
+  // Bilangan permohonan (unik) bagi setiap jenis cuti dalam bulan ini — untuk petunjuk warna.
+  const typeCounts = new Map();
+  for (const r of new Map(weeks.flat().filter(c => c.inMonth).flatMap(c => (byDay.get(c.date) || []).map(x => [x.id, x]))).values()) {
+    typeCounts.set(r.type, (typeCounts.get(r.type) || 0) + 1);
+  }
 
   return `
     <div class="leave-cal fade-in">
@@ -6575,6 +6580,12 @@ function renderLeaveCalendar() {
         <span><i class="cal-chip-demo"></i> Diluluskan</span>
         <span><i class="cal-chip-demo is-pending"></i> Dalam proses</span>
         ${holidays.size ? '<span><i class="cal-hol-demo"></i> Cuti umum</span>' : ''}
+      </div>
+      <div class="cal-type-legend" aria-label="Petunjuk warna jenis cuti">
+        ${leaveCategories.map(c => {
+          const n = typeCounts.get(c.id) || 0;
+          return `<span class="cal-type${n ? '' : ' is-empty'}" title="${esc(c.name)}${n ? ' — ' + n + ' permohonan bulan ini' : ''}"><i style="background:${c.color}"></i>${esc(c.name)}${n ? `<b>${n}</b>` : ''}</span>`;
+        }).join('')}
       </div>
 
       <div class="cal-grid glass-card">
