@@ -17,6 +17,8 @@ import { showToast, showConfirm, restorePendingToasts } from './notify.js';
 import { statusBadge } from './statusBadge.js';
 import { emptyState, emptyRow, dashboardSkeleton } from './uiStates.js';
 import { monthGrid, leavesByDay, shiftMonth, monthLabel } from './leaveCalendar.js';
+// Satu sumber versi: package.json (dulu ditulis tangan di topbar & log — mudah terlupa naikkan).
+import { version as APP_VERSION } from '../package.json';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -4091,7 +4093,7 @@ async function restoreSessionUser() {
 }
 
 // Migration helper removed as data is now live on Firestore.
-console.log('[SYSTEM] Version 2.1.0 - Inbox bulk actions + calendar-day leave + Admin-Balok routing');
+console.log(`[SYSTEM] Version ${APP_VERSION}`);
 
 // Auth bootstrap. Returning users have a persisted real session (Firebase restores it
 // across reloads) — for them we subscribe to data immediately. Otherwise we sign in
@@ -5145,7 +5147,7 @@ function renderDashboard() {
           <span class="app-topbar-company">KLINIK SYED BADARUDDIN SDN. BHD.</span>
           <span class="app-topbar-system">Sistem Permohonan Cuti &amp; Rekod Pekerja</span>
         </div>
-        <span class="app-topbar-version">v2.1.0</span>
+        <span class="app-topbar-version">v${APP_VERSION}</span>
       </header>
       <aside class="sidebar">
         <nav class="nav-menu">
