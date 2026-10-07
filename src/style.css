@@ -1085,6 +1085,106 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
 .empty-state-text { font-size: 0.82rem; margin-top: 0.3rem; max-width: 340px; line-height: 1.5; }
 .empty-state-action { width: auto; margin-top: 1.1rem; padding: 0.6rem 1.4rem; font-size: 0.9rem; }
 
+/* ── Inbox (src/inboxView.js + main.js case 'inbox') ───────
+   Gaya "putih bersih": kad putih rata atas latar kelabu, bukan neumorphic. */
+.inbox-wrap { max-width: 720px; margin: 0 auto; padding: 1.5rem 1rem; }
+.inbox-card {
+  padding: 0 !important; overflow: hidden;
+  background: #fff !important; border: 1px solid rgba(15,23,42,0.06); border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.05), 0 8px 24px rgba(15,23,42,0.06) !important;
+}
+.inbox-card:hover { transform: none; }
+.inbox-count {
+  background: var(--primary); color: #fff; font-size: 0.72rem; font-weight: 800;
+  min-width: 1.5rem; padding: 0.12rem 0.5rem; border-radius: 999px; text-align: center;
+}
+.inbox-toolbar {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;
+  padding: 0 1.1rem; border-bottom: 1px solid #eef1f5;
+}
+.inbox-tabs { display: inline-flex; gap: 0.25rem; }
+.inbox-tab {
+  border: 0; background: transparent; cursor: pointer; font: inherit;
+  font-size: 0.85rem; font-weight: 700; color: #64748b;
+  padding: 0.95rem 0.6rem 0.8rem; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  display: inline-flex; align-items: center; gap: 0.4rem;
+}
+.inbox-tab:hover { color: var(--text); }
+.inbox-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+.inbox-tab-n { background: var(--primary); color: #fff; font-size: 0.66rem; padding: 0.05rem 0.42rem; border-radius: 999px; }
+.inbox-actions { display: flex; gap: 0.15rem; padding: 0.55rem 0; }
+.inbox-link {
+  border: 0; background: transparent; cursor: pointer; font: inherit;
+  font-size: 0.8rem; font-weight: 600; color: var(--primary); padding: 0.4rem 0.6rem; border-radius: 8px;
+}
+.inbox-link:hover { background: #fbf1f1; }
+.inbox-selectbar {
+  display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1.1rem;
+  background: #fdf6f6; border-bottom: 1px solid #f3e3e3;
+}
+.inbox-selectbar label {
+  display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none; margin: 0;
+  text-transform: none; letter-spacing: normal; font-size: 0.8rem; font-weight: 700; color: var(--text-soft);
+}
+.inbox-selcount { flex: 1; font-size: 0.78rem; color: #64748b; }
+.inbox-check {
+  appearance: auto; -webkit-appearance: checkbox; box-shadow: none !important; background: none;
+  width: 1rem; height: 1rem; flex-shrink: 0; cursor: pointer; accent-color: var(--primary); margin: 0; padding: 0; border: 0; border-radius: 3px;
+}
+.inbox-group {
+  padding: 1rem 1.1rem 0.4rem; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #94a3b8;
+}
+.inbox-row {
+  position: relative; display: flex; align-items: flex-start; gap: 0.85rem; padding: 0.85rem 1.1rem;
+  cursor: pointer; transition: background 0.15s;
+}
+/* garisan pemisah bermula selepas ikon */
+.inbox-row + .inbox-row::before {
+  content: ''; position: absolute; top: 0; right: 0; left: calc(1.1rem + 36px + 0.85rem); border-top: 1px solid #eef1f5;
+}
+.inbox-row:hover { background: #f8fafc; }
+.inbox-row.is-unread { background: #fdf7f7; box-shadow: inset 3px 0 0 var(--primary); }
+.inbox-row.is-unread:hover { background: #fbf0f0; }
+.inbox-row.is-selected { background: #f9eaea; }
+.inbox-row .inbox-check { margin-top: 0.6rem; }
+.inbox-icon {
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--tc); background: color-mix(in srgb, var(--tc) 11%, #fff);
+}
+.inbox-icon svg { width: 17px; height: 17px; }
+.inbox-icon.tone-ok     { --tc: var(--accent); }
+.inbox-icon.tone-bad    { --tc: var(--danger); }
+.inbox-icon.tone-warn   { --tc: var(--warning); }
+.inbox-icon.tone-action { --tc: var(--primary); }
+.inbox-icon.tone-info   { --tc: var(--info); }
+.inbox-icon.tone-muted  { --tc: #64748b; }
+.inbox-text { flex: 1; min-width: 0; }
+.inbox-head { display: flex; align-items: baseline; gap: 0.5rem; }
+.inbox-title {
+  flex: 1; min-width: 0; font-size: 0.9rem; font-weight: 500; color: #334155;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.inbox-row.is-unread .inbox-title { font-weight: 700; color: #0f172a; }
+.inbox-time { font-size: 0.72rem; color: #94a3b8; white-space: nowrap; flex-shrink: 0; }
+.inbox-row.is-unread .inbox-time { color: var(--primary); font-weight: 700; }
+.inbox-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); flex-shrink: 0; align-self: center; }
+.inbox-body {
+  margin: 0.2rem 0 0; font-size: 0.8rem; line-height: 1.5; color: #64748b;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.inbox-card .empty-state-icon { background: #fbf1f1; }
+@media (max-width: 720px) {
+  .inbox-wrap { padding: 1rem 0; }
+  .inbox-row, .inbox-toolbar, .inbox-selectbar, .inbox-group { padding-left: 0.9rem; padding-right: 0.9rem; }
+  .inbox-row + .inbox-row::before { left: calc(0.9rem + 36px + 0.85rem); }
+  .inbox-toolbar { flex-wrap: nowrap; gap: 0.25rem; }
+  .inbox-tab { padding-left: 0.45rem; padding-right: 0.45rem; font-size: 0.82rem; }
+  .inbox-link { padding: 0.4rem 0.45rem; }
+  .inbox-hide-sm { display: none; }
+}
+
 /* ── Skeleton loading (src/uiStates.js dashboardSkeleton) ─── */
 .sk {
   border-radius: 10px;

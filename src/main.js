@@ -17,6 +17,7 @@ import { showToast, showConfirm, restorePendingToasts } from './notify.js';
 import { statusBadge } from './statusBadge.js';
 import { emptyState, emptyRow, dashboardSkeleton } from './uiStates.js';
 import { monthGrid, leavesByDay, shiftMonth, monthLabel } from './leaveCalendar.js';
+import { relativeTime, groupNotifs, filterNotifs, notifKind } from './inboxView.js';
 // Satu sumber versi: package.json (dulu ditulis tangan di topbar & log — mudah terlupa naikkan).
 import { version as APP_VERSION } from '../package.json';
 import { Chart, registerables } from 'chart.js';
@@ -548,6 +549,7 @@ window.setView = function(v) {
       applyHalfDay = false;
   }
   inboxSelected.clear(); // pilihan checkbox inbox tidak kekal antara navigasi
+  inboxSelectMode = false;
   view = v;
   render();
 };
@@ -667,6 +669,8 @@ let waLogs = [];
 let inboxNotifs = [];
 let inboxUnsub = null;
 let inboxSelected = new Set(); // ID notifikasi yang ditanda (checkbox) — state UI dalam-memori
+let inboxSelectMode = false;   // checkbox hanya dipapar selepas tekan "Pilih"
+let inboxFilter = 'all';       // 'all' | 'unread'
 let waSettingsSubTab = 'token_log'; // 'token_log' | 'rbac_notif'
 let waNotifRbac = {
   balok:      { p1_submit: ['team_leader','hod_balok'], tl_approved: ['supervisor'], p2_p1_approved: ['hr','admin','super_admin'], p3_final: [], overdue_reminder: ['team_leader','supervisor','hr'] },
@@ -5004,9 +5008,30 @@ window.toggleNotifSelect = function(notifId) {
 
 // ── Inbox: tanda/nyahtanda SEMUA (pilih semua) ──
 window.toggleSelectAllNotifs = function() {
-  if (inboxSelected.size === inboxNotifs.length) inboxSelected.clear();
-  else inboxNotifs.forEach(n => inboxSelected.add(n.id));
+  const visible = filterNotifs(inboxNotifs, inboxFilter);
+  if (visible.length && visible.every(n => inboxSelected.has(n.id))) inboxSelected.clear();
+  else visible.forEach(n => inboxSelected.add(n.id));
   render();
+};
+
+// ── Inbox: masuk/keluar mod pilih ──
+window.toggleInboxSelectMode = function() {
+  inboxSelectMode = !inboxSelectMode;
+  inboxSelected.clear();
+  render();
+};
+
+// ── Inbox: penapis Semua / Belum baca ──
+window.setInboxFilter = function(f) {
+  inboxFilter = f;
+  inboxSelected.clear();
+  render();
+};
+
+// ── Inbox: klik baris — pilih (mod pilih) atau tanda dibaca ──
+window.onInboxRowClick = function(notifId) {
+  if (inboxSelectMode) window.toggleNotifSelect(notifId);
+  else window.markNotifRead(notifId);
 };
 
 // ── Inbox: padam notifikasi yang ditanda (dengan pengesahan) ──
@@ -5019,6 +5044,7 @@ window.deleteSelectedNotifs = async function() {
     ids.forEach(id => batch.delete(doc(db, 'notifications', id)));
     await batch.commit();
     inboxSelected.clear();
+    inboxSelectMode = false;
     render();
   } catch(e) { console.warn('deleteSelectedNotifs failed:', e); showToast('Gagal memadam sebahagian notifikasi. Sila cuba lagi.'); }
 };
@@ -10609,69 +10635,64 @@ function renderView() {
 
     case 'inbox': {
       const unread = inboxNotifs.filter(n => !n.read).length;
+      const visible = filterNotifs(inboxNotifs, inboxFilter);
       const selCount = inboxSelected.size;
-      const allSelected = inboxNotifs.length > 0 && selCount === inboxNotifs.length;
-      const typeIcon = { leave_submitted:'📋', leave_approved:'✅', leave_rejected:'❌', leave_p1_approved:'📋', leave_tl_approved:'📋', leave_to_approve:'📥', approval_made:'🗂️', reminder_start:'🔔', reminder_balance:'⚠️', system:'ℹ️' };
-      const typeColor = { leave_submitted:'#3b82f6', leave_approved:'#10b981', leave_rejected:'#ef4444', leave_p1_approved:'#f59e0b', leave_tl_approved:'#f59e0b', leave_to_approve:'#3b82f6', approval_made:'#10b981', reminder_start:'#8b5cf6', reminder_balance:'#f59e0b', system:'#64748b' };
+      const allSelected = visible.length > 0 && visible.every(n => inboxSelected.has(n.id));
+      const now = Date.now();
+      const row = (n) => {
+        const k = notifKind(n.type);
+        const isSel = inboxSelected.has(n.id);
+        return `
+          <div class="inbox-row${n.read ? '' : ' is-unread'}${isSel ? ' is-selected' : ''}" onclick="window.onInboxRowClick('${n.id}')">
+            ${inboxSelectMode ? `<input type="checkbox" class="inbox-check" ${isSel ? 'checked' : ''} onclick="event.stopPropagation();window.toggleNotifSelect('${n.id}')" aria-label="Pilih notifikasi">` : ''}
+            <div class="inbox-icon tone-${k.tone}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${k.svg}</svg></div>
+            <div class="inbox-text">
+              <div class="inbox-head">
+                <span class="inbox-title">${n.title}</span>
+                <span class="inbox-time" title="${new Date(n.createdAt).toLocaleString('ms-MY')}">${relativeTime(n.createdAt, now)}</span>
+                ${n.read ? '' : '<span class="inbox-dot" aria-label="Belum baca"></span>'}
+              </div>
+              <p class="inbox-body">${n.body}</p>
+            </div>
+          </div>`;
+      };
       return `
         <header class="top-bar">
           <h1 style="display:flex;align-items:center;gap:0.6rem;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
             Inbox
-            ${unread > 0 ? `<span style="background:var(--danger);color:#fff;font-size:0.7rem;font-weight:800;padding:0.1rem 0.5rem;border-radius:999px;">${unread} belum baca</span>` : ''}
+            ${unread > 0 ? `<span class="inbox-count">${unread}</span>` : ''}
           </h1>
           <button class="neu-btn primary-text" onclick="window.setView('dashboard')">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
             Kembali
           </button>
         </header>
-        <div class="main-content" style="max-width:700px;margin:0 auto;padding:1.5rem 1rem;">
-          ${inboxNotifs.length === 0 ? `
-            <div class="glass-card fade-in" style="padding:3.5rem;text-align:center;color:var(--text-muted);">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3;margin-bottom:1rem;display:block;margin-inline:auto;"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-              <p style="font-size:0.95rem;font-weight:600;margin-bottom:0.4rem;">Inbox kosong</p>
-              <p style="font-size:0.8rem;">Notifikasi berkaitan cuti anda akan muncul di sini.</p>
+        <div class="main-content inbox-wrap">
+          ${inboxNotifs.length === 0 ? `<div class="inbox-card glass-card">${emptyState({ icon: 'inbox', title: 'Inbox kosong', text: 'Notifikasi berkaitan cuti anda akan muncul di sini.' })}</div>` : `
+          <div class="inbox-card glass-card">
+            <div class="inbox-toolbar">
+              <div class="inbox-tabs" role="tablist">
+                <button class="inbox-tab${inboxFilter === 'all' ? ' active' : ''}" onclick="window.setInboxFilter('all')">Semua</button>
+                <button class="inbox-tab${inboxFilter === 'unread' ? ' active' : ''}" onclick="window.setInboxFilter('unread')">Belum baca${unread ? ` <span class="inbox-tab-n">${unread}</span>` : ''}</button>
+              </div>
+              <div class="inbox-actions">
+                ${!inboxSelectMode && unread > 0 ? `<button class="inbox-link" onclick="window.markAllNotifsRead()">Tandai<span class="inbox-hide-sm"> semua</span> dibaca</button>` : ''}
+                <button class="inbox-link" onclick="window.toggleInboxSelectMode()">${inboxSelectMode ? 'Selesai' : 'Pilih'}</button>
+              </div>
             </div>
-          ` : `
-            <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem;padding:0.6rem 0.85rem;border-radius:12px;background:var(--glass);border:1px solid var(--border);">
-              <label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;font-size:0.78rem;font-weight:700;color:var(--text-muted);user-select:none;">
-                <input type="checkbox" ${allSelected ? 'checked' : ''} onchange="window.toggleSelectAllNotifs()" style="width:1rem;height:1rem;cursor:pointer;accent-color:var(--primary);">
-                Pilih semua
-              </label>
-              <div style="flex:1;"></div>
-              ${unread > 0 ? `
-              <button class="neu-btn" onclick="window.markAllNotifsRead()" style="font-size:0.75rem;font-weight:700;display:flex;align-items:center;gap:0.4rem;padding:0.5rem 0.85rem;">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
-                Tandai semua dibaca
-              </button>` : ''}
-              <button class="neu-btn" ${selCount === 0 ? 'disabled' : ''} onclick="window.deleteSelectedNotifs()" style="font-size:0.75rem;font-weight:700;display:flex;align-items:center;gap:0.4rem;padding:0.5rem 0.85rem;${selCount === 0 ? 'opacity:0.4;cursor:not-allowed;' : 'color:var(--danger);border:1px solid rgba(239,68,68,0.35);'}">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                Padam${selCount > 0 ? ` (${selCount})` : ''}
-              </button>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:0.6rem;">
-              ${inboxNotifs.map(n => {
-                const icon = typeIcon[n.type] || 'ℹ️';
-                const color = typeColor[n.type] || '#64748b';
-                const d = new Date(n.createdAt);
-                const timeStr = d.toLocaleDateString('ms-MY', { day:'2-digit', month:'short', year:'numeric' }) + ' ' + d.toLocaleTimeString('ms-MY', { hour:'2-digit', minute:'2-digit' });
-                const isSel = inboxSelected.has(n.id);
-                return `
-                <div class="glass-card fade-in" onclick="window.markNotifRead('${n.id}')" style="padding:1rem 1.25rem;cursor:pointer;border-left:3px solid ${color};${isSel ? 'box-shadow:0 0 0 2px var(--primary) inset;' : ''}${!n.read ? 'background:rgba(59,130,246,0.04);' : 'opacity:0.75;'}display:flex;align-items:flex-start;gap:1rem;transition:opacity 0.2s;">
-                  <input type="checkbox" ${isSel ? 'checked' : ''} onclick="event.stopPropagation();window.toggleNotifSelect('${n.id}')" style="width:1.05rem;height:1.05rem;flex-shrink:0;margin-top:0.3rem;cursor:pointer;accent-color:var(--primary);">
-                  <div style="font-size:1.5rem;flex-shrink:0;margin-top:0.1rem;">${icon}</div>
-                  <div style="flex:1;min-width:0;">
-                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.25rem;">
-                      <span style="font-size:0.9rem;font-weight:${n.read ? '600' : '800'};color:var(--text);">${n.title}</span>
-                      ${!n.read ? `<span style="background:var(--danger);color:#fff;font-size:0.6rem;font-weight:800;padding:0.1rem 0.4rem;border-radius:999px;">BARU</span>` : ''}
-                    </div>
-                    <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 0.35rem;line-height:1.5;">${n.body}</p>
-                    <span style="font-size:0.7rem;color:var(--text-muted);opacity:0.7;">${timeStr}</span>
-                  </div>
-                </div>`;
-              }).join('')}
-            </div>
-          `}
+            ${inboxSelectMode ? `
+            <div class="inbox-selectbar">
+              <label><input type="checkbox" class="inbox-check" ${allSelected ? 'checked' : ''} onchange="window.toggleSelectAllNotifs()"> Pilih semua</label>
+              <span class="inbox-selcount">${selCount} dipilih</span>
+              <button class="neu-btn sm is-reject" ${selCount === 0 ? 'disabled' : ''} onclick="window.deleteSelectedNotifs()">Padam${selCount ? ` (${selCount})` : ''}</button>
+            </div>` : ''}
+            ${visible.length === 0
+              ? emptyState({ icon: 'check', title: 'Semua sudah dibaca', text: 'Tiada notifikasi baru buat masa ini.', compact: true })
+              : groupNotifs(visible, now).map(g => `
+                <div class="inbox-group">${g.label}</div>
+                ${g.items.map(row).join('')}`).join('')}
+          </div>`}
         </div>
       `;
     }
@@ -11587,3 +11608,4 @@ if ('serviceWorker' in navigator && !window.__reloadGuardTripped) {
     });
   });
 }
+
