@@ -2302,8 +2302,9 @@ let staffList = [];
 // Jenama ikut cawangan — borang Uni Klinik Bentong guna logo/nama Bentong, Klinik Rakyat
 // guna KR, selebihnya KSB. Laporan tanpa cawangan (SEMUA) kekal KSB.
 //   wmOpacity — logo KR cakera hitam penuh, jadi perlu lebih pudar supaya teks kekal jelas.
+//   wmLogo    — watermark berasingan; KSB guna lambang resolusi tinggi (logo-ksb.png cuma 266px, kabur bila dibesarkan).
 const PRINT_BRANDS = {
-    ksb:     { name: 'KLINIK SYED BADARUDDIN SDN. BHD.', tagline: 'Servicing Community Since 1991', logo: '/logo-ksb.png',     accent: '#9b2c2c', sub: '#7a3b3b', wmWidth: 300, wmOpacity: 0.16 },
+    ksb:     { name: 'KLINIK SYED BADARUDDIN SDN. BHD.', tagline: 'Servicing Community Since 1991', logo: '/logo-ksb.png',     wmLogo: '/logo-ksb-mark.png', accent: '#9b2c2c', sub: '#7a3b3b', wmWidth: 360, wmOpacity: 0.10 },
     bentong: { name: 'UNI KLINIK BENTONG',               tagline: '',                               logo: '/logo-bentong.png', accent: '#283a6e', sub: '#d9480f', wmWidth: 460, wmOpacity: 0.14 },
     kr:      { name: 'KLINIK RAKYAT DAN X-RAY DUNGUN',   tagline: 'We Care',                        logo: '/logo-kr.png',      accent: '#1a1a1a', sub: '#4a5568', wmWidth: 380, wmOpacity: 0.08 },
 };
@@ -2332,7 +2333,7 @@ window.printHeaderHTML = function(opts) {
         : '';
     const brand = window.printBrandFor(opts.branch);
     return `
-        <img src="${brand.logo}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:${brand.wmWidth}px;max-width:80vw;opacity:${brand.wmOpacity};pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
+        <img src="${brand.wmLogo || brand.logo}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:${brand.wmWidth}px;max-width:80vw;opacity:${brand.wmOpacity};pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
         <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;border-bottom:3px solid ${brand.accent};padding-bottom:14px;margin-bottom:18px;position:relative;z-index:1;">
             <img src="${brand.logo}" style="height:64px;max-width:190px;object-fit:contain;justify-self:start;" alt="Logo">
             <div style="text-align:center;">
@@ -5524,6 +5525,7 @@ function renderDashboard() {
           const notifLabel = _sbmIsOpBalokTL ? 'Team Leader (Peringkat 0)' : _sbmDirectHR ? 'HR/Admin (Kelulusan Terus)' : 'Pelulus Peringkat 1';
           statusMsg += `📲 Notifikasi WA dihantar kepada ${notifLabel}:\n${recipientNames}`;
         }
+        statusMsg += '\n\n🖨️ Borang cuti boleh dicetak untuk simpanan melalui butang "Cetak" di Rekod Permohonan Terkini.';
   
         navigator.clipboard.writeText(copyText).catch(() => {});
         showToast(statusMsg);
@@ -6494,7 +6496,7 @@ function renderPersonalDashboard() {
                     <td style="color: var(--text-muted); font-size: 1rem;">${act.startDate} → ${act.endDate}</td>
                     <td style="font-weight: 600;">${act.days} Hari</td>
                     <td>${statusBadge(act.status)}</td>
-                    <td>${act.ic === user.ic && !['APPROVED','REJECTED','CANCELLED'].includes(act.status) ? `<button class="neu-btn sm is-edit" onclick="window.editLeave(${act.id})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>Edit Cuti</button>` : ''}</td>
+                    <td><div style="display:flex;gap:0.4rem;flex-wrap:wrap;">${act.ic === user.ic && !['APPROVED','REJECTED','CANCELLED'].includes(act.status) ? `<button class="neu-btn sm is-edit" onclick="window.editLeave(${act.id})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>Edit Cuti</button>` : ''}<button class="neu-btn sm is-print" onclick="printLeave(${act.id})" title="Cetak borang cuti untuk simpanan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>Cetak</button></div></td>
                   </tr>
                 `).join('')}
               </tbody>
