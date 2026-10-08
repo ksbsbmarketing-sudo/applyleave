@@ -18,7 +18,7 @@ export const NO_BRANCH = '__NONE__';
 // tab SEMUA dilukis oleh pemanggil, dan hanya untuk skop 'all'.
 export function visibleStates(userScope) {
   if (!userScope) return [];
-  if (userScope === 'all') return ['Pahang', 'Terengganu'];
+  if (userScope === 'all') return ['Pahang', 'Terengganu', 'KSB Pharma'];
   return [userScope];
 }
 

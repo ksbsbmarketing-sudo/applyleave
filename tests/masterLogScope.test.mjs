@@ -149,7 +149,7 @@ test('a branch outside any zone does not appear in branchOptions for any scope',
 
 // ── visibleStates ─────────────────────────────────────────────────────
 test('visibleStates: admin gets both, an HR gets only their own, null gets none', () => {
-  assert.deepStrictEqual(visibleStates('all'), ['Pahang', 'Terengganu']);
+  assert.deepStrictEqual(visibleStates('all'), ['Pahang', 'Terengganu', 'KSB Pharma']);
   assert.deepStrictEqual(visibleStates('Pahang'), ['Pahang']);
   assert.deepStrictEqual(visibleStates('Terengganu'), ['Terengganu']);
   assert.deepStrictEqual(visibleStates(null), []);

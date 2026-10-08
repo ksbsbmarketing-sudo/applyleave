@@ -18,6 +18,8 @@ export const ROUTING_DEFAULTS = {
   xray_sono_balok:  { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
   juru_audio_balok: { needs_tl: false, p1_doctor_pic: false, p1_supervisor: false, p1_hod_balok: true,  needs_p2: true  },
   pemandu_balok:    { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
+  // KSB Pharma — own-branch Supervisor (Siti Noridah) → KSB Pharma HR (Syarifah). 2026-10-08.
+  ksb_pharma:       { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
 };
 
 // Merge the stored Firestore config over the defaults, PER GROUP — exactly what
@@ -40,10 +42,17 @@ const BALOK_HQ = "Klinik Syed Badaruddin Balok (HQ)";
 // reporting and location. (Utama, confirmed 2026-08-03.)
 const ROUTES_AS_PAHANG = ["Klinik Syed Badaruddin Utama"];
 
+// A separate company with its own HR (2026-10-08). The branch forms its own HR
+// zone: Pahang/Terengganu HR never see it, only HR with the same hrState plus
+// admin/super_admin. Its branch state stays Pahang for public holidays.
+const KSB_PHARMA = "KSB Pharma Sdn. Bhd.";
+const OWN_HR_ZONE = { [KSB_PHARMA]: "KSB Pharma" };
+
 // The state that decides HR SCOPE for a branch — the branch's own state, except
 // for ROUTES_AS_PAHANG branches (Utama), which belong to the Pahang HR zone.
 // Mirrors window.scopeStateOfBranch in src/main.js.
 export function scopeStateOfBranch(branchName, branches) {
+  if (OWN_HR_ZONE[branchName]) return OWN_HR_ZONE[branchName];
   if (ROUTES_AS_PAHANG.includes(branchName)) return "Pahang";
   const b = branches.find((x) => x.name === branchName);
   return (b && b.state) ? b.state : null;
@@ -55,6 +64,8 @@ export function getStaffGroup(s, branches) {
   const routesAsPahang = ROUTES_AS_PAHANG.includes(s.branch);
   const isTerengganu = !!(branchObj && branchObj.state === "Terengganu") && !routesAsPahang;
   const isBalok      = (s.branch || "").includes("Balok");
+
+  if (s.branch === KSB_PHARMA) return "ksb_pharma";
 
   // Paramedic roles — special routing, Balok only.
   if (["juru_xray", "sonographer"].includes(s.role) && isBalok) return "xray_sono_balok";
@@ -92,6 +103,8 @@ export function shouldSkipP1(applicant) {
   // Supervisors outside Balok still go straight to HR. A Balok Supervisor does
   // NOT: their leave is endorsed by the Balok Doctor PIC first (2026-08-18).
   if (applicant.role === "supervisor" && !(applicant.branch || "").includes("Balok")) return true;
+  // KSB Pharma HR (Syarifah) is that company's final approver and approves her own leave.
+  if (applicant.role === "hr" && applicant.branch === KSB_PHARMA) return true;
   return false;
 }
 

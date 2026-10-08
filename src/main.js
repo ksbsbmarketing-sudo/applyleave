@@ -1135,6 +1135,7 @@ window.getUserReportBranch = function(u) {
 // cawangan, KECUALI cawangan dalam ROUTES_AS_PAHANG (Utama) — fizikalnya di
 // Terengganu tetapi diuruskan oleh Balok HQ, jadi ia milik zon Pahang.
 window.scopeStateOfBranch = function(branchName) {
+    if (OWN_HR_ZONE[branchName]) return OWN_HR_ZONE[branchName];
     if (ROUTES_AS_PAHANG.includes(branchName)) return 'Pahang';
     const b = branches.find(x => x.name === branchName);
     return (b && b.state) ? b.state : null;
@@ -1897,6 +1898,8 @@ const ROUTING_DEFAULTS = {
   xray_sono_balok:  { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
   juru_audio_balok: { needs_tl: false, p1_doctor_pic: false, p1_supervisor: false, p1_hod_balok: true,  needs_p2: true  },
   pemandu_balok:    { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
+  // KSB Pharma — Supervisor cawangan sendiri (Siti Noridah) → HR KSB Pharma (Syarifah). 2026-10-08.
+  ksb_pharma:       { needs_tl: false, p1_doctor_pic: false, p1_supervisor: true,  p1_hod_balok: false, needs_p2: true  },
 };
 let approvalRouting = JSON.parse(JSON.stringify(ROUTING_DEFAULTS));
 
@@ -1905,11 +1908,20 @@ let approvalRouting = JSON.parse(JSON.stringify(ROUTING_DEFAULTS));
 // kekal Terengganu untuk laporan & lokasi. (Utama, disahkan 2026-08-03.)
 const ROUTES_AS_PAHANG = ['Klinik Syed Badaruddin Utama'];
 
+// Syarikat berasingan dengan HR sendiri (2026-10-08). Cawangan ini membentuk zon HR
+// tersendiri — HR Pahang/Terengganu tidak nampak, hanya HR ber-hrState sama (Syarifah
+// Nurjehan untuk KSB Pharma) + Admin/Super Admin. State cawangan kekal Pahang untuk
+// cuti umum. ⚠️ Disalin dalam otp-backend/lib/routing.js — kemas kini kedua-dua.
+const KSB_PHARMA = 'KSB Pharma Sdn. Bhd.';
+const OWN_HR_ZONE = { [KSB_PHARMA]: 'KSB Pharma' };
+
 window.getStaffGroup = function(s) {
   const branchObj  = branches.find(b => b.name === s.branch);
   const routesAsPahang = ROUTES_AS_PAHANG.includes(s.branch);
   const isTerengganu = branchObj && branchObj.state === 'Terengganu' && !routesAsPahang;
   const isBalok      = (s.branch || '').includes('Balok');
+
+  if (s.branch === KSB_PHARMA) return 'ksb_pharma';
 
   // Peranan paramedik — laluan kelulusan khusus, hanya di Balok
   if (['juru_xray', 'sonographer'].includes(s.role) && isBalok) return 'xray_sono_balok';
@@ -1960,6 +1972,8 @@ window.shouldSkipP1 = function(applicant, leaveType) {
   // (b) Supervisor DI LUAR Balok sahaja. Supervisor Balok kekal perlu sokongan
   //     Doctor PIC Balok pada Peringkat 1 (2026-08-18).
   if (applicant.role === 'supervisor' && !(applicant.branch || '').includes('Balok')) return true;
+  // (c) HR KSB Pharma (Syarifah) — pelulus terakhir syarikat itu, lulus cuti sendiri.
+  if (applicant.role === 'hr' && applicant.branch === KSB_PHARMA) return true;
   return false;
 };
 
@@ -2302,16 +2316,18 @@ let leavesLoaded = false;
 let staffList = [];
 
 // Jenama ikut cawangan — borang Uni Klinik Bentong guna logo/nama Bentong, Klinik Rakyat
-// guna KR, selebihnya KSB. Laporan tanpa cawangan (SEMUA) kekal KSB.
+// guna KR, KSB Pharma guna logo KSB Pharma, selebihnya KSB. Laporan tanpa cawangan (SEMUA) kekal KSB.
 //   wmOpacity — logo KR cakera hitam penuh, jadi perlu lebih pudar supaya teks kekal jelas.
 //   wmLogo    — watermark berasingan; KSB guna lambang resolusi tinggi (logo-ksb.png cuma 266px, kabur bila dibesarkan).
 const PRINT_BRANDS = {
     ksb:     { name: 'KLINIK SYED BADARUDDIN SDN. BHD.', tagline: 'Servicing Community Since 1991', logo: '/logo-ksb.png',     wmLogo: '/logo-ksb-mark.png', accent: '#9b2c2c', sub: '#7a3b3b', wmWidth: 360, wmOpacity: 0.10 },
     bentong: { name: 'UNI KLINIK BENTONG',               tagline: '',                               logo: '/logo-bentong.png', accent: '#283a6e', sub: '#d9480f', wmWidth: 460, wmOpacity: 0.14 },
+    pharma:  { name: 'KSB PHARMA SDN. BHD.',             tagline: 'We care beyond drug',            logo: '/logo-ksb-pharma.png', accent: '#0f3d2e', sub: '#a8862b', wmWidth: 420, wmOpacity: 0.12 },
     kr:      { name: 'KLINIK RAKYAT DAN X-RAY DUNGUN',   tagline: 'We Care',                        logo: '/logo-kr.png',      accent: '#1a1a1a', sub: '#4a5568', wmWidth: 380, wmOpacity: 0.08 },
 };
 window.printBrandFor = function(branch) {
     const b = String(branch || '');
+    if (/ksb pharma/i.test(b)) return PRINT_BRANDS.pharma;
     if (/bentong/i.test(b)) return PRINT_BRANDS.bentong;
     if (/klinik rakyat|x-?ray dungun/i.test(b)) return PRINT_BRANDS.kr;
     return PRINT_BRANDS.ksb;
@@ -3689,6 +3705,7 @@ let branches = [
   { name: "Klinik Syed Badaruddin Kerteh",          state: "Terengganu", daerah: "Kemaman",  manager: "Admin" },
   { name: "Klinik Syed Badaruddin Paka",            state: "Terengganu", daerah: "Dungun",   manager: "Admin" },
   { name: "Klinik Rakyat dan X-Ray Dungun",         state: "Terengganu", daerah: "Dungun",   manager: "Admin" },
+  { name: "KSB Pharma Sdn. Bhd.",                   state: "Pahang",     daerah: "Kuantan",  manager: "Admin" },
 ];
 
 // Pendengar audit_logs dipasang secara MALAS — hanya untuk peranan yang betul-betul
@@ -9529,6 +9546,7 @@ function renderView() {
             { key:'operation_balok',  label:'Kakitangan Operasi',sub:'Balok (HQ)',            color:'#10b981', bg:'rgba(16,185,129,0.06)'  },
             { key:'xray_sono_balok',  label:'Juru X-Ray / Sono', sub:'Balok (HQ)',            color:'#ec4899', bg:'rgba(236,72,153,0.06)'  },
             { key:'juru_audio_balok', label:'Juru Audio',        sub:'Balok (HQ)',            color:'#0d9488', bg:'rgba(13,148,136,0.06)'  },
+            { key:'ksb_pharma',       label:'Semua Kakitangan',  sub:'KSB Pharma',            color:'#14532d', bg:'rgba(20,83,45,0.06)'    },
           ];
           const cols = [
             { field:'needs_tl',      label:'Team Leader', grp:'p0', color:'#f43f5e' },
@@ -10286,6 +10304,7 @@ function renderView() {
                     { key:'operation_balok',  label:'Kakitangan Operasi',sub:'Balok (HQ)',             color:'#10b981', bg:'rgba(16,185,129,0.04)'  },
                     { key:'xray_sono_balok',  label:'Juru X-Ray / Sono', sub:'Balok (HQ)',             color:'#ec4899', bg:'rgba(236,72,153,0.04)'  },
                     { key:'juru_audio_balok', label:'Juru Audio',        sub:'Balok (HQ)',             color:'#0d9488', bg:'rgba(13,148,136,0.04)'  },
+                    { key:'ksb_pharma',       label:'Semua Kakitangan',  sub:'KSB Pharma',             color:'#14532d', bg:'rgba(20,83,45,0.04)'    },
                   ].map(row => {
                     const cfg = approvalRouting[row.key] || {};
                     const mkCell = (field, checked, color, thick) => {

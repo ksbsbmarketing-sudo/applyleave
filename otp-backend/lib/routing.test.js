@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ROUTING_DEFAULTS, getStaffGroup, shouldSkipP1, getRoutingP1Approvers, mergeRoutingConfig,
+  ROUTING_DEFAULTS, getStaffGroup, shouldSkipP1, getRoutingP1Approvers, mergeRoutingConfig, scopeStateOfBranch,
 } from "./routing.js";
 
 const BALOK_HQ = "Klinik Syed Badaruddin Balok (HQ)";
@@ -278,4 +278,29 @@ test("applicant never routes to themselves", () => {
   const applicant = { ic: "PIC1", branch: "Klinik Syed Badaruddin Kuantan", category: "Admin Staff", role: "doctor_pic" };
   const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
   assert.ok(!out.some((s) => s.ic === "PIC1"));
+});
+
+// ── KSB Pharma (2026-10-08): own HR zone, Supervisor → KSB Pharma HR ──
+const PHARMA = "KSB Pharma Sdn. Bhd.";
+const pharmaBranches = [...branches, { name: PHARMA, state: "Pahang", daerah: "Kuantan" }];
+
+test("KSB Pharma is its own HR zone, not Pahang", () => {
+  assert.equal(scopeStateOfBranch(PHARMA, pharmaBranches), "KSB Pharma");
+});
+
+test("KSB Pharma staff (any category) → ksb_pharma, P1 = own-branch supervisor", () => {
+  const siti = { ic: "S", role: "supervisor", branch: PHARMA, category: "Admin Staff" };
+  const balokSup = { ic: "B", role: "supervisor", branch: BALOK_HQ, category: "Admin Staff" };
+  for (const category of ["Admin Staff", "Operation Staff"]) {
+    const a = { ic: "A", role: "staff", branch: PHARMA, category };
+    assert.equal(getStaffGroup(a, pharmaBranches), "ksb_pharma");
+    const p1 = getRoutingP1Approvers(a, [siti, balokSup], pharmaBranches, ROUTING_DEFAULTS);
+    assert.deepEqual(p1.map((s) => s.ic), ["S"]);
+  }
+});
+
+test("KSB Pharma supervisor and HR skip P1", () => {
+  assert.equal(shouldSkipP1({ role: "supervisor", branch: PHARMA }), true);
+  assert.equal(shouldSkipP1({ role: "hr", branch: PHARMA }), true);
+  assert.equal(shouldSkipP1({ role: "hr", branch: BALOK_HQ }), false);
 });
