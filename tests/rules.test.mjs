@@ -7,7 +7,7 @@ import {
   assertFails,
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
-import { setDoc, getDoc, updateDoc, doc } from "firebase/firestore";
+import { setDoc, getDoc, getDocs, updateDoc, deleteDoc, doc, collection, query, where } from "firebase/firestore";
 
 let testEnv;
 
@@ -265,4 +265,145 @@ test("branch HOD cannot reassign a leave to another person or branch", async () 
   const hod = ctxDb(staffAuth("HODA"));
   await assertFails(updateDoc(doc(hod, "leaves", "LA"), { ic: "SB", status: "PENDING" }));
   await assertFails(updateDoc(doc(hod, "leaves", "LA"), { branch: "Klinik B", status: "PENDING" }));
+});
+
+// ── Anak syarikat: KSB Pharma diasingkan dari data klinik ────────────────────
+// Staf/HR KSB Pharma tidak boleh membaca atau mengubah staf, cuti, cawangan,
+// log atau konfigurasi klinik. Pengguna klinik tidak berubah.
+
+const PHARMA = "KSB Pharma Sdn. Bhd.";
+const seedPharma = () => testEnv.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, "staff", "PHR"), { ic: "PHR", name: "SYARIFAH", branch: PHARMA, role: "hr" });
+  await setDoc(doc(db, "staff", "PS1"), { ic: "PS1", name: "AMIR", branch: PHARMA, role: "staff" });
+  await setDoc(doc(db, "leaves", "LP1"), { ic: "PS1", name: "AMIR", branch: PHARMA, type: "annual", status: "PENDING", startDate: "2026-07-01", endDate: "2026-07-01", days: 1, reason: "x" });
+  await setDoc(doc(db, "branches", "B_PHARMA"), { name: PHARMA, state: "Pahang" });
+  await setDoc(doc(db, "branches", "B_A"), { name: "Klinik A", state: "Pahang" });
+  await setDoc(doc(db, "audit_logs", "A1"), { action: "x" });
+  await setDoc(doc(db, "notifications", "N1"), { recipientIC: "S1", title: "x" });
+  await setDoc(doc(db, "notifications", "N2"), { recipientIC: "PS1", title: "y" });
+});
+
+test("pharma: cannot read clinic staff or clinic leave", async () => {
+  await seedPharma();
+  for (const tok of [hrAuth("PHR"), staffAuth("PS1")]) {
+    const db = ctxDb(tok);
+    await assertFails(getDoc(doc(db, "staff", "S1")));
+    await assertFails(getDoc(doc(db, "leaves", "L1")));
+    await assertFails(getDocs(collection(db, "leaves")));
+    await assertFails(getDocs(collection(db, "staff")));
+  }
+});
+
+test("pharma: can read own company staff/leave with a branch-filtered query", async () => {
+  await seedPharma();
+  const db = ctxDb(hrAuth("PHR"));
+  const st = await assertSucceeds(getDocs(query(collection(db, "staff"), where("branch", "==", PHARMA))));
+  assert.strictEqual(st.size, 2);
+  const lv = await assertSucceeds(getDocs(query(collection(db, "leaves"), where("branch", "==", PHARMA))));
+  assert.strictEqual(lv.size, 1);
+  await assertSucceeds(getDoc(doc(db, "staff", "PS1")));
+  const br = await assertSucceeds(getDocs(query(collection(db, "branches"), where("name", "==", PHARMA))));
+  assert.strictEqual(br.size, 1);
+  await assertFails(getDocs(collection(db, "branches")));
+});
+
+test("pharma HR: can approve own company leave but not clinic leave", async () => {
+  await seedPharma();
+  const db = ctxDb(hrAuth("PHR"));
+  await assertSucceeds(updateDoc(doc(db, "leaves", "LP1"), { status: "APPROVED" }));
+  await assertFails(updateDoc(doc(db, "leaves", "L1"), { status: "APPROVED" }));
+  await assertFails(deleteDoc(doc(db, "leaves", "L1")));
+  await assertFails(updateDoc(doc(db, "leaves", "LP1"), { branch: "Klinik A" }));
+});
+
+test("pharma HR: manages own company staff only, cannot move staff into a clinic", async () => {
+  await seedPharma();
+  const db = ctxDb(hrAuth("PHR"));
+  await assertSucceeds(setDoc(doc(db, "staff", "PS2"), { ic: "PS2", name: "BARU", branch: PHARMA, role: "staff" }));
+  await assertFails(setDoc(doc(db, "staff", "S9"), { ic: "S9", name: "X", branch: "Klinik A", role: "staff" }));
+  await assertFails(updateDoc(doc(db, "staff", "S1"), { role: "hr" }));
+  await assertFails(updateDoc(doc(db, "staff", "PS1"), { branch: "Klinik A" }));
+  await assertFails(deleteDoc(doc(db, "staff", "S1")));
+});
+
+test("pharma HR: cannot write shared config, branches or clinic policy", async () => {
+  await seedPharma();
+  const db = ctxDb(hrAuth("PHR"));
+  await assertFails(setDoc(doc(db, "config", "rolePermissions"), { hr: { manageStaff: true } }));
+  await assertFails(setDoc(doc(db, "config", "policyContent"), { notice: "x" }, { merge: true }));
+  await assertFails(setDoc(doc(db, "config", "publicHolidays"), { pahang: [] }, { merge: true }));
+  await assertFails(setDoc(doc(db, "settings", "rbac"), {}));
+  await assertFails(setDoc(doc(db, "branches", "B_NEW"), { name: "X" }));
+});
+
+test("pharma HR: can edit own company policy; staff can read it; clinic users unaffected", async () => {
+  await seedPharma();
+  await assertSucceeds(setDoc(doc(ctxDb(hrAuth("PHR")), "companyPolicy", PHARMA), { notice: "hi" }));
+  await assertSucceeds(getDoc(doc(ctxDb(staffAuth("PS1")), "companyPolicy", PHARMA)));
+  await assertFails(setDoc(doc(ctxDb(staffAuth("PS1")), "companyPolicy", PHARMA), { notice: "x" }));
+  await assertFails(setDoc(doc(ctxDb(hrAuth("PHR")), "companyPolicy", "Klinik A"), { notice: "x" }));
+});
+
+test("pharma: no audit/wa logs, and only own notifications", async () => {
+  await seedPharma();
+  const db = ctxDb(staffAuth("PS1"));
+  await assertFails(getDocs(collection(db, "audit_logs")));
+  await assertFails(getDocs(collection(db, "wa_logs")));
+  await assertFails(getDoc(doc(db, "notifications", "N1")));
+  await assertSucceeds(getDoc(doc(db, "notifications", "N2")));
+  await assertSucceeds(getDocs(query(collection(db, "notifications"), where("recipientIC", "==", "PS1"))));
+});
+
+const seedClinicHR = () => testEnv.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, "staff", "HR1"), { ic: "HR1", name: "NORHAZLINAH", branch: "Klinik A", role: "hr", hrState: "Pahang" });
+  await setDoc(doc(db, "staff", "ADM"), { ic: "ADM", name: "ADMIN", branch: "Management / HQ", role: "admin" });
+});
+
+test("clinic HR: cannot read KSB Pharma leave, staff or branch", async () => {
+  await seedPharma(); await seedClinicHR();
+  const db = ctxDb(hrAuth("HR1"));
+  await assertFails(getDoc(doc(db, "leaves", "LP1")));
+  await assertFails(getDoc(doc(db, "staff", "PS1")));
+  await assertFails(getDoc(doc(db, "branches", "B_PHARMA")));
+  await assertFails(getDoc(doc(db, "companyPolicy", PHARMA)));
+  // Pertanyaan tanpa tapis ditolak — mesti kecualikan anak syarikat.
+  await assertFails(getDocs(collection(db, "leaves")));
+});
+
+test("clinic HR: cannot approve or edit KSB Pharma records", async () => {
+  await seedPharma(); await seedClinicHR();
+  const db = ctxDb(hrAuth("HR1"));
+  await assertFails(updateDoc(doc(db, "leaves", "LP1"), { status: "APPROVED" }));
+  await assertFails(updateDoc(doc(db, "staff", "PS1"), { role: "hr" }));
+  await assertFails(setDoc(doc(db, "staff", "S9"), { ic: "S9", name: "X", branch: PHARMA, role: "staff" }));
+  await assertFails(updateDoc(doc(db, "staff", "S1"), { branch: PHARMA }));
+});
+
+test("clinic users: not-in query sees all clinic data; HR keeps config writes", async () => {
+  await seedPharma(); await seedClinicHR();
+  for (const tok of [hrAuth("HR1"), staffAuth("S1")]) {
+    const db = ctxDb(tok);
+    const lv = await assertSucceeds(getDocs(query(collection(db, "leaves"), where("branch", "not-in", [PHARMA]))));
+    assert.strictEqual(lv.size, 2);
+    const st = await assertSucceeds(getDocs(query(collection(db, "staff"), where("branch", "not-in", [PHARMA]))));
+    assert.ok(st.docs.every(d => d.data().branch !== PHARMA));
+    const br = await assertSucceeds(getDocs(query(collection(db, "branches"), where("name", "not-in", [PHARMA]))));
+    assert.strictEqual(br.size, 1);
+    await assertSucceeds(getDoc(doc(db, "leaves", "L1")));
+  }
+  const hr = ctxDb(hrAuth("HR1"));
+  await assertSucceeds(getDocs(collection(hr, "audit_logs")));
+  await assertSucceeds(setDoc(doc(hr, "config", "policyContent"), { notice: "x" }, { merge: true }));
+});
+
+test("group admin: sees and manages both clinics and KSB Pharma", async () => {
+  await seedPharma(); await seedClinicHR();
+  const db = ctxDb(hrAuth("ADM"));
+  const lv = await assertSucceeds(getDocs(collection(db, "leaves")));
+  assert.strictEqual(lv.size, 3);
+  await assertSucceeds(getDocs(collection(db, "staff")));
+  await assertSucceeds(getDocs(collection(db, "branches")));
+  await assertSucceeds(updateDoc(doc(db, "leaves", "LP1"), { status: "APPROVED" }));
 });

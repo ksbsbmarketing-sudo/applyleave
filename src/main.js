@@ -667,6 +667,41 @@ let policyContent = {
     'Kegagalan untuk memberikan peringatan dan notis yang mencukupi bermaksud staff bersetuju untuk membayar denda kerugian / ganti rugi <i>(indemnity)</i> kepada pihak klinik mengikut kekurangan hari notis tersebut.'
   ]
 };
+// Polisi anak syarikat (companyPolicy/{cawangan}) — berasingan sepenuhnya dari
+// policyContent klinik. Lalai di bawah hanya titik mula; HR syarikat mengeditnya.
+const defaultCompanyPolicy = () => ({
+  notice: '',
+  glossary: [
+    { code:'AL',  name:'Annual Leave (Cuti Tahunan)' },
+    { code:'MC',  name:'Medical Leave (Cuti Sakit)' },
+    { code:'EL',  name:'Compassionate Leave (Cuti Ehsan)' },
+    { code:'EMG', name:'Emergency Leave (Cuti Kecemasan)' },
+    { code:'HL',  name:'Hospitalization Leave' },
+    { code:'ML',  name:'Maternity Leave (Cuti Bersalin)' },
+    { code:'PL',  name:'Paternity Leave (Cuti Isteri Bersalin)' },
+    { code:'RL',  name:'Replacement Leave (Cuti Ganti)' },
+    { code:'UL',  name:'Unpaid Leave (Cuti Tanpa Gaji)' }
+  ],
+  entitlementAL: [{ period:'Sehingga 5 tahun', days:'16 Hari' }, { period:'Lebih 5 Tahun ke atas', days:'20 Hari' }],
+  entitlementMC: [{ period:'Kurang dari 2 tahun', days:'14 Hari' }, { period:'2 tahun hingga kurang 5 tahun', days:'18 Hari' }, { period:'5 tahun ke atas', days:'22 Hari' }],
+  rulesAL: [
+    'Permohonan mesti dibuat sekurang-kurangnya <strong>3 hari</strong> sebelum tarikh percutian.',
+    'Kelulusan adalah tertakluk kepada budi bicara pihak pengurusan mengikut keperluan operasi syarikat.',
+    'Hanya maksimum baki sejumlah <strong>3 hari</strong> dibenarkan dibawa ke hadapan (carry forward) ke kalendar tahun berikutnya.'
+  ],
+  rulesMC: [
+    'Sijil Cuti Sakit (MC) yang asal <strong>mesti</strong> diserahkan kepada pihak pengurusan pada hari pertama kembali bekerja.',
+    'Staff wajib memaklumkan kepada pihak pengurusan sekurang-kurangnya <strong>2 jam sebelum</strong> waktu kerja bermula.'
+  ],
+  rulesNotice: [
+    'Notis penamatan kontrak pekerjaan mesti mematuhi garis panduan yang ditandatangani sewaktu penerimaan jawatan.',
+    'Kegagalan memberikan notis yang mencukupi bermaksud staff bersetuju membayar ganti rugi <i>(indemnity)</i> kepada pihak syarikat mengikut kekurangan hari notis tersebut.'
+  ]
+});
+let companyPolicy = defaultCompanyPolicy();
+// Polisi yang dipapar/diedit untuk pengguna semasa.
+window.activePolicy = () => (window.isSubsidiaryUser(user) ? companyPolicy : policyContent);
+
 let waLogs = [];
 let inboxNotifs = [];
 let inboxUnsub = null;
@@ -1194,10 +1229,21 @@ window.isBranchScopedHod = function(u) {
 // syarikatnya SAHAJA: lulus cuti, urus staf, laporan & Master Logs zonnya. Tetapan yang
 // dikongsi dengan klinik (cawangan, cuti umum, polisi, peranan, laluan, akses, WA, log
 // login, locum) disekat — dia tidak boleh nampak atau mengubah apa-apa milik klinik.
-// ⚠️ Sekatan ini di ANTARA MUKA sahaja; firestore.rules masih benarkan bacaan signedIn().
-const SUBSIDIARY_HR_DENY = ['manage_branches', 'manage_roles_categories', 'manage_login_audit', 'manage_policy',
+// Polisi: HR anak syarikat mengedit polisi SYARIKATNYA (companyPolicy/{cawangan}),
+// bukan polisi klinik (config/policyContent).
+// Sekatan juga dikuatkuasakan di firestore.rules (isSubsidiaryUser/companyOK) —
+// pendengar data mesti ditapis ikut cawangan (subsidiaryScoped) atau ia akan ditolak.
+const SUBSIDIARY_HR_DENY = ['manage_branches', 'manage_roles_categories', 'manage_login_audit',
     'manage_routing', 'manage_access', 'manage_holidays', 'wa_setting', 'locum_records'];
 const SUBSIDIARY_HR_ROLES = ['staff', 'supervisor', 'hr'];
+// Mana-mana staf anak syarikat (bukan HR sahaja) — data mereka terhad kepada syarikat sendiri.
+window.isSubsidiaryUser = function(u) {
+    return !!u && !!OWN_HR_ZONE[u.branch];
+};
+// Admin kumpulan — satu-satunya yang nampak klinik DAN anak syarikat.
+window.isGroupAdmin = function(u) {
+    return !!u && ['admin', 'super_admin'].includes(u.role);
+};
 window.isSubsidiaryHR = function(u) {
     return !!u && u.role === 'hr' && !!OWN_HR_ZONE[u.branch];
 };
@@ -3784,7 +3830,7 @@ let branches = [
 let auditLogUnsub = null;
 function ensureAuditLogListener() {
   if (auditLogUnsub) return;                                    // sudah dipasang
-  if (!user || !canSeeAuditLogs(user.role, window.rbacMatrix)) return;
+  if (!user || window.isSubsidiaryUser(user) || !canSeeAuditLogs(user.role, window.rbacMatrix)) return;
   auditLogUnsub = onSnapshot(
     query(collection(db, "audit_logs"), orderBy("createdAt", "desc"), limit(AUDIT_LOG_LIMIT)),
     (snapshot) => {
@@ -3798,6 +3844,18 @@ function ensureAuditLogListener() {
       auditLogUnsub = null;
     }
   );
+}
+
+// Koleksi untuk pendengar — pengasingan DUA HALA (firestore.rules companyOK):
+//  • staf anak syarikat → dokumen syarikat sendiri sahaja;
+//  • staf/HR klinik     → semua KECUALI anak syarikat;
+//  • Admin/Super Admin  → semua.
+// Pertanyaan MESTI ditapis begini — pertanyaan tanpa tapis akan ditolak keseluruhannya.
+function subsidiaryScoped(name, field) {
+  const ref = collection(db, name);
+  if (window.isSubsidiaryUser(user)) return query(ref, where(field, '==', user.branch));
+  if (window.isGroupAdmin(user)) return ref;
+  return query(ref, where(field, 'not-in', Object.keys(OWN_HR_ZONE)));
 }
 
 async function initData() {
@@ -3815,12 +3873,21 @@ async function initData() {
   } catch(e) { console.warn('WA token load failed:', e); }
   refreshWADevice(); // isi WHATSAPP_DEVICE untuk guard self-send (fire-and-forget)
 
-  // Load policy content
+  // Load policy content — anak syarikat guna polisi syarikat sendiri, bukan polisi klinik.
+  const _isSub = window.isSubsidiaryUser(user);
   try {
-    const pcSnap = await getDoc(doc(db, 'config', 'policyContent'));
-    if (pcSnap.exists()) {
-      const d = pcSnap.data();
-      Object.keys(d).forEach(k => { if (k in policyContent) policyContent[k] = d[k]; });
+    if (_isSub) {
+      const cpSnap = await getDoc(doc(db, 'companyPolicy', user.branch));
+      if (cpSnap.exists()) {
+        const d = cpSnap.data();
+        Object.keys(d).forEach(k => { if (k in companyPolicy) companyPolicy[k] = d[k]; });
+      }
+    } else {
+      const pcSnap = await getDoc(doc(db, 'config', 'policyContent'));
+      if (pcSnap.exists()) {
+        const d = pcSnap.data();
+        Object.keys(d).forEach(k => { if (k in policyContent) policyContent[k] = d[k]; });
+      }
     }
   } catch(e) { console.warn('policyContent load failed:', e); }
 
@@ -3875,15 +3942,15 @@ async function initData() {
     publicHolidays.terengganu = [...DEFAULT_HOLIDAYS_TERENGGANU];
   }
 
-  // Load WA notification logs (latest 200)
-  try {
+  // Load WA notification logs (latest 200) — bukan untuk anak syarikat (rules tolak).
+  if (!_isSub) try {
     const logsSnap = await getDocs(query(collection(db, 'wa_logs'), orderBy('ts', 'desc'), limit(200)));
     waLogs = logsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch(e) { console.warn('WA logs load failed:', e); }
 
   // Branches — seed Firestore on first run, then stay live
-  onSnapshot(collection(db, 'branches'), (snapshot) => {
-    if (snapshot.empty) {
+  onSnapshot(subsidiaryScoped('branches', 'name'), (snapshot) => {
+    if (snapshot.empty && !_isSub) {
       branches.forEach(function(b) {
         const id = b.name.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 60);
         setDoc(doc(db, 'branches', id), { name: b.name, state: b.state, daerah: b.daerah || '', manager: 'Admin' });
@@ -3928,11 +3995,12 @@ async function initData() {
   });
 
   // Real-time Staff List
-  onSnapshot(collection(db, "staff"), (snapshot) => {
+  onSnapshot(subsidiaryScoped('staff', 'branch'), (snapshot) => {
+    // Susun ikut docId — pertanyaan 'not-in' menyusun ikut cawangan, bukan id.
     staffList = snapshot.docs.map(doc => ({
       ...doc.data(),
       docId: doc.id
-    }));
+    })).sort((a, b) => (a.docId < b.docId ? -1 : a.docId > b.docId ? 1 : 0));
     
     // Safety Seed: Ensure at least one Super Admin exists in the list for dropdowns
     const hasSuper = staffList.some(s => s.role === 'super_admin' || s.ic === 'super-admin' || s.ic === 'Super Admin');
@@ -4011,7 +4079,7 @@ async function initData() {
 
   // Real-time Leave Records
   setTimeout(() => { if (!leavesLoaded) { leavesLoaded = true; render(); } }, 10000);
-  onSnapshot(collection(db, "leaves"), (snapshot) => {
+  onSnapshot(subsidiaryScoped('leaves', 'branch'), (snapshot) => {
     leaveRecords = snapshot.docs.map(doc => ({
       ...doc.data(),
       docId: doc.id
@@ -4035,7 +4103,7 @@ async function initData() {
   // berjalan SEBELUM log masuk — ketika itu initData() belum pernah dijalankan dan
   // array memang kosong. Jadi gate ini tidak melemahkan semakan tersebut.
   if (canSeeRegistrations(user && user.role)) {
-    onSnapshot(collection(db, "registration_requests"), (snapshot) => {
+    onSnapshot(subsidiaryScoped('registration_requests', 'branch'), (snapshot) => {
       registrationRequests = snapshot.docs.map(d => ({ ...d.data(), docId: d.id }))
         .sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
       render();
@@ -6613,7 +6681,7 @@ function renderPersonalDashboard() {
           
           <div class="glass-card" style="padding: 1.5rem; border: 1px dashed rgba(163,177,198,0.4); background: transparent;">
              <h3 style="font-size: 1.05rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> Policy Note</h3>
-             <p style="font-size: 1rem; color: var(--text-muted); line-height: 1.6;">Sila pastikan permohonan AL dibuat sekurang-kurangnya <strong>${user.category === 'Admin Staff' ? '3' : '7'} hari</strong> awal mengikut polisi syarikat KSB.</p>
+             <p style="font-size: 1rem; color: var(--text-muted); line-height: 1.6;">Sila pastikan permohonan AL dibuat sekurang-kurangnya <strong>${user.category === 'Admin Staff' ? '3' : '7'} hari</strong> awal mengikut polisi ${window.isSubsidiaryUser(user) ? 'syarikat' : 'syarikat KSB'}.</p>
              <button class="neu-btn" style="margin-top: 1rem; font-size: 1.05rem;" onclick="window.setView('policy')">BUKA POLISI PENUH</button>
           </div>
         </div>
@@ -10036,7 +10104,8 @@ function renderView() {
         })() : ''}
 
         ${managementTab === 'policy_editor' && userPerms.manage_policy ? (() => {
-          const pc = policyContent;
+          const pc = window.activePolicy();
+          const isCo = window.isSubsidiaryUser(user);
           const sectionCard = (id, title, icon, color, content) => `
             <div class="glass-card fade-in" style="padding:0;overflow:hidden;margin-bottom:1.25rem;border-top:3px solid ${color};">
               <div style="padding:0.9rem 1.1rem;background:rgba(163,177,198,0.04);border-bottom:1px solid rgba(163,177,198,0.12);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
@@ -10069,8 +10138,8 @@ function renderView() {
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
             </div>
             <div>
-              <h2 style="font-size:1.05rem;font-weight:700;margin:0;">Editor Polisi Syarikat</h2>
-              <p style="font-size:0.72rem;color:var(--text-muted);margin:0.15rem 0 0;">Edit kandungan halaman Polisi yang dilihat oleh semua staf. Klik <strong>Simpan</strong> selepas setiap bahagian.</p>
+              <h2 style="font-size:1.05rem;font-weight:700;margin:0;">Editor Polisi ${isCo ? (window.printBrandFor(user.branch).name) : 'Syarikat'}</h2>
+              <p style="font-size:0.72rem;color:var(--text-muted);margin:0.15rem 0 0;">Edit kandungan halaman Polisi yang dilihat oleh ${isCo ? 'semua staf syarikat anda sahaja' : 'semua staf'}. Klik <strong>Simpan</strong> selepas setiap bahagian.</p>
             </div>
           </div>
 
@@ -10094,11 +10163,11 @@ function renderView() {
             <button onclick="window.addPolicyGlossaryRow()" style="padding:0.4rem 0.9rem;border-radius:8px;border:1px dashed rgba(59,130,246,0.5);background:transparent;color:#3b82f6;font-size:0.78rem;font-weight:600;cursor:pointer;">+ Tambah Jenis Cuti</button>
           `)}
 
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:0.5rem;">
-            ${['entitlementPahang','entitlementTerengganu'].map((sec,si) => {
-              const labels = ['Kelayakan AL — Pahang','Kelayakan AL — Terengganu'];
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:${isCo ? '1.25rem' : '0.5rem'};">
+            ${(isCo ? ['entitlementAL','entitlementMC'] : ['entitlementPahang','entitlementTerengganu']).map((sec,si) => {
+              const labels = isCo ? ['Kelayakan Cuti Tahunan (AL)','Kelayakan MC — Mengikut Tempoh Berkhidmat'] : ['Kelayakan AL — Pahang','Kelayakan AL — Terengganu'];
               const colors = ['#3b82f6','#8b5cf6'];
-              const icons  = ['🏙️','🌊'];
+              const icons  = isCo ? ['📅','🏥'] : ['🏙️','🌊'];
               const isDoktor = false;
               return `<div class="glass-card" style="padding:0;overflow:hidden;border-top:3px solid ${colors[si]};">
                 <div style="padding:0.75rem 0.9rem;background:rgba(163,177,198,0.04);border-bottom:1px solid rgba(163,177,198,0.1);display:flex;align-items:center;justify-content:space-between;gap:0.5rem;">
@@ -10121,7 +10190,7 @@ function renderView() {
             }).join('')}
           </div>
 
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem;">
+          ${isCo ? '' : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem;">
             ${['entitlementMC','entitlementDoktor'].map((sec,si) => {
               const labels = ['Kelayakan MC — Mengikut Tempoh Berkhidmat','Kelayakan AL — Doktor'];
               const colors = ['#10b981','#ef4444'];
@@ -10146,11 +10215,11 @@ function renderView() {
                 </div>
               </div>`;
             }).join('')}
-          </div>
+          </div>`}
 
           ${sectionCard('rulesAL','Peraturan Cuti Tahunan (AL)','📅','#6366f1', ruleEditor('rulesAL','#6366f1'))}
           ${sectionCard('rulesMC','Peraturan Cuti Sakit (MC)','🏥','#eab308', ruleEditor('rulesMC','#eab308'))}
-          ${sectionCard('rulesCME','Peraturan Cuti CME','🎓','#c084fc', ruleEditor('rulesCME','#c084fc'))}
+          ${isCo ? '' : sectionCard('rulesCME','Peraturan Cuti CME','🎓','#c084fc', ruleEditor('rulesCME','#c084fc'))}
           ${sectionCard('rulesNotice','Notis Berhenti Kerja','📄','#94a3b8', ruleEditor('rulesNotice','#94a3b8'))}
           `;
         })() : ''}
@@ -10427,6 +10496,9 @@ function renderView() {
       const accumulated = parseFloat((proRataPerMonth * monthsWorked).toFixed(2));
       // Baki sebenar ikut Formula B (getLeaveStats), bukan prorata mentah.
       const _polAlStats = user ? window.getLeaveStats(user, 'AL') : { ent: 0, used: 0, bal: 0 };
+      // Anak syarikat (KSB Pharma) melihat polisi syarikat sendiri — tiada kandungan klinik.
+      const _isCoPol = window.isSubsidiaryUser(user);
+      const _pol = window.activePolicy();
       
       return `
         <header class="top-bar">
@@ -10493,6 +10565,31 @@ function renderView() {
                 </section>
 
                 <!-- ALIRAN KELULUSAN SECTION -->
+                ${_isCoPol ? `
+                <section class="glass-card fade-in" style="padding: 2rem; border: 1px solid rgba(139,92,246,0.25); background: rgba(139,92,246,0.03);">
+                   <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--secondary); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                     Aliran Kelulusan Cuti (Approval Flow)
+                   </h2>
+                   <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.5rem;">Setiap permohonan cuti staf ${window.printBrandFor(user.branch).name} melalui peringkat berikut sebelum dikira SAH.</p>
+                   <div style="border-radius: 14px; border: 1.5px solid #3b82f633; background: rgba(59,130,246,0.04); padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 0.6rem;">
+                     <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                       <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #3b82f6; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P1</div>
+                       <div>
+                         <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Pelulus Pertama</div>
+                         <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Pelulus peringkat pertama syarikat menilai dan menyokong permohonan.</div>
+                       </div>
+                     </div>
+                     <div style="border-left: 2px dashed rgba(59,130,246,0.3); height: 16px; margin-left: 13px;"></div>
+                     <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                       <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #059669; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P2</div>
+                       <div>
+                         <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Kelulusan Akhir — Pengurus Besar</div>
+                         <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Cuti hanya dikira <strong>SAH</strong> selepas kelulusan akhir diberi.</div>
+                       </div>
+                     </div>
+                   </div>
+                </section>` : `
                 <section class="glass-card fade-in" style="padding: 2rem; border: 1px solid rgba(139,92,246,0.25); background: rgba(139,92,246,0.03);">
                    <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--secondary); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -10567,19 +10664,34 @@ function renderView() {
                      </div>
 
                    </div>
-                </section>
+                </section>`}
 
-                ${policyContent.notice ? `<div style="margin-bottom:1.5rem;padding:1rem 1.25rem;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-left:4px solid #f59e0b;border-radius:10px;font-size:0.88rem;color:var(--text);line-height:1.6;">📢 ${policyContent.notice}</div>` : ''}
+                ${_pol.notice ? `<div style="margin-bottom:1.5rem;padding:1rem 1.25rem;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-left:4px solid #f59e0b;border-radius:10px;font-size:0.88rem;color:var(--text);line-height:1.6;">📢 ${_pol.notice}</div>` : ''}
                 <section class="glass-card fade-in" style="padding: 2rem;">
                    <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--primary); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> Senarai Kategori Cuti (Glossary)</h2>
                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                     ${policyContent.glossary.map(g => `<div class="neu-panel" style="padding: 1rem;"><strong style="color: var(--primary);">${g.code}:</strong> ${g.name}</div>`).join('')}
+                     ${_pol.glossary.map(g => `<div class="neu-panel" style="padding: 1rem;"><strong style="color: var(--primary);">${g.code}:</strong> ${g.name}</div>`).join('')}
                    </div>
                 </section>
 
                 <section class="glass-card fade-in" style="padding: 2rem;">
-                   <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--primary); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg> Jadual Kelayakan Cuti Tahunan Mengikut Lokasi</h2>
+                   <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--primary); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg> ${_isCoPol ? 'Jadual Kelayakan Cuti Tahunan' : 'Jadual Kelayakan Cuti Tahunan Mengikut Lokasi'}</h2>
                    
+                   ${_isCoPol ? `
+                   <div>
+                     <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted);">
+                       <thead><tr style="background: rgba(155,44,44,0.07); color: var(--text);">
+                         <th style="padding: 0.5rem; border: 1px solid var(--border);">Tempoh Berkhidmat</th>
+                         <th style="padding: 0.5rem; border: 1px solid var(--border);">Kelayakan Tahunan (AL)</th>
+                       </tr></thead>
+                       <tbody>${(_pol.entitlementAL || []).map((r,i) => `
+                         <tr style="${i%2===1?'background:rgba(59,130,246,0.07);':''}">
+                           <td style="padding:0.5rem;border:1px solid var(--border);">${r.period}</td>
+                           <td style="padding:0.5rem;border:1px solid var(--border);font-weight:bold;color:var(--primary);">${r.days}</td>
+                         </tr>`).join('')}
+                       </tbody>
+                     </table>
+                   </div>` : `
                    ${(!user || !user.branch || (!user.branch.includes('Dungun') && !user.branch.includes('Kerteh') && !user.branch.includes('Paka'))) ? `
                    <div style="margin-bottom: 2rem;">
                      <h3 style="color: var(--primary); font-size: 1rem; margin-bottom: 0.5rem;">Negeri Pahang</h3>
@@ -10588,7 +10700,7 @@ function renderView() {
                          <th style="padding: 0.5rem; border: 1px solid var(--border);">Tempoh Berkhidmat</th>
                          <th style="padding: 0.5rem; border: 1px solid var(--border);">Kelayakan Tahunan (AL)</th>
                        </tr></thead>
-                       <tbody>${policyContent.entitlementPahang.map((r,i) => `
+                       <tbody>${_pol.entitlementPahang.map((r,i) => `
                          <tr style="${i%2===1?'background:rgba(59,130,246,0.07);':''}">
                            <td style="padding:0.5rem;border:1px solid var(--border);font-weight:${i>0?'bold':'normal'};color:${i>0?'var(--primary)':'inherit'};">${r.period}</td>
                            <td style="padding:0.5rem;border:1px solid var(--border);font-weight:${i>0?'bold':'normal'};color:${i>0?'var(--primary)':'inherit'};">${r.days}</td>
@@ -10605,7 +10717,7 @@ function renderView() {
                          <th style="padding: 0.5rem; border: 1px solid var(--border);">Tempoh Berkhidmat</th>
                          <th style="padding: 0.5rem; border: 1px solid var(--border);">Kelayakan Tahunan (AL)</th>
                        </tr></thead>
-                       <tbody>${policyContent.entitlementTerengganu.map((r,i) => `
+                       <tbody>${_pol.entitlementTerengganu.map((r,i) => `
                          <tr style="background:rgba(192,132,252,0.1);">
                            <td style="padding:0.5rem;border:1px solid var(--border);color:var(--accent);font-weight:bold;">${r.period}</td>
                            <td style="padding:0.5rem;border:1px solid var(--border);color:var(--accent);font-weight:bold;">${r.days}</td>
@@ -10621,13 +10733,13 @@ function renderView() {
                        <thead><tr style="background: rgba(155,44,44,0.07); color: var(--text);">
                          <th style="padding: 0.5rem; border: 1px solid var(--border);">Peringkat Cuti Tahunan (AL)</th>
                        </tr></thead>
-                       <tbody>${policyContent.entitlementDoktor.map((r,i) => `
+                       <tbody>${_pol.entitlementDoktor.map((r,i) => `
                          <tr style="${i%2===1?'background:rgba(248,113,113,0.1);':''}">
                            <td style="padding:0.5rem;border:1px solid var(--border);color:var(--danger);font-weight:bold;">${r.days}</td>
                          </tr>`).join('')}
                        </tbody>
                      </table>
-                   </div>
+                   </div>`}
                 </section>
 
                 <section class="glass-card fade-in" style="padding: 2rem;">
@@ -10637,16 +10749,16 @@ function renderView() {
                        <div class="neu-panel" style="border-left: 4px solid var(--accent); padding-left: 1.5rem;">
                           <h3 style="font-size: 1rem; color: var(--accent); margin-bottom: 0.5rem;">1. Cuti Tahunan (Annual Leave - AL)</h3>
                           <ul style="color: var(--text-muted); font-size: 0.9rem; padding-left: 1.5rem; line-height: 1.6; margin: 0;">
-                            ${policyContent.rulesAL.map(r => `<li>${r}</li>`).join('')}
+                            ${_pol.rulesAL.map(r => `<li>${r}</li>`).join('')}
                           </ul>
                        </div>
 
                        <div class="neu-panel" style="border-left: 4px solid #eab308; padding-left: 1.5rem;">
                           <h3 style="font-size: 1rem; color: #eab308; margin-bottom: 0.5rem;">2. Cuti Sakit (Medical Leave - MC)</h3>
                           <ul style="color: var(--text-muted); font-size: 0.9rem; padding-left: 1.5rem; line-height: 1.6; margin: 0;">
-                            ${policyContent.rulesMC.map(r => `<li>${r}</li>`).join('')}
+                            ${_pol.rulesMC.map(r => `<li>${r}</li>`).join('')}
                           </ul>
-                          ${policyContent.entitlementMC && policyContent.entitlementMC.length > 0 ? `
+                          ${_pol.entitlementMC && _pol.entitlementMC.length > 0 ? `
                           <div style="margin-top:1rem;">
                             <div style="font-size:0.78rem;font-weight:700;color:#eab308;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.5px;">Jadual Kelayakan MC</div>
                             <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
@@ -10654,7 +10766,7 @@ function renderView() {
                                 <th style="padding:0.45rem 0.6rem;border:1px solid rgba(234,179,8,0.25);text-align:left;color:#eab308;">Tempoh Berkhidmat</th>
                                 <th style="padding:0.45rem 0.6rem;border:1px solid rgba(234,179,8,0.25);text-align:center;color:#eab308;">Hari Kelayakan</th>
                               </tr></thead>
-                              <tbody>${policyContent.entitlementMC.map((r,i) => `
+                              <tbody>${_pol.entitlementMC.map((r,i) => `
                                 <tr style="${i%2===1?'background:rgba(234,179,8,0.05);':''}">
                                   <td style="padding:0.4rem 0.6rem;border:1px solid rgba(163,177,198,0.2);color:var(--text-muted);">${r.period}</td>
                                   <td style="padding:0.4rem 0.6rem;border:1px solid rgba(163,177,198,0.2);text-align:center;font-weight:700;color:#eab308;">${r.days}</td>
@@ -10700,17 +10812,17 @@ function renderView() {
                           <p style="color: var(--danger); font-size: 0.8rem; margin-top: 1rem; font-style: italic;">*Nota: Borang yang dihantar tanpa dokumen sokongan akan dihalang oleh sistem serta-merta.</p>
                        </div>
 
-                       <div class="neu-panel" style="border-left: 4px solid #c084fc; padding-left: 1.5rem;">
+                       ${_isCoPol ? '' : `<div class="neu-panel" style="border-left: 4px solid #c084fc; padding-left: 1.5rem;">
                           <h3 style="font-size: 1rem; color: var(--secondary); margin-bottom: 0.5rem;">4. Cuti Pendidikan (CME Leave)</h3>
                           <ul style="color: var(--text-muted); font-size: 0.9rem; padding-left: 1.5rem; line-height: 1.6; margin: 0;">
-                            ${policyContent.rulesCME.map(r => `<li>${r}</li>`).join('')}
+                            ${_pol.rulesCME.map(r => `<li>${r}</li>`).join('')}
                           </ul>
-                       </div>
+                       </div>`}
 
                        <div class="neu-panel" style="border-left: 4px solid #94a3b8; padding-left: 1.5rem;">
-                          <h3 style="font-size: 1rem; color: #94a3b8; margin-bottom: 0.5rem;">5. Notis Berhenti Kerja (Notice Period)</h3>
+                          <h3 style="font-size: 1rem; color: #94a3b8; margin-bottom: 0.5rem;">${_isCoPol ? '4' : '5'}. Notis Berhenti Kerja (Notice Period)</h3>
                           <ul style="color: var(--text-muted); font-size: 0.9rem; padding-left: 1.5rem; line-height: 1.6; margin: 0;">
-                            ${policyContent.rulesNotice.map(r => `<li>${r}</li>`).join('')}
+                            ${_pol.rulesNotice.map(r => `<li>${r}</li>`).join('')}
                           </ul>
                        </div>
                    </div>
@@ -11554,20 +11666,25 @@ window.printPublicHolidays = function(state) {
 };
 
 // ── Policy Editor helpers ──
-window.updatePolicyNotice = function(val) { policyContent.notice = val; };
-window.updatePolicyGlossary = function(i, field, val) { if (policyContent.glossary[i]) policyContent.glossary[i][field] = val; };
-window.addPolicyGlossaryRow = function() { policyContent.glossary.push({ code:'', name:'' }); render(); };
-window.deletePolicyGlossaryRow = function(i) { policyContent.glossary.splice(i,1); render(); };
-window.updateEntitlement = function(section, i, field, val) { if (policyContent[section] && policyContent[section][i]) policyContent[section][i][field] = val; };
-window.addEntitlementRow = function(section) { const row = section==='entitlementDoktor' ? {days:''} : {period:'',days:''}; policyContent[section].push(row); render(); };
-window.deleteEntitlementRow = function(section, i) { policyContent[section].splice(i,1); render(); };
-window.updatePolicyRule = function(section, i, val) { if (policyContent[section]) policyContent[section][i] = val; };
-window.addPolicyRule = function(section) { policyContent[section].push(''); render(); };
-window.deletePolicyRule = function(section, i) { policyContent[section].splice(i,1); render(); };
+// Semua helper menyunting activePolicy(): polisi klinik untuk HR klinik, polisi
+// syarikat untuk HR anak syarikat — kedua-duanya tidak pernah bercampur.
+window.updatePolicyNotice = function(val) { window.activePolicy().notice = val; };
+window.updatePolicyGlossary = function(i, field, val) { if (window.activePolicy().glossary[i]) window.activePolicy().glossary[i][field] = val; };
+window.addPolicyGlossaryRow = function() { window.activePolicy().glossary.push({ code:'', name:'' }); render(); };
+window.deletePolicyGlossaryRow = function(i) { window.activePolicy().glossary.splice(i,1); render(); };
+window.updateEntitlement = function(section, i, field, val) { if (window.activePolicy()[section] && window.activePolicy()[section][i]) window.activePolicy()[section][i][field] = val; };
+window.addEntitlementRow = function(section) { const row = section==='entitlementDoktor' ? {days:''} : {period:'',days:''}; window.activePolicy()[section].push(row); render(); };
+window.deleteEntitlementRow = function(section, i) { window.activePolicy()[section].splice(i,1); render(); };
+window.updatePolicyRule = function(section, i, val) { if (window.activePolicy()[section]) window.activePolicy()[section][i] = val; };
+window.addPolicyRule = function(section) { window.activePolicy()[section].push(''); render(); };
+window.deletePolicyRule = function(section, i) { window.activePolicy()[section].splice(i,1); render(); };
 window.savePolicySection = async function(section) {
   try {
-    const payload = section === 'notice' ? { notice: policyContent.notice } : { [section]: policyContent[section] };
-    await setDoc(doc(db, 'config', 'policyContent'), payload, { merge: true });
+    const pc = window.activePolicy();
+    const payload = section === 'notice' ? { notice: pc.notice } : { [section]: pc[section] };
+    // Anak syarikat → companyPolicy/{cawangan}; polisi klinik (config/policyContent) tidak disentuh.
+    const ref = window.isSubsidiaryUser(user) ? doc(db, 'companyPolicy', user.branch) : doc(db, 'config', 'policyContent');
+    await setDoc(ref, payload, { merge: true });
     const btn = document.getElementById('save-policy-' + section);
     if (btn) { btn.textContent = '✅ Tersimpan'; btn.disabled = true; }
     setTimeout(() => render(), 1200);

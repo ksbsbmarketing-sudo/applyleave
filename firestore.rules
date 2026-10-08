@@ -20,6 +20,33 @@ service cloud.firestore {
     function selfStaff() {
       return get(/databases/$(database)/documents/staff/$(myIC())).data;
     }
+    // ── Anak syarikat (KSB Pharma) ───────────────────────────────────────────
+    // Staf anak syarikat menguruskan cuti mereka sendiri dan TIDAK boleh membaca
+    // atau mengubah data klinik. Ditentukan dari dokumen staff/{ic} pemanggil
+    // (bukan claim) supaya tukar cawangan berkuat kuasa serta-merta tanpa
+    // provision semula. Senarai ini mesti selari dengan OWN_HR_ZONE di main.js.
+    // Pengasingan DUA HALA: staf klinik (termasuk HR klinik) juga tidak boleh
+    // membaca data anak syarikat. Hanya Admin/Super Admin kumpulan nampak semua.
+    function subsidiaries() { return ['KSB Pharma Sdn. Bhd.']; }
+    function hasStaffDoc() {
+      return signedIn()
+        && request.auth.token.get('ic', null) is string
+        && exists(/databases/$(database)/documents/staff/$(myIC()));
+    }
+    function isSubsidiaryUser() {
+      return hasStaffDoc() && selfStaff().branch in subsidiaries();
+    }
+    function isGroupAdmin() {
+      return hasStaffDoc() && selfStaff().role in ['admin', 'super_admin'];
+    }
+    function companyOK(branch) {
+      return ( isSubsidiaryUser() && branch == selfStaff().branch )
+        || ( !isSubsidiaryUser() && ( !(branch in subsidiaries()) || isGroupAdmin() ) );
+    }
+    // Penulisan konfigurasi bersama (cawangan, peranan, polisi klinik, laluan…)
+    // hanya untuk HR/Admin klinik — HR anak syarikat juga ada manageStaff.
+    function manageShared() { return manageStaff() && !isSubsidiaryUser(); }
+
     function isBranchHodOf(branch) {
       return signedIn()
         && exists(/databases/$(database)/documents/staff/$(myIC()))
@@ -44,18 +71,21 @@ service cloud.firestore {
 
     // Account signup is created by not-yet-staff (anonymous allowed); managed by HR/Admin.
     match /registration_requests/{id} {
-      allow read, update, delete: if manageStaff();
+      allow read, update, delete: if manageStaff() && companyOK(resource.data.branch);
       allow create: if request.auth != null;
     }
 
     match /staff/{ic} {
-      allow read: if signedIn();
-      allow create, delete: if manageStaff();
+      allow read: if signedIn() && companyOK(resource.data.branch);
+      allow create: if manageStaff() && companyOK(request.resource.data.get('branch', ''));
+      allow delete: if manageStaff() && companyOK(resource.data.get('branch', ''));
       // Staff may edit their OWN contact details and name. `name` is here so staff
       // can fix the casing of their own name (records were a mix of CAPS and
       // lowercase); the app title-cases it on save. Role, branch, category,
       // entitlements and inactive stay HR-only.
-      allow update: if manageStaff()
+      allow update: if ( manageStaff()
+             && companyOK(resource.data.get('branch', ''))
+             && companyOK(request.resource.data.get('branch', '')) )
         || ( myIC() == ic
              && request.resource.data.diff(resource.data).affectedKeys()
                   .hasOnly(['name', 'phone', 'email', 'address', 'photoUrl'])
@@ -79,12 +109,14 @@ service cloud.firestore {
     }
 
     match /leaves/{id} {
-      allow read: if signedIn();
-      allow create: if canApprove()
+      allow read: if signedIn() && companyOK(resource.data.branch);
+      allow create: if ( canApprove() && companyOK(request.resource.data.get('branch', '')) )
         || ( signedIn()
              && request.resource.data.ic == myIC()
              && request.resource.data.status in ['PENDING', 'HOD APPROVED'] );
-      allow update: if canApprove()
+      allow update: if ( canApprove()
+             && companyOK(resource.data.get('branch', ''))
+             && companyOK(request.resource.data.get('branch', '')) )
         || ( signedIn()
              && resource.data.ic == myIC()
              && request.resource.data.status == 'PENDING'
@@ -106,20 +138,28 @@ service cloud.firestore {
              && request.resource.data.branch == resource.data.branch
              && request.resource.data.diff(resource.data).affectedKeys()
                   .hasOnly(['startDate', 'endDate', 'reason', 'days', 'status', 'type']) );
-      allow delete: if canApprove();
+      allow delete: if canApprove() && companyOK(resource.data.get('branch', ''));
     }
 
     match /branches/{id} {
-      allow read: if signedIn();
-      allow write: if manageStaff();
+      allow read: if signedIn() && companyOK(resource.data.name);
+      allow write: if manageShared();
+    }
+
+    // Polisi sendiri setiap anak syarikat (id dokumen = nama cawangan syarikat).
+    // Polisi klinik kekal di config/policyContent dan tidak boleh disentuh oleh
+    // HR anak syarikat.
+    match /companyPolicy/{company} {
+      allow read: if signedIn() && companyOK(company);
+      allow write: if manageStaff() && company in subsidiaries() && companyOK(company);
     }
 
     // config/rolePermissions is the root of trust for custom claims, so these
     // admin-config collections are restricted to manageStaff (super_admin/admin/hr)
     // — a mid-tier approver must NOT be able to escalate their own claims.
-    match /config/{id}        { allow read: if signedIn(); allow write: if manageStaff(); }
-    match /system_config/{id} { allow read: if signedIn(); allow write: if manageStaff(); }
-    match /settings/{id}      { allow read: if signedIn(); allow write: if manageStaff(); }
+    match /config/{id}        { allow read: if signedIn(); allow write: if manageShared(); }
+    match /system_config/{id} { allow read: if signedIn(); allow write: if manageShared(); }
+    match /settings/{id}      { allow read: if signedIn(); allow write: if manageShared(); }
 
     // Public holidays are the one exception to the manageStaff-only config rule.
     // The app lets a HOD Cawangan maintain their own state's holiday list
@@ -132,7 +172,7 @@ service cloud.firestore {
     // access to THIS document only and cannot reach config/rolePermissions.
     match /config/publicHolidays {
       allow read: if signedIn();
-      allow write: if manageStaff()
+      allow write: if manageShared()
         || ( signedIn()
              && exists(/databases/$(database)/documents/staff/$(myIC()))
              && get(/databases/$(database)/documents/staff/$(myIC())).data.role == 'hod_cawangan' );
@@ -144,14 +184,18 @@ service cloud.firestore {
       allow delete: if signedIn();
     }
 
-    match /notifications/{id}      { allow read, write: if signedIn(); }
+    // Staf anak syarikat hanya boleh membaca notifikasi mereka sendiri.
+    match /notifications/{id} {
+      allow read: if signedIn() && (!isSubsidiaryUser() || resource.data.recipientIC == myIC());
+      allow write: if signedIn();
+    }
 
     // OTP password-reset state — written/read only by the external (no-Blaze)
     // reset backend via the Admin SDK, which bypasses rules. Browsers (incl. the
     // pre-login bootstrap) must never read OTP hashes, so deny all client access.
     match /password_resets/{id} { allow read, write: if false; }
 
-    match /audit_logs/{id} { allow read, create: if signedIn(); allow update: if false; allow delete: if manageStaff(); }
-    match /wa_logs/{id}    { allow read, create: if signedIn(); allow update: if false; allow delete: if manageStaff(); }
+    match /audit_logs/{id} { allow read: if signedIn() && !isSubsidiaryUser(); allow create: if signedIn(); allow update: if false; allow delete: if manageShared(); }
+    match /wa_logs/{id}    { allow read: if signedIn() && !isSubsidiaryUser(); allow create: if signedIn(); allow update: if false; allow delete: if manageShared(); }
   }
 }
