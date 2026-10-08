@@ -35,3 +35,4 @@ public/data/
 *.njsproj
 *.sln
 *.sw?
+.vercel

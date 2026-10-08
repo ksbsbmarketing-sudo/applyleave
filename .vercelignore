@@ -1,0 +1,7 @@
+# Vercel project "otp-backend" has Root Directory = otp-backend, so `vercel --prod`
+# must run from the repo root. Upload ONLY the backend — never data/ (staff IC/phone PII),
+# src/ or anything else.
+/*
+!/otp-backend
+/otp-backend/node_modules
+/otp-backend/firestore-debug.log
