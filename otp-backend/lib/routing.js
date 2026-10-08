@@ -58,6 +58,12 @@ export function scopeStateOfBranch(branchName, branches) {
   return (b && b.state) ? b.state : null;
 }
 
+// An HR of a subsidiary (own HR zone) flagged approvalStage "p1": full HR access for
+// that company in the app, but in approvals only Peringkat 1. Mirrors window.isP1OnlyHR.
+export function isP1OnlyHR(s) {
+  return !!s && s.role === "hr" && !!OWN_HR_ZONE[s.branch] && s.approvalStage === "p1";
+}
+
 // Which routing group a staff member falls into. Mirrors src/main.js getStaffGroup.
 export function getStaffGroup(s, branches) {
   const branchObj   = branches.find((b) => b.name === s.branch);
@@ -121,6 +127,11 @@ export function getRoutingP1Approvers(applicant, staffList, branches, approvalRo
     const supBranch = useBalok ? BALOK_HQ : applicant.branch;
     candidates.push(...staffList.filter((s) =>
       s.role === "supervisor" && s.branch === supBranch && !s.inactive && s.ic !== applicant.ic));
+  }
+  if (group === "ksb_pharma") {
+    // KSB Pharma's Peringkat-1 approver is an HR flagged approvalStage "p1" (Siti Noridah).
+    candidates.push(...staffList.filter((s) =>
+      isP1OnlyHR(s) && s.branch === applicant.branch && !s.inactive && s.ic !== applicant.ic));
   }
   if (cfg.p1_doctor_pic) {
     candidates.push(...staffList.filter((s) =>

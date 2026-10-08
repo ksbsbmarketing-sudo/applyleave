@@ -12,7 +12,7 @@
 import { db } from "../lib/firebase.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import {
-  shouldSkipP1, getRoutingP1Approvers, scopeStateOfBranch, mergeRoutingConfig,
+  shouldSkipP1, getRoutingP1Approvers, scopeStateOfBranch, mergeRoutingConfig, isP1OnlyHR,
 } from "../lib/routing.js";
 
 const OVERDUE_DAYS = 3;
@@ -58,6 +58,7 @@ function resolveRecipients(record, applicant, staffList, branches, approvalRouti
     return staffList.filter((s) => {
       if (!HR_ROLES.includes(s.role) || !active(s)) return false;
       if (s.role !== "hr") return true;
+      if (isP1OnlyHR(s)) return false; // Peringkat-1 approver, not final
       return (s.hrState || "Pahang") === zone;
     });
   };

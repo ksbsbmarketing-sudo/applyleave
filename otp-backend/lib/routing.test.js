@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ROUTING_DEFAULTS, getStaffGroup, shouldSkipP1, getRoutingP1Approvers, mergeRoutingConfig, scopeStateOfBranch,
+  ROUTING_DEFAULTS, getStaffGroup, shouldSkipP1, getRoutingP1Approvers, mergeRoutingConfig, scopeStateOfBranch, isP1OnlyHR,
 } from "./routing.js";
 
 const BALOK_HQ = "Klinik Syed Badaruddin Balok (HQ)";
@@ -303,4 +303,16 @@ test("KSB Pharma supervisor and HR skip P1", () => {
   assert.equal(shouldSkipP1({ role: "supervisor", branch: PHARMA }), true);
   assert.equal(shouldSkipP1({ role: "hr", branch: PHARMA }), true);
   assert.equal(shouldSkipP1({ role: "hr", branch: BALOK_HQ }), false);
+});
+
+test("KSB Pharma P1 is the HR flagged approvalStage p1, not the final HR", () => {
+  const siti = { ic: "S", role: "hr", hrState: "KSB Pharma", approvalStage: "p1", branch: PHARMA };
+  const syarifah = { ic: "Y", role: "hr", hrState: "KSB Pharma", branch: PHARMA };
+  const staff = { ic: "A", role: "staff", branch: PHARMA, category: "Admin Staff" };
+  assert.equal(isP1OnlyHR(siti), true);
+  assert.equal(isP1OnlyHR(syarifah), false);
+  const p1 = getRoutingP1Approvers(staff, [siti, syarifah], pharmaBranches, ROUTING_DEFAULTS);
+  assert.deepEqual(p1.map((s) => s.ic), ["S"]);
+  // Siti's own leave skips P1 (HR in KSB Pharma) → straight to Syarifah.
+  assert.equal(shouldSkipP1(siti), true);
 });

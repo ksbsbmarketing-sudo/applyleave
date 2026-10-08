@@ -1119,14 +1119,14 @@ window.setDashboardTab = function(tab) {
 // Kembalikan skop negeri pengguna: 'all', 'Pahang', 'Terengganu', atau null
 window.getUserReportDaerah = function(u) {
     if (!u) return null;
-    const perms = window.rbacMatrix[u.role] || {};
+    const perms = window.effectivePerms(u);
     if (perms.report_kuantan_only) return 'Kuantan';
     return null;
 };
 
 window.getUserReportBranch = function(u) {
     if (!u) return null;
-    const perms = window.rbacMatrix[u.role] || {};
+    const perms = window.effectivePerms(u);
     if (perms.report_own_branch_only) return u.branch || null;
     return null;
 };
@@ -1149,6 +1149,8 @@ window.getUserStateScope = function(u) {
     if (!u) return null;
     if (['super_admin', 'admin'].includes(u.role)) return 'all';
     if (u.role === 'hr') return u.hrState || 'Pahang';
+    // Staf anak syarikat (KSB Pharma) — zon syarikatnya, bukan negeri cawangan.
+    if (OWN_HR_ZONE[u.branch]) return OWN_HR_ZONE[u.branch];
     const branchObj = branches.find(b => b.name === u.branch);
     return (branchObj && branchObj.state) ? branchObj.state : null;
 };
@@ -1176,6 +1178,7 @@ window.hrRecipientsForBranch = function(branchName) {
     return staffList.filter(s => {
         if (!['admin', 'hr', 'super_admin'].includes(s.role) || s.inactive) return false;
         if (s.role !== 'hr') return true;
+        if (window.isP1OnlyHR(s)) return false;   // pelulus Peringkat 1, bukan akhir
         return (s.hrState || 'Pahang') === zone;
     });
 };
@@ -1185,6 +1188,54 @@ window.hrRecipientsForBranch = function(branchName) {
 // and a HOD Cawangan is not an approver — leave still routes through Doctor PIC.
 window.isBranchScopedHod = function(u) {
     return !!u && u.role === 'hod_cawangan';
+};
+
+// HR anak syarikat (cth. KSB Pharma, anak syarikat KSB Balok) — HR penuh untuk
+// syarikatnya SAHAJA: lulus cuti, urus staf, laporan & Master Logs zonnya. Tetapan yang
+// dikongsi dengan klinik (cawangan, cuti umum, polisi, peranan, laluan, akses, WA, log
+// login, locum) disekat — dia tidak boleh nampak atau mengubah apa-apa milik klinik.
+// ⚠️ Sekatan ini di ANTARA MUKA sahaja; firestore.rules masih benarkan bacaan signedIn().
+const SUBSIDIARY_HR_DENY = ['manage_branches', 'manage_roles_categories', 'manage_login_audit', 'manage_policy',
+    'manage_routing', 'manage_access', 'manage_holidays', 'wa_setting', 'locum_records'];
+const SUBSIDIARY_HR_ROLES = ['staff', 'supervisor', 'hr'];
+window.isSubsidiaryHR = function(u) {
+    return !!u && u.role === 'hr' && !!OWN_HR_ZONE[u.branch];
+};
+// HR anak syarikat bertanda approvalStage 'p1' (Siti Noridah, KSB Pharma) — akses HR
+// penuh untuk syarikatnya, tetapi dalam kelulusan cuti dia PELULUS PERINGKAT 1 sahaja;
+// kelulusan akhir kekal pada HR syarikat itu yang lain (Syarifah).
+window.isP1OnlyHR = function(u) {
+    return window.isSubsidiaryHR(u) && u.approvalStage === 'p1';
+};
+// Pelulus akhir (Peringkat 2) vs pelulus Peringkat 1 — guna ini, bukan senarai peranan.
+window.isFinalApprover = function(u) {
+    return !!u && ['admin', 'hr', 'super_admin'].includes(u.role) && !window.isP1OnlyHR(u);
+};
+window.isP1Approver = function(u) {
+    return !!u && (['doctor_pic', 'hod_balok', 'supervisor'].includes(u.role) || window.isP1OnlyHR(u));
+};
+// Kebenaran RBAC berkesan untuk pengguna — guna ini, bukan rbacMatrix[role] terus,
+// supaya sekatan HR anak syarikat terpakai di semua tempat.
+window.effectivePerms = function(u) {
+    const key = (u && window.rbacMatrix[u.role]) ? u.role : 'staff';
+    const perms = window.rbacMatrix[key] || {};
+    if (!window.isSubsidiaryHR(u)) return perms;
+    const out = { ...perms };
+    SUBSIDIARY_HR_DENY.forEach(k => { out[k] = false; });
+    return out;
+};
+// Pilihan cawangan & peranan dalam borang tambah/edit staf.
+window.staffFormBranches = function() {
+    return window.isSubsidiaryHR(user) ? window.branchesInUserScope() : branches;
+};
+window.staffFormRoles = function(keys) {
+    return window.isSubsidiaryHR(user) ? keys.filter(k => SUBSIDIARY_HR_ROLES.includes(k)) : keys;
+};
+// Permohonan daftar baharu: HR anak syarikat hanya nampak yang memilih cawangannya.
+window.regRequestsInScope = function(list) {
+    if (!window.isSubsidiaryHR(user)) return list;
+    const zone = window.getUserStateScope(user);
+    return list.filter(r => window.scopeStateOfBranch(r.branch) === zone);
 };
 
 // Correct/cancel rights for a HOD Cawangan over their own branch. Mirrors the
@@ -1203,7 +1254,15 @@ window.canManageRequest = function(user, req) {
     if (user.role === 'hr') {
         // HR hanya urus zon sendiri — Pahang & Terengganu berasingan sepenuhnya.
         const zone = window.scopeStateOfBranch(req.branch);
-        return !zone || zone === (user.hrState || 'Pahang');
+        const inZone = !zone || zone === (user.hrState || 'Pahang');
+        if (!inZone) return false;
+        if (!window.isP1OnlyHR(user)) return true;
+        // HR Peringkat-1 sahaja: hanya PENDING orang lain yang melalui Peringkat 1.
+        if (req.ic === user.ic || req.status !== 'PENDING') return false;
+        if (req.hodIC) return req.hodIC === user.ic;
+        const _ap = staffList.find(s => s.ic === req.ic);
+        const _skip = (req.directHR != null) ? !!req.directHR : window.shouldSkipP1(_ap, req.type);
+        return !_skip;
     }
     // Pengasingan tugas: tiada sesiapa boleh menilai permohonan cutinya SENDIRI pada
     // Peringkat 0/1 (Team Leader / HOD / Doctor PIC / Supervisor). Semakan ini perlu
@@ -1694,7 +1753,7 @@ const _tabPermMap = {
 };
 window.setManageGroup = function(group) {
   managementGroup = group;
-  const perms = window.rbacMatrix[user ? user.role : ''] || {};
+  const perms = user ? window.effectivePerms(user) : {};
   const tabs = _groupFirstTab[group] || [];
   for (const t of tabs) {
     if (t === 'reg_requests') { if (user && ['admin','hr','super_admin'].includes(user.role)) { managementTab = t; break; } }
@@ -1989,6 +2048,10 @@ window.getRoutingP1Approvers = function(staffMember, leaveType) {
   }
   if (cfg.p1_doctor_pic) {
     candidates.push(...staffList.filter(s => s.role === 'doctor_pic' && s.branch === staffMember.branch && !s.inactive && s.ic !== staffMember.ic));
+  }
+  if (group === 'ksb_pharma') {
+    // HR Peringkat-1 KSB Pharma (Siti Noridah) — peranan HR, bukan supervisor.
+    candidates.push(...staffList.filter(s => window.isP1OnlyHR(s) && s.branch === staffMember.branch && !s.inactive && s.ic !== staffMember.ic));
   }
   if (cfg.p1_hod_balok) {
     // HOD Balok duduk di Balok HQ — pelulus pusat untuk admin Balok & juru audio Balok
@@ -2689,7 +2752,7 @@ window.finalizeLeave = async function(id) {
             }
         }
 
-        const isFullBoss = ['admin', 'hr', 'super_admin'].includes(user.role);
+        const isFullBoss = window.isFinalApprover(user);
         const isHODApproved = record.status === 'HOD APPROVED' || record.status === 'HOD RECOMMENDED';
         const leaveTypeName = leaveCategories.find(c => c.id === record.type)?.name || record.type;
         let newStatus = "";
@@ -2768,7 +2831,7 @@ window.finalizeLeave = async function(id) {
                 // Perlu Peringkat 2 — notify HR/Admin
                 newStatus = "HOD APPROVED";
                 const admins = window.hrRecipientsForBranch(record.branch).filter(s => s.phone);
-                const p1Label = isTLApprovedOperationBalok ? 'SUPERVISOR (selepas Team Leader)' : (user.role || '').toUpperCase();
+                const p1Label = isTLApprovedOperationBalok ? 'SUPERVISOR (selepas Team Leader)' : window.isP1OnlyHR(user) ? 'PELULUS PERTAMA' : (user.role || '').toUpperCase();
                 const p1Title = isTLApprovedOperationBalok ? 'SOKONGAN SUPERVISOR' : `SOKONGAN ${p1Label}`;
                 const msg = `📋 *${p1Title} — PERLU KELULUSAN HR/ADMIN (Peringkat 2)*\n\nPermohonan cuti telah dinilai dan disokong oleh *${user.name} (${p1Label})* dan menunggu kelulusan akhir anda.\n\n👤 Pemohon: *${record.name}*\n🏥 Cawangan: ${record.branch}\n📝 Jenis Cuti: ${leaveTypeName}\n📅 Tarikh: ${record.startDate} → ${record.endDate}\n⏱ Tempoh: ${record.days} hari\n💬 Sebab: ${record.reason}\n\n🔗 *Log masuk untuk kelulusan akhir:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
                 if (!WHATSAPP_ENABLED()) {
@@ -2886,8 +2949,7 @@ window.cancelLeave = async function(id) {
     const req = leaveRecords.find(a => a.id === id);
     if (!req) return;
 
-    const rKey = window.rbacMatrix[user.role] ? user.role : 'staff';
-    const finalRbac = window.rbacMatrix[rKey] || {};
+    const finalRbac = window.effectivePerms(user);
     if (!finalRbac.can_cancel) {
         showToast('Anda tidak mempunyai kebenaran (RBAC) untuk membatalkan cuti ini.');
         return;
@@ -3006,6 +3068,7 @@ window.setApprovedReportMonth = function(val) { approvedReportMonth = val; rende
 
 // ---- Tutup Tahun (annual leave-year rollover) ----
 window.openYearEndPreview = function(year) {
+  if (window.isSubsidiaryHR(user)) return;
   const activeStaff = staffList.filter(s => !s.inactive);
   yearEndPreview = computeYearEndRollover({ staffList: activeStaff, getStats: window.getLeaveStats, year });
   yearEndProcessing = false;
@@ -5196,8 +5259,7 @@ function renderDashboard() {
       </button>
       <div class="fab-items">
         ${(() => {
-          const rKey = window.rbacMatrix[user.role] ? user.role : 'staff';
-          const rbac = window.rbacMatrix[rKey] || window.rbacMatrix.staff || {};
+          const rbac = window.effectivePerms(user);
           return `
             ${rbac.dashboard ? `<div class="fab-item" onclick="window.setView('dashboard'); window.toggleMobileMenu(false)">Dashboard</div>` : ''}
             ${rbac.leave_request ? `<div class="fab-item" onclick="window.setView('leave-form'); window.toggleMobileMenu(false)">Borang Cuti</div>` : ''}
@@ -5213,9 +5275,13 @@ function renderDashboard() {
 
     <div class="dashboard-layout fade-in">
       <header class="app-topbar">
-        <img src="${logos.ksb}" alt="Logo KSB" class="app-topbar-logo">
+        ${(() => {
+          // Anak syarikat (KSB Pharma) nampak jenamanya sendiri; klinik kekal KSB.
+          const _own = user && OWN_HR_ZONE[user.branch] ? window.printBrandFor(user.branch) : null;
+          return `<img src="${_own ? _own.logo : logos.ksb}" alt="Logo" class="app-topbar-logo">
         <div class="app-topbar-titles">
-          <span class="app-topbar-company">KLINIK SYED BADARUDDIN SDN. BHD.</span>
+          <span class="app-topbar-company">${_own ? _own.name : 'KLINIK SYED BADARUDDIN SDN. BHD.'}</span>`;
+        })()}
           <span class="app-topbar-system">Sistem Permohonan Cuti &amp; Rekod Pekerja</span>
         </div>
         <span class="app-topbar-version">v${APP_VERSION}</span>
@@ -5223,8 +5289,7 @@ function renderDashboard() {
       <aside class="sidebar">
         <nav class="nav-menu">
           ${(() => {
-            const rKey = window.rbacMatrix[user.role] ? user.role : 'staff';
-            const dashboardRbac = window.rbacMatrix[rKey];
+            const dashboardRbac = window.effectivePerms(user);
             return `
               ${dashboardRbac.dashboard ? `<div class="nav-item ${view === 'dashboard' ? 'active' : ''}" onclick="window.setView('dashboard')"><i data-lucide="layout-dashboard" width="18" height="18"></i> Dashboard</div>` : ''}
               ${dashboardRbac.leave_request ? `<div class="nav-item ${view === 'leave-form' ? 'active' : ''}" onclick="window.setView('leave-form')"><i data-lucide="calendar-plus" width="18" height="18"></i> Borang Cuti</div>` : ''}
@@ -6563,7 +6628,7 @@ function renderPersonalDashboard() {
 window.canSeeLeaveCalendar = function(u) {
   if (!u) return false;
   if (['super_admin', 'admin', 'hr'].includes(u.role)) return true;
-  const rb = window.rbacMatrix[u.role] || {};
+  const rb = window.effectivePerms(u);
   return !!rb.manage_pending && !!u.branch;
 };
 window.calShift = function(delta) { calMonth = shiftMonth(calMonth, delta); render(); };
@@ -6702,8 +6767,7 @@ function renderView() {
     case 'calendar':
       return renderLeaveCalendar();
     case 'dashboard':
-      const finalRKey = window.rbacMatrix[user.role] ? user.role : 'staff';
-      const dashboardRbac = window.rbacMatrix[finalRKey];
+      const dashboardRbac = window.effectivePerms(user);
       const dashboardMode = dashboardRbac.dashboard; // 'analisa' | 'branch' | 'staff'
       const canSeeAnalytics = dashboardMode === 'analisa';
       const canSeeBranch = dashboardMode === 'branch';
@@ -7433,8 +7497,7 @@ function renderView() {
 
 
     case 'management':
-      const managementRKey = window.rbacMatrix[user.role] ? user.role : 'staff';
-      const userPerms = window.rbacMatrix[managementRKey] || {};
+      const userPerms = window.effectivePerms(user);
       
       const hasAnyManagementAccess = (
         userPerms.management || 
@@ -7668,15 +7731,15 @@ function renderView() {
         // compute active group from current managementTab
         const activeGroup = _tabToGroup[managementTab] || managementGroup;
         const pendingCount = userPerms.manage_pending ? (() => {
-          const isFullBoss = ['admin','hr','super_admin'].includes(user.role);
-          const isHODRole  = ['doctor_pic','hod_balok','supervisor'].includes(user.role);
+          const isFullBoss = window.isFinalApprover(user);
+          const isHODRole  = window.isP1Approver(user);
           const isTL = user.role === 'team_leader';
           if (isFullBoss) return leaveRecords.filter(r => window.canManageRequest(user, r) && ['HOD APPROVED','HOD RECOMMENDED','PENDING'].includes(r.status)).length;
           if (isTL) return leaveRecords.filter(r => window.canManageRequest(user, r) && r.status === 'PENDING').length;
           if (isHODRole) return leaveRecords.filter(r => window.canManageRequest(user, r) && ['PENDING','TL APPROVED'].includes(r.status)).length;
           return 0;
         })() : 0;
-        const pendingRegs = ['admin','hr','super_admin'].includes(user.role) ? registrationRequests.filter(r => r.status === 'pending').length : 0;
+        const pendingRegs = ['admin','hr','super_admin'].includes(user.role) ? window.regRequestsInScope(registrationRequests).filter(r => r.status === 'pending').length : 0;
 
         // which main groups are visible for this role
         const showApprovals = userPerms.manage_pending;
@@ -7703,8 +7766,8 @@ function renderView() {
         <div style="display:flex;gap:0.3rem;margin-bottom:1.75rem;background:rgba(163,177,198,0.1);padding:0.3rem;border-radius:10px;overflow-x:auto;flex-wrap:wrap;">
           ${activeGroup === 'approvals' ? `
             ${userPerms.manage_pending ? (() => {
-              const isFullBoss = ['admin','hr','super_admin'].includes(user.role);
-              const isHODRole  = ['doctor_pic','hod_balok','supervisor'].includes(user.role);
+              const isFullBoss = window.isFinalApprover(user);
+              const isHODRole  = window.isP1Approver(user);
               const isTL = user.role === 'team_leader';
               let label = 'Kelulusan Tertunggak';
               if (isFullBoss) { const p2=leaveRecords.filter(r=>window.canManageRequest(user,r)&&['HOD APPROVED','HOD RECOMMENDED'].includes(r.status)).length; const by=leaveRecords.filter(r=>window.canManageRequest(user,r)&&r.status==='PENDING').length; label=`Kelulusan${p2>0?` ✅${p2}`:''}${by>0?` ⚡${by}`:''}`; }
@@ -7717,7 +7780,7 @@ function renderView() {
             ${userPerms.manage_staff ? `<button class="neu-tab ${managementTab==='staff'?'active':''}" onclick="window.setManageTab('staff')" style="border-radius:8px;">Staff</button>` : ''}
             ${userPerms.manage_branches ? `<button class="neu-tab ${managementTab==='branches'?'active':''}" onclick="window.setManageTab('branches')" style="border-radius:8px;">Cawangan</button>` : ''}
             ${userPerms.manage_roles_categories ? `<button class="neu-tab ${managementTab==='roles_categories'?'active':''}" onclick="window.setManageTab('roles_categories')" style="border-radius:8px;">Peranan & Kategori</button>` : ''}
-            ${['admin','hr','super_admin'].includes(user.role) ? (() => { const pr=registrationRequests.filter(r=>r.status==='pending').length; return `<button class="neu-tab ${managementTab==='reg_requests'?'active':''}" onclick="window.setManageTab('reg_requests')" style="border-radius:8px;">Daftar Baharu${pr>0?` <span style="background:#ef4444;color:#fff;border-radius:999px;padding:0 5px;font-size:0.65rem;font-weight:800;">${pr}</span>`:''}</button>`; })() : ''}
+            ${['admin','hr','super_admin'].includes(user.role) ? (() => { const pr=window.regRequestsInScope(registrationRequests).filter(r=>r.status==='pending').length; return `<button class="neu-tab ${managementTab==='reg_requests'?'active':''}" onclick="window.setManageTab('reg_requests')" style="border-radius:8px;">Daftar Baharu${pr>0?` <span style="background:#ef4444;color:#fff;border-radius:999px;padding:0 5px;font-size:0.65rem;font-weight:800;">${pr}</span>`:''}</button>`; })() : ''}
           ` : ''}
           ${activeGroup === 'reports' ? `
             ${userPerms.manage_reports ? `<button class="neu-tab ${managementTab==='hr_reports'?'active':''}" onclick="window.setManageTab('hr_reports')" style="border-radius:8px;">HR Reports</button>` : ''}
@@ -7746,8 +7809,8 @@ function renderView() {
               ${(html => html || emptyState({ icon: 'check', title: 'Tiada permohonan menunggu kelulusan', text: 'Semua permohonan sudah diproses. Kerja yang baik!' }))(leaveRecords.filter(r => {
                   if (['REJECTED', 'CANCELLED', 'APPROVED'].includes(r.status)) return false;
                   if (!window.canManageRequest(user, r)) return false;
-                  const isFullBoss = ['admin', 'hr', 'super_admin'].includes(user.role);
-                  const isHODRole = ['doctor_pic','hod_balok','supervisor'].includes(user.role);
+                  const isFullBoss = window.isFinalApprover(user);
+                  const isHODRole = window.isP1Approver(user);
                   const isTL = user.role === 'team_leader';
                   if (isTL) {
                       // Team Leader hanya nampak PENDING staf operasi Balok
@@ -7781,7 +7844,7 @@ function renderView() {
                   }
                   return true; // isFullBoss sees all other pending statuses
               }).map(req => {
-                const isFullBoss = ['admin', 'hr', 'super_admin'].includes(user.role);
+                const isFullBoss = window.isFinalApprover(user);
                 const showHODIndicator = req.status === 'HOD RECOMMENDED' || req.status === 'HOD APPROVED';
                 const showTLIndicator = req.status === 'TL APPROVED';
                 
@@ -7864,7 +7927,7 @@ function renderView() {
                   </div>
 
                   ${(() => {
-                      const isHODRole = ['doctor_pic','hod_balok','supervisor'].includes(user.role);
+                      const isHODRole = window.isP1Approver(user);
                       const isTLRole = user.role === 'team_leader';
                       const isLocumEditMode = isHODRole && req.status === 'HOD APPROVED';
                       if (isLocumEditMode) {
@@ -7965,7 +8028,7 @@ function renderView() {
           </div>
         ` : ''}
 
-        ${managementTab === 'whatsapp_settings' && window.rbacMatrix[user.role]?.wa_setting ? (() => {
+        ${managementTab === 'whatsapp_settings' && window.effectivePerms(user).wa_setting ? (() => {
           const sentCount   = waLogs.filter(l => l.status === 'sent').length;
           const failedCount = waLogs.filter(l => l.status === 'failed').length;
           const allRoles = Object.keys(window.staffConfig.roleLabels);
@@ -8160,8 +8223,8 @@ function renderView() {
           </div>
 
           ${(() => {
-            const pending = registrationRequests.filter(r => r.status === 'pending');
-            const done = registrationRequests.filter(r => r.status !== 'pending');
+            const pending = window.regRequestsInScope(registrationRequests).filter(r => r.status === 'pending');
+            const done = window.regRequestsInScope(registrationRequests).filter(r => r.status !== 'pending');
             return `
               ${pending.length === 0 ? emptyState({ icon: 'users', title: 'Tiada pendaftaran baharu', text: 'Tiada permohonan pendaftaran staf yang menunggu kelulusan.' }) : `
                 <div style="display: grid; gap: 1rem; margin-bottom: 2rem;">
@@ -8519,7 +8582,9 @@ function renderView() {
             pool = pool.filter(s => (s.name||'').toLowerCase().includes(q) || (s.ic||'').includes(q));
           }
 
-          const availBranches = [...new Set(staffList.filter(s=>!s.inactive && s.role!=='super_admin').map(s=>s.branch).filter(Boolean))].sort();
+          const _bvScope = window.getUserStateScope(user);
+          const availBranches = [...new Set(staffList.filter(s=>!s.inactive && s.role!=='super_admin').map(s=>s.branch).filter(Boolean))].sort()
+            .filter(b => !window.isSubsidiaryHR(user) || window.scopeStateOfBranch(b) === _bvScope);
 
           // Kira baki cuti untuk setiap staf
           const keyTypes = ['AL','MC','EL','HL','ML','CME'];
@@ -8544,7 +8609,8 @@ function renderView() {
           const _cy = window.getCurrentLeaveYear();
           const _lastClosed = leaveYearConfig.lastClosed || 0;
           const _targetYear = (_lastClosed || (_cy - 1)) + 1;
-          const _canCloseYear = userPerms.manage_staff && _targetYear <= _cy;
+          // Tutup Tahun memproses SEMUA staf syarikat — HR anak syarikat tidak boleh.
+          const _canCloseYear = userPerms.manage_staff && _targetYear <= _cy && !window.isSubsidiaryHR(user);
 
           return `
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;margin-top:0.5rem;flex-wrap:wrap;gap:0.75rem;">
@@ -8581,7 +8647,9 @@ function renderView() {
             <div style="margin-left:auto;">
               ${_canCloseYear
                 ? `<button onclick="window.openYearEndPreview(${_targetYear})" style="padding:0.5rem 1.1rem;border:none;border-radius:9px;background:linear-gradient(135deg,#7c3aed,#6366f1);color:#fff;font-weight:700;font-size:0.8rem;cursor:pointer;">Tutup Tahun ${_targetYear} →</button>`
-                : `<span style="font-size:0.75rem;font-weight:700;color:#059669;">✓ Tahun ${_lastClosed||_cy} sudah ditutup</span>`}
+                : window.isSubsidiaryHR(user)
+                  ? `<span style="font-size:0.75rem;font-weight:700;color:var(--text-muted);">Diuruskan oleh HR / Admin KSB</span>`
+                  : `<span style="font-size:0.75rem;font-weight:700;color:#059669;">✓ Tahun ${_lastClosed||_cy} sudah ditutup</span>`}
             </div>
           </div>
 
@@ -10987,7 +11055,7 @@ function renderModal() {
               <div style="display: flex; flex-direction: column;">
                  <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">Assigned Branch</label>
                  <select class="neu-inset" style="appearance: none; cursor: pointer;">
-                     ${branches.map(b => `<option value="${b.name}" ${staff.branch === b.name ? 'selected' : ''}>${b.name}</option>`).join('')}
+                     ${window.staffFormBranches().map(b => `<option value="${b.name}" ${staff.branch === b.name ? 'selected' : ''}>${b.name}</option>`).join('')}
                  </select>
               </div>
 
@@ -11007,7 +11075,7 @@ function renderModal() {
               <div style="display: flex; flex-direction: column;">
                  <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">System Role</label>
                  <select class="neu-inset" style="appearance: none; cursor: pointer; color-scheme: light; font-weight: 600;">
-                     ${Object.keys(window.rbacMatrix).map(k => `<option value="${k}" ${staff.role === k ? 'selected' : ''}>${window.staffConfig.roleLabels[k] || k}</option>`).join('')}
+                     ${window.staffFormRoles(Object.keys(window.rbacMatrix)).map(k => `<option value="${k}" ${staff.role === k ? 'selected' : ''}>${window.staffConfig.roleLabels[k] || k}</option>`).join('')}
                  </select>
               </div>
 
@@ -11345,7 +11413,7 @@ function renderAddStaffModal() {
           <label style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:1px;display:block;margin-bottom:0.4rem;">Cawangan <span style="color:var(--danger);">*</span></label>
           <select id="as-branch" class="neu-inset" required style="appearance:none;cursor:pointer;color-scheme:dark;">
             <option value="">-- Pilih Cawangan --</option>
-            ${branches.map(b => `<option value="${b.name}">${b.name}</option>`).join('')}
+            ${window.staffFormBranches().map(b => `<option value="${b.name}">${b.name}</option>`).join('')}
           </select>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
@@ -11358,7 +11426,7 @@ function renderAddStaffModal() {
           <div>
             <label style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:1px;display:block;margin-bottom:0.4rem;">Peranan (Role)</label>
             <select id="as-role" class="neu-inset" style="appearance:none;cursor:pointer;color-scheme:dark;">
-              ${Object.keys(window.rbacMatrix).filter(k => k !== 'super_admin').map(k => `<option value="${k}">${window.staffConfig.roleLabels[k] || k}</option>`).join('')}
+              ${window.staffFormRoles(Object.keys(window.rbacMatrix).filter(k => k !== 'super_admin')).map(k => `<option value="${k}">${window.staffConfig.roleLabels[k] || k}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -11656,4 +11724,3 @@ if ('serviceWorker' in navigator && !window.__reloadGuardTripped) {
     });
   });
 }
-
