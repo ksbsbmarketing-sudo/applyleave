@@ -538,6 +538,8 @@ let duplicateSessionDetected = false;
 // rekod kedua. Semakan pertindihan TIDAK dapat menangkapnya — kedua-dua larian
 // membaca leaveRecords yang sama, sebelum mana-mana tulisan mendarat.
 let leaveSubmitting = false;
+// Dashboard staf: false = 5 permohonan terkini sahaja; true = semua rekod (butang LIHAT SEMUA REKOD).
+let showAllMyRecords = false;
 let sessionKickHandled = false; // guard: auto-logout sesi lama hanya dicetus sekali
 let view = 'login'; // 'login', 'dashboard', 'management', 'leave-form', 'policy', 'settings'
 window.setView = function(v) {
@@ -2346,6 +2348,11 @@ window.printHeaderHTML = function(opts) {
         ${title ? `<div style="text-align:center;margin-bottom:${metaLine ? '10px' : '20px'};position:relative;z-index:1;"><span style="border:2px solid ${brand.accent};display:inline-block;padding:5px 26px;font-weight:bold;letter-spacing:2px;font-size:13px;color:${brand.accent};">${title}</span></div>` : ''}
         ${metaLine}
     `;
+};
+
+window.toggleAllMyRecords = function() {
+    showAllMyRecords = !showAllMyRecords;
+    render();
 };
 
 window.printLeave = function(id) {
@@ -6474,9 +6481,9 @@ function renderPersonalDashboard() {
         <div class="glass-card" style="padding: 1.5rem;">
           <h3 style="font-size: 1rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-            Rekod Permohonan Terkini
+            ${showAllMyRecords ? `Semua Rekod Permohonan (${myRecords.length})` : 'Rekod Permohonan Terkini'}
           </h3>
-          <div style="overflow-x: auto;">
+          <div style="overflow-x: auto;${showAllMyRecords ? ' max-height: 520px; overflow-y: auto;' : ''}">
             <table class="data-table" style="font-size: 0.93rem;">
               <thead>
                 <tr>
@@ -6490,7 +6497,7 @@ function renderPersonalDashboard() {
               <tbody>
                 ${myRecords.length === 0
                   ? emptyRow(5, { icon: 'calendar', title: 'Anda belum memohon cuti', text: 'Permohonan cuti anda akan dipaparkan di sini.', action: { label: 'Mohon Cuti', onclick: "window.setView('leave-form')" } })
-                  : myRecords.slice(0, 5).map(act => `
+                  : (showAllMyRecords ? myRecords : myRecords.slice(0, 5)).map(act => `
                   <tr>
                     <td style="font-weight: 700;">${leaveTypeName(act.type)}</td>
                     <td style="color: var(--text-muted); font-size: 1rem;">${act.startDate} → ${act.endDate}</td>
@@ -6502,7 +6509,7 @@ function renderPersonalDashboard() {
               </tbody>
             </table>
           </div>
-          ${myRecords.length > 5 ? `<div style="text-align: center; margin-top: 1.5rem;"><button class="neu-btn" style="width: auto; padding: 0.5rem 2rem; font-size: 1.05rem;">LIHAT SEMUA REKOD</button></div>` : ''}
+          ${myRecords.length > 5 ? `<div style="text-align: center; margin-top: 1.5rem;"><button class="neu-btn" style="width: auto; padding: 0.5rem 2rem; font-size: 1.05rem;" onclick="window.toggleAllMyRecords()">${showAllMyRecords ? 'TUNJUK 5 TERKINI SAHAJA' : `LIHAT SEMUA REKOD (${myRecords.length})`}</button></div>` : ''}
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 1.5rem;">
