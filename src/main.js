@@ -2316,18 +2316,20 @@ let leavesLoaded = false;
 let staffList = [];
 
 // Jenama ikut cawangan — borang Uni Klinik Bentong guna logo/nama Bentong, Klinik Rakyat
-// guna KR, KSB Pharma guna logo KSB Pharma, selebihnya KSB. Laporan tanpa cawangan (SEMUA) kekal KSB.
+// guna KR, KSB Pharma guna logo KSB Pharma, KSBYMC guna logo KSB YMC, selebihnya KSB. Laporan tanpa cawangan (SEMUA) kekal KSB.
 //   wmOpacity — logo KR cakera hitam penuh, jadi perlu lebih pudar supaya teks kekal jelas.
 //   wmLogo    — watermark berasingan; KSB guna lambang resolusi tinggi (logo-ksb.png cuma 266px, kabur bila dibesarkan).
 const PRINT_BRANDS = {
     ksb:     { name: 'KLINIK SYED BADARUDDIN SDN. BHD.', tagline: 'Servicing Community Since 1991', logo: '/logo-ksb.png',     wmLogo: '/logo-ksb-mark.png', accent: '#9b2c2c', sub: '#7a3b3b', wmWidth: 360, wmOpacity: 0.10 },
     bentong: { name: 'UNI KLINIK BENTONG',               tagline: '',                               logo: '/logo-bentong.png', accent: '#283a6e', sub: '#d9480f', wmWidth: 460, wmOpacity: 0.14 },
     pharma:  { name: 'KSB PHARMA SDN. BHD.',             tagline: 'We care beyond drug',            logo: '/logo-ksb-pharma.png', accent: '#0f3d2e', sub: '#a8862b', wmWidth: 420, wmOpacity: 0.12 },
+    ksbymc:  { name: 'KSB YPHIM MANAGE CARE SDN. BHD.',  tagline: 'KSB YMC',                        logo: '/logo-ksbymc.png', wmLogo: '/logo-ksbymc-mark.png', accent: '#c81e28', sub: '#4a4a4a', wmWidth: 340, wmOpacity: 0.10 },
     kr:      { name: 'KLINIK RAKYAT DAN X-RAY DUNGUN',   tagline: 'We Care',                        logo: '/logo-kr.png',      accent: '#1a1a1a', sub: '#4a5568', wmWidth: 380, wmOpacity: 0.08 },
 };
 window.printBrandFor = function(branch) {
     const b = String(branch || '');
     if (/ksb pharma/i.test(b)) return PRINT_BRANDS.pharma;
+    if (/ksb ?ymc|yphim/i.test(b)) return PRINT_BRANDS.ksbymc;
     if (/bentong/i.test(b)) return PRINT_BRANDS.bentong;
     if (/klinik rakyat|x-?ray dungun/i.test(b)) return PRINT_BRANDS.kr;
     return PRINT_BRANDS.ksb;
@@ -4195,7 +4197,9 @@ const recentActivity = [
 const logos = {
   ksb: '/logo-ksb.png',
   kr: '/logo-kr.png',
-  bentong: '/logo-bentong.png'
+  bentong: '/logo-bentong.png',
+  pharma: '/logo-ksb-pharma.png',
+  ksbymc: '/logo-ksbymc.png'
 };
 
 // Chart.js instances
@@ -4425,10 +4429,10 @@ function renderLogin() {
       <div class="glass-pane auth-card fade-in">
         <div class="logo-group">
           <div class="logo-circle"><img src="${logos.ksb}" alt="KSB"></div>
-          <span class="logo-sep"></span>
           <div class="logo-circle logo-square"><img src="${logos.kr}" alt="KR"></div>
-          <span class="logo-sep"></span>
           <div class="logo-circle"><img src="${logos.bentong}" alt="Bentong"></div>
+          <div class="logo-circle logo-square"><img src="${logos.pharma}" alt="KSB Pharma"></div>
+          <div class="logo-circle"><img src="${logos.ksbymc}" alt="KSB YMC"></div>
         </div>
         <h1 class="auth-title">KLINIK SYED BADARUDDIN</h1>
         <p class="auth-subtitle">Sistem Permohonan Cuti Staf</p>
