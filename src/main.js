@@ -7273,7 +7273,7 @@ function renderView() {
                             <div>
                                 <div style="font-size:0.82rem;font-weight:700;color:var(--text);">Kelulusan Akhir HR/Admin</div>
                                 <div style="font-size:0.78rem;color:#059669;font-weight:600;margin-top:0.1rem;">HR / Admin — KSB HQ</div>
-                                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.1rem;">Sebagai ${user.role === 'supervisor' ? 'Supervisor' : 'HOD Balok'}, permohonan anda dihantar terus ke HR — tanpa sokongan Peringkat 1.</div>
+                                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.1rem;">${window.isSubsidiaryHR(user) ? (window.isP1OnlyHR(user) ? 'Sebagai pelulus pertama, permohonan anda dihantar terus kepada pelulus akhir syarikat.' : 'Sebagai pelulus akhir syarikat, anda boleh meluluskan permohonan anda sendiri.') : `Sebagai ${user.role === 'supervisor' ? 'Supervisor' : 'HOD Balok'}, permohonan anda dihantar terus ke HR — tanpa sokongan Peringkat 1.`}</div>
                             </div>
                         </div>
                     </div>
@@ -7363,10 +7363,10 @@ function renderView() {
                   <div style="font-size:2rem;font-weight:800;color:${_c};line-height:1;">${_nd}</div>
                   <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.2rem;">hari sebelum tarikh mula cuti</div>
                 </div>
-                <div style="font-size:0.62rem;color:var(--text-muted);line-height:1.5;margin-top:0.75rem;">
+                ${OWN_HR_ZONE[user.branch] ? '' : `<div style="font-size:0.62rem;color:var(--text-muted);line-height:1.5;margin-top:0.75rem;">
                   <strong>3 hari</strong> — Staff Admin &amp; Staff Operasi cawangan.<br>
                   <strong>7 hari</strong> — Doktor &amp; Staff Operasi Balok (HQ).
-                </div>`;
+                </div>`}`;
               })()}
             </div>
             ` : ''}
@@ -9517,7 +9517,7 @@ function renderView() {
                   { val: 'supervisor', label: 'Supervisor' },
                   { val: 'team_leader', label: 'Team Leader' },
                   { val: 'staff', label: 'Staff' },
-                ].map(o => '<option value="' + o.val + '"' + (manageRoleFilter === o.val ? ' selected' : '') + '>' + o.label + '</option>').join('')}
+                ].filter(o => o.val === 'SEMUA' || window.staffFormRoles([o.val]).length).map(o => '<option value="' + o.val + '"' + (manageRoleFilter === o.val ? ' selected' : '') + '>' + o.label + '</option>').join('')}
               </select>
               <select onchange="window.setManageCategoryFilter(this.value)" style="padding:0.3rem 0.7rem;border-radius:999px;border:1px solid rgba(163,177,198,0.45);background:rgba(255,255,255,0.6);font-size:0.78rem;font-weight:600;color:var(--text-soft);cursor:pointer;color-scheme:light;">
                 ${[
