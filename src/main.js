@@ -2299,6 +2299,21 @@ let leaveRecords = [];
 let leavesLoaded = false;
 let staffList = [];
 
+// Jenama ikut cawangan — borang Uni Klinik Bentong guna logo/nama Bentong, Klinik Rakyat
+// guna KR, selebihnya KSB. Laporan tanpa cawangan (SEMUA) kekal KSB.
+//   wmOpacity — logo KR cakera hitam penuh, jadi perlu lebih pudar supaya teks kekal jelas.
+const PRINT_BRANDS = {
+    ksb:     { name: 'KLINIK SYED BADARUDDIN SDN. BHD.', tagline: 'Servicing Community Since 1991', logo: '/logo-ksb.png',     accent: '#9b2c2c', sub: '#7a3b3b', wmWidth: 300, wmOpacity: 0.16 },
+    bentong: { name: 'UNI KLINIK BENTONG',               tagline: '',                               logo: '/logo-bentong.png', accent: '#283a6e', sub: '#d9480f', wmWidth: 460, wmOpacity: 0.14 },
+    kr:      { name: 'KLINIK RAKYAT DAN X-RAY DUNGUN',   tagline: 'We Care',                        logo: '/logo-kr.png',      accent: '#1a1a1a', sub: '#4a5568', wmWidth: 380, wmOpacity: 0.08 },
+};
+window.printBrandFor = function(branch) {
+    const b = String(branch || '');
+    if (/bentong/i.test(b)) return PRINT_BRANDS.bentong;
+    if (/klinik rakyat|x-?ray dungun/i.test(b)) return PRINT_BRANDS.kr;
+    return PRINT_BRANDS.ksb;
+};
+
 // Header korporat SERAGAM untuk SEMUA PDF/print. Gaya inline penuh supaya berfungsi
 // dalam dokumen utama mahupun tetingkap window.open. Satu sumber tunggal.
 //   opts.branch   — cawangan rekod/individu (borang). 'SEMUA'/kosong dianggap laporan.
@@ -2315,18 +2330,19 @@ window.printHeaderHTML = function(opts) {
     const metaLine = meta.length
         ? `<div style="text-align:center;font-size:10px;color:#718096;margin:0 0 18px;position:relative;z-index:1;">${meta.map(m => `<strong style="color:#4a5568;">${m.label}:</strong> ${m.value}`).join(' &nbsp;·&nbsp; ')}</div>`
         : '';
+    const brand = window.printBrandFor(opts.branch);
     return `
-        <img src="${logos.ksb}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;opacity:0.12;pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
-        <div style="display:flex;align-items:center;gap:18px;border-bottom:3px solid #9b2c2c;padding-bottom:14px;margin-bottom:18px;position:relative;z-index:1;">
-            <img src="${logos.ksb}" style="width:66px;height:66px;border-radius:12px;object-fit:contain;flex-shrink:0;" alt="KSB Logo">
-            <div style="flex:1;text-align:center;">
-                <h1 style="color:#9b2c2c;font-size:21px;font-weight:bold;margin:0;letter-spacing:0.5px;">KLINIK SYED BADARUDDIN SDN. BHD.</h1>
-                <p style="color:#7a3b3b;font-size:10px;letter-spacing:1.5px;margin:3px 0 0;text-transform:uppercase;">Servicing Community Since 1991</p>
+        <img src="${brand.logo}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:${brand.wmWidth}px;max-width:80vw;opacity:${brand.wmOpacity};pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
+        <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;border-bottom:3px solid ${brand.accent};padding-bottom:14px;margin-bottom:18px;position:relative;z-index:1;">
+            <img src="${brand.logo}" style="height:64px;max-width:190px;object-fit:contain;justify-self:start;" alt="Logo">
+            <div style="text-align:center;">
+                <h1 style="color:${brand.accent};font-size:21px;font-weight:bold;margin:0;letter-spacing:0.5px;">${brand.name}</h1>
+                ${brand.tagline ? `<p style="color:${brand.sub};font-size:10px;letter-spacing:1.5px;margin:3px 0 0;text-transform:uppercase;">${brand.tagline}</p>` : ''}
                 <p style="color:#4a5568;font-size:11px;font-weight:bold;margin:6px 0 0;">Cawangan: ${branchLine}</p>
             </div>
-            <img src="${logos.ksb}" style="width:66px;height:66px;border-radius:12px;object-fit:contain;flex-shrink:0;" alt="KSB Logo">
+            <div></div>
         </div>
-        ${title ? `<div style="text-align:center;margin-bottom:${metaLine ? '10px' : '20px'};position:relative;z-index:1;"><span style="border:2px solid #9b2c2c;display:inline-block;padding:5px 26px;font-weight:bold;letter-spacing:2px;font-size:13px;color:#9b2c2c;">${title}</span></div>` : ''}
+        ${title ? `<div style="text-align:center;margin-bottom:${metaLine ? '10px' : '20px'};position:relative;z-index:1;"><span style="border:2px solid ${brand.accent};display:inline-block;padding:5px 26px;font-weight:bold;letter-spacing:2px;font-size:13px;color:${brand.accent};">${title}</span></div>` : ''}
         ${metaLine}
     `;
 };
