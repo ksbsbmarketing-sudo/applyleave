@@ -2477,6 +2477,21 @@ window.printHeaderHTML = function(opts) {
     `;
 };
 
+// Cetak #print-container SELEPAS semua imej (logo + watermark) siap dimuat.
+// window.print() serta-merta selepas insert → imej belum dimuat (terutama watermark
+// logo-*-mark.png yang tiada dalam cache) dan tidak muncul dalam cetakan.
+window.printContainerWhenReady = function() {
+    const el = document.getElementById('print-container');
+    if (!el) return;
+    const imgs = [...el.querySelectorAll('img')].filter(img => !img.complete);
+    const loaded = imgs.map(img => new Promise(res => { img.onload = img.onerror = res; }));
+    const timeout = new Promise(res => setTimeout(res, 3000));
+    Promise.race([Promise.all(loaded), timeout]).then(() => {
+        window.print();
+        el.remove();
+    });
+};
+
 window.toggleAllMyRecords = function() {
     showAllMyRecords = !showAllMyRecords;
     render();
@@ -2588,8 +2603,7 @@ window.printLeave = function(id) {
     </div>
     `;
     document.body.insertAdjacentHTML('beforeend', printHTML);
-    window.print();
-    document.getElementById('print-container').remove();
+    window.printContainerWhenReady();
 };
 
 window.editLeave = function(id) {
@@ -3201,8 +3215,7 @@ window.generateBalanceReport = function(rows, branchName, leaveType, year) {
     <button onclick="window.print()" style="margin-top:12px;padding:7px 18px;background:#7c3aed;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;">PRINT / SIMPAN PDF</button>
   </div>`;
   document.body.insertAdjacentHTML('beforeend', printHTML);
-  window.print();
-  document.getElementById('print-container').remove();
+  window.printContainerWhenReady();
 };
 
 // Shared branch/type/month/year predicate for the "Cuti Diluluskan" report (screen + PDF).
@@ -3296,8 +3309,7 @@ window.generateApprovedReport = function() {
     <button onclick="window.print()" style="margin-top:16px;padding:8px 20px;background:#059669;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;">PRINT / SIMPAN PDF</button>
   </div>`;
   document.body.insertAdjacentHTML('beforeend', printHTML);
-  window.print();
-  document.getElementById('print-container').remove();
+  window.printContainerWhenReady();
 };
 
 // ── Shared print-report helpers (used by printAllLeaveReport + printLeaveTypeReport) ──
@@ -3738,8 +3750,7 @@ window.generateJenisCutiReport = function() {
     <button onclick="window.print()" style="margin-top:16px;padding:8px 20px;background:#f59e0b;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;">PRINT / SIMPAN PDF</button>
   </div>`;
   document.body.insertAdjacentHTML('beforeend', printHTML);
-  window.print();
-  document.getElementById('print-container').remove();
+  window.printContainerWhenReady();
 };
 
 window.generateLeaveReport = function() {
@@ -3798,8 +3809,7 @@ window.generateLeaveReport = function() {
    </div>
    `;
    document.body.insertAdjacentHTML('beforeend', printHTML);
-   window.print();
-   document.getElementById('print-container').remove();
+   window.printContainerWhenReady();
 };
 
 // Full KSB Branch Network (12 Locations)
