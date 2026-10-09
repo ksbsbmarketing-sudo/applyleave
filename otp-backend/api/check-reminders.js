@@ -12,7 +12,7 @@
 import { db } from "../lib/firebase.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import {
-  shouldSkipP1, getRoutingP1Approvers, scopeStateOfBranch, mergeRoutingConfig, isP1OnlyHR,
+  shouldSkipP1, getRoutingP1Approvers, scopeStateOfBranch, mergeRoutingConfig, isP1OnlyHR, waZoneOf,
 } from "../lib/routing.js";
 
 const OVERDUE_DAYS = 3;
@@ -104,11 +104,21 @@ export default async function handler(req, res) {
     const firestore = db();
 
     // Load supporting data once.
-    const [staffSnap, branchSnap, routingSnap] = await Promise.all([
+    const [staffSnap, branchSnap, routingSnap, waSnap] = await Promise.all([
       firestore.collection("staff").get(),
       firestore.collection("branches").get(),
       firestore.doc("config/approvalRouting").get(),
+      firestore.doc("system_config/whatsapp").get(),
     ]);
+    // One Fonnte token per zone, same fields the app's WA Settings writes.
+    // A zone without its own token falls back to the Pahang one (FONNTE_TOKEN).
+    const waCfg = waSnap.exists ? waSnap.data() : {};
+    const waTokens = {
+      pahang: process.env.FONNTE_TOKEN || waCfg.token,
+      terengganu: waCfg.tokenTerengganu,
+      pharma: waCfg.tokenPharma,
+    };
+    const tokenFor = (person) => waTokens[waZoneOf(person, branches)] || waTokens.pahang;
     const staffList = staffSnap.docs.map((d) => ({ ...d.data(), ic: d.data().ic || d.id }));
     const branches = branchSnap.docs.map((d) => d.data());
     const approvalRouting = mergeRoutingConfig(routingSnap.exists ? routingSnap.data() : null);
@@ -149,7 +159,7 @@ export default async function handler(req, res) {
 
         if (dryRun) continue;
 
-        const out = await sendWhatsApp(process.env.FONNTE_TOKEN, phone, buildReminderMsg(record, ageDays, peringkat));
+        const out = await sendWhatsApp(tokenFor(person), phone, buildReminderMsg(record, ageDays, peringkat));
         if (out.ok) {
           summary.sent += 1;
           // Keep the in-app WhatsApp log complete.

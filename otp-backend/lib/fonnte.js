@@ -4,21 +4,24 @@
 // message silently never arrives). Fonnte can also return HTTP 200 with
 // status:false on real failure, so we inspect the body, not just the status.
 
-let cachedDevice = null;
+// Device number per token — there is one Fonnte device per WhatsApp zone.
+const cachedDevices = new Map();
 
 async function getDeviceNumber(token) {
-  if (cachedDevice !== null) return cachedDevice;
+  if (cachedDevices.has(token)) return cachedDevices.get(token);
+  let device = "";
   try {
     const res = await fetch("https://api.fonnte.com/device", {
       method: "POST",
       headers: { Authorization: token },
     });
     const body = await res.json();
-    cachedDevice = body && body.device ? String(body.device).replace(/\D/g, "") : "";
+    device = body && body.device ? String(body.device).replace(/\D/g, "") : "";
   } catch {
-    cachedDevice = "";
+    device = "";
   }
-  return cachedDevice;
+  cachedDevices.set(token, device);
+  return device;
 }
 
 export async function sendWhatsApp(token, target, message) {

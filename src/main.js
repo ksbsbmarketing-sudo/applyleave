@@ -251,21 +251,35 @@ const app = document.querySelector('#app')
 // WHATSAPP NOTIFICATION CONFIG (Fonnte.com)
 // Daftar di: https://fonnte.com → sambungkan no. 0129444295
 // ============================================================
-let WHATSAPP_TOKEN = localStorage.getItem('ksb_wa_token') || '';
-const WHATSAPP_SENDER = '60129444295'; // No. penghantar
-const WHATSAPP_ENABLED = () => !!WHATSAPP_TOKEN;
-// Nombor peranti penghantar Fonnte (cth. 60178998771). Diisi dari /device.
+// Satu peranti Fonnte (Free, 1,000 mesej/bulan) per zon, dipilih ikut zon PENERIMA.
+// Zon tanpa token sendiri guna token Pahang (token asal). Medan dalam system_config/whatsapp:
+const WA_TOKEN_FIELDS = { pahang: 'token', terengganu: 'tokenTerengganu', pharma: 'tokenPharma' };
+const WA_ZONE_LABELS = { pahang: 'Pahang (Balok HQ, Utama, Admin)', terengganu: 'Terengganu', pharma: 'KSB Pharma' };
+let WA_TOKENS = { pahang: localStorage.getItem('ksb_wa_token') || '', terengganu: '', pharma: '' };
+const WHATSAPP_SENDER = '60129444295'; // No. penghantar zon Pahang
+const WHATSAPP_ENABLED = () => Object.values(WA_TOKENS).some(Boolean);
+// Nombor peranti penghantar Fonnte per zon. Diisi dari /device.
 // WhatsApp tak boleh hantar kepada nombornya sendiri — kita guna ini untuk kesan & elak.
-let WHATSAPP_DEVICE = '';
+let WA_DEVICES = { pahang: '', terengganu: '', pharma: '' };
 async function refreshWADevice() {
-  if (!WHATSAPP_TOKEN) { WHATSAPP_DEVICE = ''; return; }
-  try {
-    const res = await fetch('https://api.fonnte.com/device', {
-      method: 'POST', headers: { 'Authorization': WHATSAPP_TOKEN }
-    });
-    const d = await res.json();
-    if (d && d.device) WHATSAPP_DEVICE = String(d.device).replace(/\D/g, '');
-  } catch(_) { /* abaikan — guard self-send sekadar lapisan tambahan */ }
+  await Promise.all(Object.keys(WA_TOKENS).map(async zone => {
+    const token = WA_TOKENS[zone];
+    if (!token) { WA_DEVICES[zone] = ''; return; }
+    try {
+      const res = await fetch('https://api.fonnte.com/device', {
+        method: 'POST', headers: { 'Authorization': token }
+      });
+      const d = await res.json();
+      if (d && d.device) WA_DEVICES[zone] = String(d.device).replace(/\D/g, '');
+    } catch(_) { /* abaikan — guard self-send sekadar lapisan tambahan */ }
+  }));
+}
+// Zon penghantar bagi seorang penerima. Admin/HQ dan penerima tidak dikenali → Pahang.
+function waZoneOf(recipient) {
+  if (!recipient || ['admin', 'super_admin'].includes(recipient.role)) return 'pahang';
+  if (OWN_HR_ZONE[recipient.branch]) return 'pharma';
+  if (recipient.role === 'hr') return recipient.hrState === 'Terengganu' ? 'terengganu' : 'pahang';
+  return window.scopeStateOfBranch(recipient.branch) === 'Terengganu' ? 'terengganu' : 'pahang';
 }
 
 window.sendWhatsApp = async function(toPhone, message, throwOnError = false) {
@@ -274,17 +288,23 @@ window.sendWhatsApp = async function(toPhone, message, throwOnError = false) {
   if (phone.startsWith('0')) phone = '6' + phone;
 
   const recipient = staffList.find(s => (s.phone || '').replace(/\D/g, '').replace(/^0/, '6') === phone);
+  const wantZone = waZoneOf(recipient);
+  const zone = WA_TOKENS[wantZone] ? wantZone : 'pahang';
+  const token = WA_TOKENS[zone];
+  const device = WA_DEVICES[zone];
+  if (!token) return;
   const logBase = {
     ts: Date.now(),
     phone,
     name: recipient ? recipient.name : phone,
     preview: message.replace(/[*_[\]]/g, '').replace(/\n/g, ' ').trim().substring(0, 120),
     sentBy: (typeof user !== 'undefined' && user) ? user.name : 'System',
+    via: zone,
   };
 
   let logStatus = 'sent', logErr = null;
   try {
-    if (WHATSAPP_DEVICE && phone === WHATSAPP_DEVICE) {
+    if (device && phone === device) {
       // Target = nombor peranti penghantar Fonnte sendiri. Fonnte akan pulangkan
       // status:true (queue) tetapi WhatsApp TIDAK boleh hantar kepada diri sendiri,
       // jadi mesej tak sampai. Log sebagai gagal supaya jelas, jangan tipu "sent".
@@ -294,7 +314,7 @@ window.sendWhatsApp = async function(toPhone, message, throwOnError = false) {
     } else {
       const res = await fetch('https://api.fonnte.com/send', {
         method: 'POST',
-        headers: { 'Authorization': WHATSAPP_TOKEN, 'Content-Type': 'application/json' },
+        headers: { 'Authorization': token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ target: phone, message, countryCode: '60' })
       });
       let body = null;
@@ -347,16 +367,18 @@ window.clearWALogs = async function() {
   } catch(e) { showToast('Ralat memadam log: ' + e.message); }
 };
 
-window.saveWAToken = async function(token) {
-  WHATSAPP_TOKEN = token;
-  localStorage.setItem('ksb_wa_token', token);
+window.saveWAToken = async function(zone, token) {
+  token = String(token || '').trim();
+  WA_TOKENS[zone] = token;
+  if (zone === 'pahang') localStorage.setItem('ksb_wa_token', token);
   refreshWADevice(); // kemas kini nombor peranti untuk guard self-send
   try {
-    await setDoc(doc(db, 'system_config', 'whatsapp'), { token });
+    // merge — jangan padam token zon lain.
+    await setDoc(doc(db, 'system_config', 'whatsapp'), { [WA_TOKEN_FIELDS[zone]]: token }, { merge: true });
   } catch(e) {
     console.warn('Failed to save WA token to Firestore:', e);
   }
-  showToast('✅ Token WhatsApp berjaya disimpan!');
+  showToast(`✅ Token WhatsApp ${WA_ZONE_LABELS[zone]} berjaya disimpan!`);
 };
 
 // Self-service password reset via WhatsApp OTP. Runs pre-login, so it talks to
@@ -488,7 +510,7 @@ window.forgotPassword = async function() {
 window.testWANotification = async function() {
   const phone = document.getElementById('wa-test-phone')?.value;
   if (!phone) return showToast('Sila masukkan nombor telefon untuk ujian.');
-  if (!WHATSAPP_TOKEN) return showToast('Sila simpan token Fonnte dahulu.');
+  if (!WHATSAPP_ENABLED()) return showToast('Sila simpan token Fonnte dahulu.');
   await window.sendWhatsApp(phone, `✅ *Ujian Notifikasi KSB Leave Apply*\n\nSistem notifikasi WhatsApp berfungsi dengan baik.\n\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`);
   showToast('Mesej ujian telah dihantar ke ' + phone);
 };
@@ -3876,12 +3898,15 @@ async function initData() {
   // Load WhatsApp token dari Firestore — supaya semua device guna token yang sama
   try {
     const waSnap = await getDoc(doc(db, 'system_config', 'whatsapp'));
-    if (waSnap.exists() && waSnap.data().token) {
-      WHATSAPP_TOKEN = waSnap.data().token;
-      localStorage.setItem('ksb_wa_token', WHATSAPP_TOKEN);
+    if (waSnap.exists()) {
+      const cfg = waSnap.data();
+      for (const [zone, field] of Object.entries(WA_TOKEN_FIELDS)) {
+        if (cfg[field]) WA_TOKENS[zone] = cfg[field];
+      }
+      if (cfg.token) localStorage.setItem('ksb_wa_token', cfg.token);
     }
   } catch(e) { console.warn('WA token load failed:', e); }
-  refreshWADevice(); // isi WHATSAPP_DEVICE untuk guard self-send (fire-and-forget)
+  refreshWADevice(); // isi WA_DEVICES untuk guard self-send (fire-and-forget)
 
   // Load policy content — anak syarikat guna polisi syarikat sendiri, bukan polisi klinik.
   const _isSub = window.isSubsidiaryUser(user);
@@ -8149,16 +8174,17 @@ function renderView() {
             <div class="glass-card fade-in" style="padding:2rem;max-width:600px;margin-bottom:2rem;">
                 <div style="margin-bottom:1.5rem;background:rgba(37,211,102,0.1);border-left:4px solid #25d366;padding:1.25rem;border-radius:4px;">
                     <h4 style="color:#25d366;margin-bottom:0.4rem;font-size:0.95rem;">Integration Status: Fonnte.com</h4>
-                    <p style="font-size:0.75rem;color:var(--text-muted);line-height:1.5;">Nombor penghantar: <strong>${WHATSAPP_SENDER}</strong></p>
+                    <p style="font-size:0.75rem;color:var(--text-muted);line-height:1.5;">Satu nombor penghantar per zon, dipilih ikut zon penerima. Zon tanpa token guna nombor Pahang.</p>
                 </div>
+                ${Object.keys(WA_TOKEN_FIELDS).map(zone => `
                 <div class="form-group">
-                    <label style="font-size:0.75rem;text-transform:uppercase;font-weight:700;color:var(--text-muted);letter-spacing:1px;">Fonnte API Token</label>
+                    <label style="font-size:0.75rem;text-transform:uppercase;font-weight:700;color:var(--text-muted);letter-spacing:1px;">Token Fonnte — ${WA_ZONE_LABELS[zone]}</label>
                     <div style="display:flex;gap:0.75rem;margin-top:0.5rem;">
-                        <input type="password" id="wa-token-input" class="neu-inset" value="${WHATSAPP_TOKEN}" placeholder="Masukkan API Token dari Fonnte..." style="flex:1;">
-                        <button class="btn-primary" onclick="window.saveWAToken(document.getElementById('wa-token-input').value)" style="width:auto;padding:0.75rem 1.5rem;">Save Token</button>
+                        <input type="password" id="wa-token-${zone}" class="neu-inset" value="${WA_TOKENS[zone]}" placeholder="${zone === 'pahang' ? 'Masukkan API Token dari Fonnte...' : 'Kosong = guna nombor Pahang'}" style="flex:1;">
+                        <button class="btn-primary" onclick="window.saveWAToken('${zone}', document.getElementById('wa-token-${zone}').value)" style="width:auto;padding:0.75rem 1.5rem;">Save</button>
                     </div>
-                    <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.4rem;">Token disimpan secara lokal pada device ini.</div>
-                </div>
+                    <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.4rem;">Penghantar: <strong>${WA_DEVICES[zone] || (WA_TOKENS[zone] ? '…' : (zone === 'pahang' ? WHATSAPP_SENDER : 'guna Pahang'))}</strong></div>
+                </div>`).join('')}
                 <div style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid rgba(163,177,198,0.25);">
                     <h4 style="font-size:0.85rem;margin-bottom:0.75rem;">Test Notification</h4>
                     <div style="display:flex;gap:0.75rem;">

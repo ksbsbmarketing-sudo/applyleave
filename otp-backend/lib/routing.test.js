@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ROUTING_DEFAULTS, getStaffGroup, shouldSkipP1, getRoutingP1Approvers, mergeRoutingConfig, scopeStateOfBranch, isP1OnlyHR,
+  ROUTING_DEFAULTS, getStaffGroup, shouldSkipP1, getRoutingP1Approvers, mergeRoutingConfig, scopeStateOfBranch, isP1OnlyHR, waZoneOf,
 } from "./routing.js";
 
 const BALOK_HQ = "Klinik Syed Badaruddin Balok (HQ)";
@@ -315,4 +315,14 @@ test("KSB Pharma P1 is the HR flagged approvalStage p1, not the final HR", () =>
   assert.deepEqual(p1.map((s) => s.ic), ["S"]);
   // Siti's own leave skips P1 (HR in KSB Pharma) → straight to Syarifah.
   assert.equal(shouldSkipP1(siti), true);
+});
+
+test("waZoneOf picks the WhatsApp sender zone from the recipient", () => {
+  assert.equal(waZoneOf({ branch: "KSB Pharma Sdn. Bhd.", role: "staff" }, branches), "pharma");
+  assert.equal(waZoneOf({ branch: "KSB Pharma Sdn. Bhd.", role: "hr", hrState: "KSB Pharma" }, branches), "pharma");
+  assert.equal(waZoneOf({ branch: "Klinik Syed Badaruddin Kemaman", role: "staff" }, branches), "terengganu");
+  assert.equal(waZoneOf({ branch: BALOK_HQ, role: "hr", hrState: "Terengganu" }, branches), "terengganu");
+  assert.equal(waZoneOf({ branch: "Klinik Syed Badaruddin Utama", role: "staff" }, branches), "pahang");
+  assert.equal(waZoneOf({ branch: "Klinik Syed Badaruddin Kemaman", role: "admin" }, branches), "pahang");
+  assert.equal(waZoneOf(null, branches), "pahang");
 });

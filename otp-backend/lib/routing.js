@@ -58,6 +58,15 @@ export function scopeStateOfBranch(branchName, branches) {
   return (b && b.state) ? b.state : null;
 }
 
+// WhatsApp sender zone for a recipient: one Fonnte device per zone, picked by the
+// RECIPIENT. Admin/HQ and unknown recipients go through Pahang. Mirrors waZoneOf in src/main.js.
+export function waZoneOf(recipient, branches) {
+  if (!recipient || ["admin", "super_admin"].includes(recipient.role)) return "pahang";
+  if (OWN_HR_ZONE[recipient.branch]) return "pharma";
+  if (recipient.role === "hr") return recipient.hrState === "Terengganu" ? "terengganu" : "pahang";
+  return scopeStateOfBranch(recipient.branch, branches) === "Terengganu" ? "terengganu" : "pahang";
+}
+
 // An HR of a subsidiary (own HR zone) flagged approvalStage "p1": full HR access for
 // that company in the app, but in approvals only Peringkat 1. Mirrors window.isP1OnlyHR.
 export function isP1OnlyHR(s) {
