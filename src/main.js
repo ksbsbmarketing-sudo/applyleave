@@ -3206,7 +3206,7 @@ window.generateBalanceReport = function(rows, branchName, leaveType, year) {
       </thead>
       <tbody>
         ${rows.map((r,i) => {
-          const bal = r.entitlement - r.totalUsed;
+          const bal = r.balance;
           const balPrint = Math.max(bal, 0);
           return `<tr style="border-bottom:1px solid #e2e8f0;background:${i%2===0?'#fff':'#faf5ff'};">
             <td style="padding:5px 8px;font-weight:700;font-size:9px;">${r.name}</td>
@@ -3227,7 +3227,7 @@ window.generateBalanceReport = function(rows, branchName, leaveType, year) {
           }).join('')}
           <td style="padding:6px 6px;text-align:center;font-weight:800;color:#7c3aed;">${rows.reduce((s,r)=>s+r.totalUsed,0).toFixed(1)}</td>
           <td style="padding:6px 6px;text-align:center;font-weight:800;">${rows.reduce((s,r)=>s+r.entitlement,0)}</td>
-          <td style="padding:6px 6px;text-align:center;font-weight:800;color:#059669;">${rows.reduce((s,r)=>s+(r.entitlement-r.totalUsed),0).toFixed(1)}</td>
+          <td style="padding:6px 6px;text-align:center;font-weight:800;color:#059669;">${rows.reduce((s,r)=>s+r.balance,0).toFixed(1)}</td>
         </tr>
       </tfoot>
     </table>
@@ -9296,7 +9296,9 @@ function renderView() {
                 branch: s.branch,
                 monthlyUsed,
                 totalUsed: stats.used,
-                entitlement: stats.ent
+                entitlement: stats.ent,
+                // Baki ikut Formula B penuh (Guna Sebelum Sistem, Pelarasan HR, limpahan EL/EMG) — sama dengan Management Hub
+                balance: stats.bal
               };
             }).filter(r => r.totalUsed > 0 || staffPool.find(s=>s.ic===r.ic));
 
@@ -9312,6 +9314,7 @@ function renderView() {
 
             const grandTotalUsed = balanceRows.reduce((s,r)=>s+r.totalUsed,0);
             const grandEntitlement = balanceRows.reduce((s,r)=>s+r.entitlement,0);
+            const grandBalance = balanceRows.reduce((s,r)=>s+r.balance,0);
             const monthlyGrandTotal = Array(12).fill(0).map((_,i)=>balanceRows.reduce((s,r)=>s+(r.monthlyUsed[i]||0),0));
 
             return `
@@ -9344,7 +9347,7 @@ function renderView() {
               </div>
               <div class="glass-card" style="padding:1rem 1.25rem;background:linear-gradient(135deg,rgba(5,150,105,0.1),rgba(16,185,129,0.05));border:1px solid rgba(5,150,105,0.2);">
                 <div style="font-size:0.65rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#059669;margin-bottom:0.4rem;">Jumlah Baki</div>
-                <div style="font-size:2rem;font-weight:800;color:#059669;line-height:1;">${(grandEntitlement - grandTotalUsed).toFixed(1)}</div>
+                <div style="font-size:2rem;font-weight:800;color:#059669;line-height:1;">${grandBalance.toFixed(1)}</div>
               </div>
             </div>
 
@@ -9397,7 +9400,7 @@ function renderView() {
                             </td>
                           </tr>`;
                         }
-                        const bal = r.entitlement - r.totalUsed;
+                        const bal = r.balance;
                         return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
                           <td style="padding:0.85rem 1rem;">
                             <div style="font-weight:700;font-size:0.8rem;">${r.name}</div>
@@ -9418,7 +9421,7 @@ function renderView() {
                       ${monthlyGrandTotal.map(t=>`<td style="padding:0.85rem 0.5rem;text-align:center;font-weight:800;font-size:0.78rem;color:${t>0?'#7c3aed':'var(--text-muted)'};">${t>0?t.toFixed(1):'-'}</td>`).join('')}
                       <td style="padding:0.85rem 1rem;text-align:center;font-weight:800;color:#dc2626;">${grandTotalUsed.toFixed(1)}</td>
                       <td style="padding:0.85rem 1rem;text-align:center;font-weight:800;color:var(--text-muted);">${grandEntitlement}</td>
-                      <td style="padding:0.85rem 1rem;text-align:center;font-weight:800;color:#059669;">${(grandEntitlement-grandTotalUsed).toFixed(1)}</td>
+                      <td style="padding:0.85rem 1rem;text-align:center;font-weight:800;color:#059669;">${grandBalance.toFixed(1)}</td>
                     </tr>
                   </tfoot>` : ''}
                 </table>
