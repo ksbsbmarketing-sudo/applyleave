@@ -2509,7 +2509,7 @@ let leaveTestMode = false;   // suis "Mod Test" pada Borang Cuti
 let testCtx = null;
 const canUseTestMode = u => !!u && ['super_admin', 'admin'].includes(u.role);
 // Cari rekod cuti mengikut id — rekod sebenar dahulu, kemudian rekod test.
-const findLeaveRecord = id => findLeaveRecord(id) || testLeaveRecords.find(r => r.id === id);
+const findLeaveRecord = id => leaveRecords.find(r => r.id === id) || testLeaveRecords.find(r => r.id === id);
 // false sehingga snapshot pertama `leaves` sampai — dashboard tunjuk skeleton,
 // bukan angka 0 yang mengelirukan. Ralat/timeout juga set true supaya tidak tersekat.
 let leavesLoaded = false;
