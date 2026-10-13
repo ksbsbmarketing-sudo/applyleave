@@ -22,18 +22,20 @@ test('ids are unique', () => {
 });
 
 test('the three renamed types read as agreed', () => {
-  assert.strictEqual(leaveTypeName('EL'), 'Cuti Ehsan');
-  assert.strictEqual(leaveTypeName('EL_EMG'), 'Cuti Kecemasan');
+  assert.strictEqual(leaveTypeName('EL'), 'Cuti Ehsan (CL)');
+  assert.strictEqual(leaveTypeName('EL_EMG'), 'Cuti Kecemasan (EL)');
+  assert.strictEqual(leaveTypeName('UP'), 'Unpaid Leave (UPL)');
   assert.strictEqual(leaveTypeName('ML_PL'), 'Cuti Paterniti (PL)');
 });
 
 test('short codes never show the raw storage code', () => {
-  assert.strictEqual(leaveTypeShort('EL'), 'EHSAN');
-  assert.strictEqual(leaveTypeShort('EL_EMG'), 'EMG');
+  assert.strictEqual(leaveTypeShort('EL'), 'CL');    // storage EL = Cuti Ehsan (Compassionate)
+  assert.strictEqual(leaveTypeShort('EL_EMG'), 'EL'); // storage EL_EMG = Cuti Kecemasan (Emergency)
+  assert.strictEqual(leaveTypeShort('UP'), 'UPL');
   assert.strictEqual(leaveTypeShort('ML_PL'), 'PL');
 });
 
-test('short codes stay unique — EMG exists so EL_EMG cannot collide with EL', () => {
+test('short codes stay unique — EL_EMG shows EL only because storage EL shows CL', () => {
   const shorts = LEAVE_CATEGORIES.map(c => leaveTypeShort(c.id));
   assert.strictEqual(new Set(shorts).size, shorts.length,
     `duplicate short code in ${shorts.join(',')}`);
@@ -71,7 +73,7 @@ test('the exported maps cannot be mutated by a caller', () => {
   try { LEAVE_TYPE_SHORT.EL_EMG = 'HACKED'; } catch { /* frozen throws in strict mode */ }
   assert.strictEqual(LEAVE_TYPE_SHORT.EL_EMG, before);
   try { LEAVE_TYPE_NAMES.EL = 'HACKED'; } catch { /* frozen */ }
-  assert.strictEqual(LEAVE_TYPE_NAMES.EL, 'Cuti Ehsan');
+  assert.strictEqual(LEAVE_TYPE_NAMES.EL, 'Cuti Ehsan (CL)');
 });
 
 // ── Proof requirement ─────────────────────────────────────────────────

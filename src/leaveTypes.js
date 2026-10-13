@@ -9,9 +9,9 @@
 export const LEAVE_CATEGORIES = Object.freeze([
   { id: 'AL',     name: 'Annual Leave (AL)',   entitlement: 14, icon: 'icon-al',   color: '#3b82f6', description: 'Cuti Tahunan mengikut pro-rata bulan bekerja.' },
   { id: 'MC',     name: 'Medical Leave (MC)',  entitlement: 14, icon: 'icon-mc',   color: '#10b981', description: 'Cuti Sakit dengan Sijil Sakit (MC) yang sah.' },
-  { id: 'EL',     name: 'Cuti Ehsan',          entitlement: 3,  icon: 'icon-el',   color: '#f59e0b', description: 'Cuti Ehsan — kematian keluarga terdekat.' },
-  { id: 'EL_EMG', name: 'Cuti Kecemasan',      entitlement: 0,  icon: 'icon-emg',  color: '#ef4444', description: 'Cuti Kecemasan Am (bukan kematian).' },
-  { id: 'UP',     name: 'Unpaid Leave (UL)',   entitlement: 0,  icon: 'icon-ul',   color: '#94a3b8', description: 'Cuti Tanpa Gaji (Setelah baki AL habis digunakan).' },
+  { id: 'EL',     name: 'Cuti Ehsan (CL)',     entitlement: 3,  icon: 'icon-el',   color: '#f59e0b', description: 'Cuti Ehsan — kematian keluarga terdekat.' },
+  { id: 'EL_EMG', name: 'Cuti Kecemasan (EL)', entitlement: 0,  icon: 'icon-emg',  color: '#ef4444', description: 'Cuti Kecemasan Am (bukan kematian).' },
+  { id: 'UP',     name: 'Unpaid Leave (UPL)',  entitlement: 0,  icon: 'icon-ul',   color: '#94a3b8', description: 'Cuti Tanpa Gaji (Setelah baki AL habis digunakan).' },
   { id: 'HL',     name: 'Hospitalization (HL)', entitlement: 60, icon: 'icon-hl',  color: '#06b6d4', description: 'Cuti Wad/Hospitalisasi (Maksimum 60 hari).' },
   { id: 'ML',     name: 'Cuti Bersalin',       entitlement: 98, icon: 'icon-ml',   color: '#ec4899', description: 'Cuti Bersalin (98 hari) — kakitangan wanita.' },
   { id: 'ML_PL',  name: 'Cuti Paterniti (PL)', entitlement: 7,  icon: 'icon-mlpl', color: '#6366f1', description: 'Cuti Bapa Isteri Bersalin (7 hari) — kakitangan lelaki.' },
@@ -33,13 +33,15 @@ export function leaveTypeName(code) {
 }
 
 // Short codes for table headers and summary chips, where the full name does not fit.
-// EL becomes EHSAN because the bare letters read as "Emergency Leave" — EL is Cuti Ehsan
-// (bereavement); the general-emergency type is EL_EMG, shown as EMG. Codes absent here
+// The DISPLAY abbreviations follow HR's official terms, which do NOT match the storage
+// ids: storage EL is Cuti Ehsan (Compassionate Leave → CL), storage EL_EMG is Cuti
+// Kecemasan (Emergency Leave → EL), storage UP is Unpaid Leave (UPL). Codes absent here
 // are shown as-is.
 export const LEAVE_TYPE_SHORT = Object.freeze({
-  EL:     'EHSAN',
-  EL_EMG: 'EMG',
+  EL:     'CL',
+  EL_EMG: 'EL',
   ML_PL:  'PL',
+  UP:     'UPL',
 });
 
 export function leaveTypeShort(code) {

@@ -657,14 +657,13 @@ let policyContent = {
     { code:'AL',  name:'Annual Leave (Cuti Tahunan)' },
     { code:'MC',  name:'Medical Leave (Cuti Sakit)' },
     { code:'CME', name:'Continuing Medical Education' },
-    { code:'EL',  name:'Compassionate Leave (Cuti Ehsan)' },
-    { code:'EMG', name:'Emergency Leave (Cuti Kecemasan)' },
+    { code:'EL',  name:'Emergency Leave (Cuti Kecemasan)' },
+    { code:'CL',  name:'Compassionate Leave (Cuti Ehsan)' },
     { code:'HL',  name:'Hospitalization Leave' },
     { code:'ML',  name:'Maternity Leave (Cuti Bersalin)' },
     { code:'PL',  name:'Paternity Leave (Cuti Isteri Bersalin)' },
-    { code:'BL',  name:'Compassionate Leave (Cuti Ihsan)' },
     { code:'RL',  name:'Replacement Leave (Cuti Ganti)' },
-    { code:'UL',  name:'Unpaid Leave (Cuti Tanpa Gaji)' }
+    { code:'UPL', name:'Unpaid Leave (Cuti Tanpa Gaji)' }
   ],
   entitlementPahang:     [{ period:'Sehingga 5 tahun', days:'16 Hari' }, { period:'Lebih 5 Tahun ke atas', days:'20 Hari' }],
   entitlementTerengganu: [{ period:'Semua Tempoh', days:'16 Hari' }],
@@ -696,13 +695,13 @@ const defaultCompanyPolicy = () => ({
   glossary: [
     { code:'AL',  name:'Annual Leave (Cuti Tahunan)' },
     { code:'MC',  name:'Medical Leave (Cuti Sakit)' },
-    { code:'EL',  name:'Compassionate Leave (Cuti Ehsan)' },
-    { code:'EMG', name:'Emergency Leave (Cuti Kecemasan)' },
+    { code:'EL',  name:'Emergency Leave (Cuti Kecemasan)' },
+    { code:'CL',  name:'Compassionate Leave (Cuti Ehsan)' },
     { code:'HL',  name:'Hospitalization Leave' },
     { code:'ML',  name:'Maternity Leave (Cuti Bersalin)' },
     { code:'PL',  name:'Paternity Leave (Cuti Isteri Bersalin)' },
     { code:'RL',  name:'Replacement Leave (Cuti Ganti)' },
-    { code:'UL',  name:'Unpaid Leave (Cuti Tanpa Gaji)' }
+    { code:'UPL', name:'Unpaid Leave (Cuti Tanpa Gaji)' }
   ],
   entitlementAL: [{ period:'Sehingga 5 tahun', days:'16 Hari' }, { period:'Lebih 5 Tahun ke atas', days:'20 Hari' }],
   entitlementMC: [{ period:'Kurang dari 2 tahun', days:'14 Hari' }, { period:'2 tahun hingga kurang 5 tahun', days:'18 Hari' }, { period:'5 tahun ke atas', days:'22 Hari' }],
@@ -847,7 +846,7 @@ const HELP_FAQ = [
     a:'Cuti Tahunan (AL) mesti dimohon awal sebelum tarikh cuti: <strong>3 hari</strong> untuk Staff Admin &amp; Staff Operasi di cawangan, <strong>7 hari</strong> untuk Doktor &amp; Staff Operasi di Balok (HQ). <strong>MC, Cuti Kecemasan, Cuti Ehsan & Cuti Hospitalisasi (HL) dikecualikan</strong> (boleh hari ini/ke belakang) — tetapi wajib pilih pelulus & muat naik bukti.' },
   { id:'balance-insufficient', cat:'Masalah', keywords:['baki tak cukup','unpaid','split','ul','kurang baki'],
     q:'Baki cuti tak cukup / jadi Unpaid Leave',
-    a:'Jika hari AL yang dimohon <strong>melebihi baki</strong> anda, sistem akan <strong>bahagikan automatik</strong>: sebahagian sebagai AL (baki yang ada) dan selebihnya sebagai <strong>Unpaid Leave (UL)</strong>. Notis akan dipaparkan semasa hantar.' },
+    a:'Jika hari AL yang dimohon <strong>melebihi baki</strong> anda, sistem akan <strong>bahagikan automatik</strong>: sebahagian sebagai AL (baki yang ada) dan selebihnya sebagai <strong>Unpaid Leave (UPL)</strong>. Notis akan dipaparkan semasa hantar.' },
   { id:'half-day', cat:'Masalah', keywords:['separuh hari','half day','setengah hari'],
     q:'Macam mana mohon cuti separuh hari?',
     a:'Pada borang cuti, tanda kotak <strong>Half Day</strong>. Tempoh akan ditolak <strong>0.5 hari</strong> dari baki.' },
@@ -2556,7 +2555,7 @@ window.printLeave = function(id) {
             <span>[ ${record.type === 'RL' ? 'X' : ' '} ] CUTI GANTI</span>
             <span>[ ${record.type === 'ML' ? 'X' : ' '} ] CUTI BERSALIN</span>
             <span>[ ${record.type === 'EL' ? 'X' : ' '} ] CUTI EHSAN</span>
-            <span>[ ${record.type === 'UL' ? 'X' : ' '} ] TANPA GAJI</span>
+            <span>[ ${record.type === 'UP' ? 'X' : ' '} ] TANPA GAJI</span>
         </div>
         
         <table style="width: 100%; border-collapse: separate; border-spacing: 0 10px; font-size: 12px; font-weight: bold;">
@@ -3623,7 +3622,7 @@ window.generateAttendanceReport = function() {
             <th style="padding:7px 8px;text-align:left;font-size:10px;color:#64748b;">Nama</th>
             <th style="padding:7px 6px;text-align:center;font-size:10px;color:#3b82f6;">AL</th>
             <th style="padding:7px 6px;text-align:center;font-size:10px;color:#059669;">MC</th>
-            <th style="padding:7px 6px;text-align:center;font-size:10px;color:#d97706;">EHSAN+KEC</th>
+            <th style="padding:7px 6px;text-align:center;font-size:10px;color:#d97706;">CL+EL</th>
             <th style="padding:7px 6px;text-align:center;font-size:10px;color:#64748b;">UPL</th>
             <th style="padding:7px 6px;text-align:center;font-size:10px;color:${lastColor};">${lastHdr}</th>
             <th style="padding:7px 8px;text-align:center;font-size:10px;color:#1d4ed8;border-left:1px solid #e2e8f0;">Baki Cuti</th>
@@ -5482,8 +5481,8 @@ function renderDashboard() {
           if (diffDays > currentBal) {
               const unpaidDays = diffDays - Math.max(0, currentBal);
               const paidDays = diffDays - unpaidDays;
-              leaveBreakdown = "\n*SPLIT LEAVE DETECTED*\nEarned AL Used: " + paidDays + " days\nUnpaid Leave (UL): " + unpaidDays + " days\n(Automatic split due to insufficient earned prorate)";
-              showToast("Notis: Baki prorate (Earned) anda ialah " + currentBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan dibahagikan kepada " + paidDays + " hari AL dan " + unpaidDays + " hari Unpaid Leave (UL).");
+              leaveBreakdown = "\n*SPLIT LEAVE DETECTED*\nEarned AL Used: " + paidDays + " days\nUnpaid Leave (UPL): " + unpaidDays + " days\n(Automatic split due to insufficient earned prorate)";
+              showToast("Notis: Baki prorate (Earned) anda ialah " + currentBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan dibahagikan kepada " + paidDays + " hari AL dan " + unpaidDays + " hari Unpaid Leave (UPL).");
           }
       }
       if (selectedLeaveType === 'EL') {
@@ -5493,7 +5492,7 @@ function renderDashboard() {
           const toAL = diffDays - fromEL;
           if (toAL > 0) {
               const alBal = window.getLeaveStats(user, 'AL').bal;
-              leaveBreakdown = "\n*EL OVERFLOW*\nEL Bucket Used: " + fromEL.toFixed(1) + " days\nAnnual Leave (AL) Used: " + toAL.toFixed(1) + " days\n(EL bucket exhausted → overflow deducted from AL)";
+              leaveBreakdown = "\n*CL OVERFLOW*\nCL (Cuti Ehsan) Bucket Used: " + fromEL.toFixed(1) + " days\nAnnual Leave (AL) Used: " + toAL.toFixed(1) + " days\n(CL bucket exhausted → overflow deducted from AL)";
               let elMsg = "Notis: Baki Cuti Ehsan anda tinggal " + elBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan ditolak " + fromEL.toFixed(1) + " hari dari Cuti Ehsan dan " + toAL.toFixed(1) + " hari dari Cuti Tahunan (AL).";
               if (toAL > alBal) {
                   elMsg += "\n\n⚠️ Baki AL juga tidak mencukupi (baki AL: " + alBal.toFixed(2) + " hari).";
@@ -5510,7 +5509,7 @@ function renderDashboard() {
           const toAL = diffDays - fromEMG;
           if (toAL > 0) {
               const alBal = window.getLeaveStats(user, 'AL').bal;
-              leaveBreakdown = "\n*EMG → AL*\n" + (fromEMG > 0 ? "EMG Bucket Used: " + fromEMG.toFixed(1) + " days\n" : "")
+              leaveBreakdown = "\n*EL (Cuti Kecemasan) → AL*\n" + (fromEMG > 0 ? "EL Bucket Used: " + fromEMG.toFixed(1) + " days\n" : "")
                   + "Annual Leave (AL) Used: " + toAL.toFixed(1) + " days\n(Cuti Kecemasan is deducted from Annual Leave)";
               let emgMsg = fromEMG > 0
                   ? "Notis: Baki Cuti Kecemasan anda tinggal " + emgBal.toFixed(2) + " hari. Permohonan " + diffDays + " hari akan ditolak " + fromEMG.toFixed(1) + " hari dari Cuti Kecemasan dan " + toAL.toFixed(1) + " hari dari Cuti Tahunan (AL)."
@@ -6168,7 +6167,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
         ${[
           {type:'AL',    label:'Annual Leave',    short:'AL',  grad:'linear-gradient(135deg,#3b82f6,#6366f1)', glow:'rgba(59,130,246,0.3)',  icon:'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'},
           {type:'MC',    label:'Medical Leave',   short:'MC',  grad:'linear-gradient(135deg,#059669,#10b981)', glow:'rgba(16,185,129,0.3)',  icon:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'},
-          {type:'EL_EMG',label:'Cuti Kecemasan', short:'EMG', grad:'linear-gradient(135deg,#dc2626,#f97316)', glow:'rgba(239,68,68,0.3)',   icon:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'},
+          {type:'EL_EMG',label:'Cuti Kecemasan', short:'EL',  grad:'linear-gradient(135deg,#dc2626,#f97316)', glow:'rgba(239,68,68,0.3)',   icon:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'},
         ].map(cat => {
           const ranked = rankLeaveUsers(filteredRecords, cat.type, analyticsCatFilter);
           const top3 = ranked.slice(0, 3);
@@ -8920,7 +8919,7 @@ function renderView() {
                 </div>
                 <div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;justify-content:flex-end;padding:0.3rem 0.55rem;background:rgba(163,177,198,0.08);border:1px solid rgba(163,177,198,0.18);border-radius:10px;">
                   <span style="font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-muted);white-space:nowrap;">Cetak Ikut Jenis</span>
-                  ${['AL','MC','EL','EL_EMG','HL','ML','ML_PL','RL','UP'].map(t => { const c=LEAVE_TYPE_COLOR[t]; const lbl={EL_EMG:'KECEMASAN'}[t]||leaveTypeShort(t); return `<button onclick="window.printLeaveTypeReport('${t}')" title="Cetak Laporan ${lbl}" class="neu-btn" style="background:${c}14;border:1px solid ${c}55;color:${c};font-weight:700;padding:0.3rem 0.6rem;font-size:0.68rem;flex:none;white-space:nowrap;border-radius:7px;">${lbl}</button>`; }).join('')}
+                  ${['AL','MC','EL','EL_EMG','HL','ML','ML_PL','RL','UP'].map(t => { const c=LEAVE_TYPE_COLOR[t]; const lbl=leaveTypeShort(t); return `<button onclick="window.printLeaveTypeReport('${t}')" title="Cetak Laporan ${lbl}" class="neu-btn" style="background:${c}14;border:1px solid ${c}55;color:${c};font-weight:700;padding:0.3rem 0.6rem;font-size:0.68rem;flex:none;white-space:nowrap;border-radius:7px;">${lbl}</button>`; }).join('')}
                 </div>
               </div>` : '')
             }
@@ -9531,7 +9530,7 @@ function renderView() {
                           <th style="padding:0.55rem 0.75rem;text-align:left;font-size:0.6rem;font-weight:700;color:var(--text-muted);min-width:180px;">Nama</th>
                           <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:#3b82f6;min-width:42px;" title="Annual Leave">AL</th>
                           <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:#10b981;min-width:42px;" title="Medical Certificate">MC</th>
-                          <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:#f59e0b;min-width:42px;" title="Cuti Ehsan + Cuti Kecemasan">EHSAN+KEC</th>
+                          <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:#f59e0b;min-width:42px;" title="Cuti Ehsan + Cuti Kecemasan">CL+EL</th>
                           <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:#94a3b8;min-width:42px;" title="Unpaid Leave">UPL</th>
                           <th style="padding:0.55rem 0.5rem;text-align:center;font-size:0.63rem;font-weight:700;color:${lastColor};min-width:42px;" title="${isDoctor?'CME + Cuti Ganti (RL)':'Hospitalization/Bersalin/Lain-lain'}">${lastLabel}</th>
                           <th style="padding:0.55rem 0.75rem;text-align:center;font-size:0.6rem;font-weight:700;color:#3b82f6;border-left:1px solid rgba(163,177,198,0.2);min-width:72px;">Baki Cuti</th>
@@ -10816,13 +10815,13 @@ function renderView() {
                        </div>
 
                        <div class="neu-panel" style="border-left: 4px solid var(--danger); padding-left: 1.5rem;">
-                          <h3 style="font-size: 1rem; color: var(--danger); margin-bottom: 0.5rem;">3. Perbandingan: Cuti Kecemasan (EMG) vs Cuti Ehsan (EL)</h3>
+                          <h3 style="font-size: 1rem; color: var(--danger); margin-bottom: 0.5rem;">3. Perbandingan: Cuti Kecemasan (EL) vs Cuti Ehsan (CL)</h3>
                           <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted); margin-top: 1rem;">
                             <thead>
                                 <tr style="background: rgba(155,44,44,0.07); color: var(--text);">
                                     <th style="padding: 0.5rem; border: 1px solid var(--border);">Aspek</th>
-                                    <th style="padding: 0.5rem; border: 1px solid var(--border); color: var(--danger);">Cuti Kecemasan (EMG)</th>
-                                    <th style="padding: 0.5rem; border: 1px solid var(--border); color: var(--secondary);">Cuti Ehsan (Compassionate)</th>
+                                    <th style="padding: 0.5rem; border: 1px solid var(--border); color: var(--danger);">Cuti Kecemasan (EL)</th>
+                                    <th style="padding: 0.5rem; border: 1px solid var(--border); color: var(--secondary);">Cuti Ehsan (CL)</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -11353,11 +11352,11 @@ function renderModal() {
                     data-used membawa hari EMG diluluskan tahun ini — EMG bukan jenis
                     Formula B jadi tiada medan guna; _recalcLeaveBalance('al') membacanya
                     untuk tolak hari EMG dari baki AL. Biar 0 → setiap hari EMG tolak AL. -->
-               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">EMG &mdash; Cuti Kecemasan</label>
+               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">EL &mdash; Cuti Kecemasan</label>
                <input type="number" id="ent-EL_EMG" class="neu-inset" data-used="${_modalEmgUsed}" oninput="window._recalcLeaveBalance('al')" value="${staff.ent_EL_EMG !== undefined ? staff.ent_EL_EMG : 0}">
             </div>
             <div style="display: flex; flex-direction: column;">
-               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">UL &mdash; Tanpa Gaji</label>
+               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">UPL &mdash; Tanpa Gaji</label>
                <input type="number" id="ent-UP" class="neu-inset" value="${staff.ent_UP !== undefined ? staff.ent_UP : 0}">
             </div>
           </div>
