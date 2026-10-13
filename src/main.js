@@ -284,6 +284,14 @@ function waZoneOf(recipient) {
 
 window.sendWhatsApp = async function(toPhone, message, throwOnError = false) {
   if (!WHATSAPP_ENABLED() || !toPhone) return;
+  // Mod Test: semua mesej → penguji sahaja. Ditentukan SEGERA (sebelum await pertama)
+  // kerana kebanyakan pemanggil tidak menunggu (forEach tanpa await).
+  if (testCtx) {
+    const _orig = staffList.find(s => (s.phone || '').replace(/\D/g, '').replace(/^0/, '6') === toPhone.replace(/\D/g, '').replace(/^0/, '6'));
+    if (!testCtx.phone) return;   // penguji tiada nombor — langkau, jangan sesekali hantar kepada staf sebenar
+    message = `🧪 *[UJIAN SISTEM — CUTI TEST]*\n_Mesej ini asalnya untuk: ${_orig ? _orig.name : toPhone}_\n\n` + message;
+    toPhone = testCtx.phone;
+  }
   let phone = toPhone.replace(/\D/g, '');
   if (phone.startsWith('0')) phone = '6' + phone;
 
@@ -1445,6 +1453,54 @@ window.handleFileSelect = function(input, displayId, noticeId) {
     }
 };
 
+// Panel "Mod Test" di atas Borang Cuti — super_admin / admin sahaja.
+// Suis menanda permohonan seterusnya sebagai isTest; senarai di bawahnya memaparkan
+// semua cuti test dengan butang yang memanggil fungsi SEBENAR (finalizeLeave,
+// rejectLeave, printLeave, deleteLeave) — jadi aliran yang diuji ialah aliran sebenar.
+function renderTestModePanel() {
+  const escT = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const on = leaveTestMode;
+  const phoneNote = user.phone
+    ? `WhatsApp test dihantar ke nombor anda: <strong>${escT(user.phone)}</strong>`
+    : '<strong style="color:#b45309;">Akaun anda tiada nombor telefon — WhatsApp test akan DILANGKAU</strong> (Inbox tetap berfungsi).';
+  const rows = testLeaveRecords.map(r => {
+    const open = !FINAL_LEAVE_STATUSES.includes(r.status);
+    const btn = (label, onclick, cls = '') => `<button type="button" class="neu-btn ${cls}" onclick="${onclick}" style="padding:0.3rem 0.65rem;font-size:0.7rem;font-weight:700;flex:none;">${label}</button>`;
+    return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:0.6rem;padding:0.6rem 0.75rem;border-radius:10px;background:rgba(255,255,255,0.55);border:1px solid rgba(217,119,6,0.18);">
+        <div style="flex:1;min-width:180px;">
+          <div style="font-size:0.78rem;font-weight:700;">${escT(leaveTypeName(r.type))} — ${escT(r.days)} hari</div>
+          <div style="font-size:0.68rem;color:var(--text-muted);">${escT(r.name)} · ${escT(r.startDate)}${r.endDate && r.endDate !== r.startDate ? ' → ' + escT(r.endDate) : ''}</div>
+        </div>
+        <span>${statusBadge(r.status, { compact: true })}</span>
+        <div style="display:flex;gap:0.35rem;flex-wrap:wrap;">
+          ${open ? btn('Lulus / Sokong', `window.finalizeLeave(${r.id})`, 'is-approve') : ''}
+          ${open ? btn('Tolak', `window.rejectLeave(${r.id})`, 'is-reject') : ''}
+          ${btn('Cetak Borang', `window.printLeave(${r.id})`, 'is-print')}
+          ${btn('Padam', `window.deleteLeave(${r.id})`, 'is-cancel')}
+        </div>
+      </div>`;
+  }).join('');
+  return `
+    <div class="glass-card fade-in" style="margin-bottom:1rem;padding:1rem 1.25rem;border:1.5px dashed ${on ? '#d97706' : 'rgba(217,119,6,0.35)'};background:${on ? 'rgba(251,191,36,0.12)' : 'transparent'};">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:0.85rem;font-weight:800;color:#b45309;">🧪 Mod Test Sistem</div>
+          <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.15rem;">Cuti test tidak dikira dalam baki, laporan, Analisa atau kalendar. Semua WA &amp; Inbox dihala kepada anda sahaja.</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.78rem;font-weight:700;color:${on ? '#b45309' : 'var(--text-muted)'};">
+          <input type="checkbox" ${on ? 'checked' : ''} onchange="window.toggleLeaveTestMode(this.checked)" style="width:18px;height:18px;accent-color:#d97706;cursor:pointer;">
+          ${on ? 'AKTIF — permohonan seterusnya ialah TEST' : 'Hidupkan Mod Test'}
+        </label>
+      </div>
+      ${on ? `<div style="font-size:0.72rem;margin-top:0.6rem;color:var(--text);">${phoneNote}</div>` : ''}
+      ${testLeaveRecords.length ? `<div style="margin-top:0.85rem;">
+        <div style="font-size:0.68rem;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);margin-bottom:0.45rem;">Cuti Test (${testLeaveRecords.length})</div>
+        <div style="display:flex;flex-direction:column;gap:0.45rem;">${rows}</div>
+      </div>` : ''}
+    </div>`;
+}
+window.toggleLeaveTestMode = function(on) { leaveTestMode = !!on && canUseTestMode(user); render(); };
+
 // Kotak muat naik bukti — satu renderer untuk SEMUA jenis cuti yang perlukan
 // dokumen (MC / Ehsan / Kecemasan / CME / HL). Isi kandungan datang dari LEAVE_PROOF
 // dalam leaveTypes.js; jangan tambah blok HTML baharu untuk jenis cuti baharu.
@@ -1483,7 +1539,7 @@ function renderProofSection(code) {
 // (lihat LEAVE_PROOF — MC / Kecemasan / Ehsan / CME / HL). Fail dimuat naik ke Cloudinary dan proofUrl/
 // proofName dikemas kini pada rekod cuti. Berguna untuk rekod lama yang belum ada bukti.
 window.reuploadProof = function(id) {
-  const rec = leaveRecords.find(r => r.id === id);
+  const rec = findLeaveRecord(id);
   if (!rec) return;
   const inp = document.createElement('input');
   inp.type = 'file';
@@ -1513,7 +1569,7 @@ window.reuploadProof = function(id) {
 };
 
 window.updateLocumInfo = function(id, field, value) {
-  const record = leaveRecords.find(r => r.id === id);
+  const record = findLeaveRecord(id);
   if (record) {
     record[field] = value;
     render();
@@ -1524,7 +1580,7 @@ window.toggleLocum2 = function(id) {
   if (showLocum2Set.has(id)) {
     showLocum2Set.delete(id);
     // clear locum2 data when removed
-    const rec = leaveRecords.find(r => r.id === id);
+    const rec = findLeaveRecord(id);
     if (rec) { rec.locum2Name = ''; rec.locum2Phone = ''; rec.locum2Date = ''; rec.locum2TimeStart = ''; rec.locum2TimeEnd = ''; }
   } else {
     showLocum2Set.add(id);
@@ -1643,7 +1699,7 @@ window.printAllLocum = function() {
 };
 
 window.saveLocumEdit = async function(id) {
-  const record = leaveRecords.find(r => r.id === id);
+  const record = findLeaveRecord(id);
   if (!record) return;
   const hasLocum2 = showLocum2Set.has(id) || record.locum2Name;
   if (hasLocum2 && record.locum2Name && (!record.locum2Phone || !record.locum2Date || !record.locum2TimeStart || !record.locum2TimeEnd)) {
@@ -2440,6 +2496,20 @@ window.logSystemActivity = async function(activityDesc, overrideUser) {
 };
 
 let leaveRecords = [];
+// ── Mod Test (super_admin / admin) ────────────────────────────────────
+// Cuti test (isTest: true) disimpan dalam koleksi `leaves` yang sama tetapi
+// DIASINGKAN ke testLeaveRecords semasa snapshot — jadi `leaveRecords` (yang
+// dibaca oleh baki, laporan, Analisa, kalendar, semakan pertindihan) tidak
+// pernah melihatnya. Hanya panel "Cuti Test" di Borang Cuti memaparkannya.
+// Server (otp-backend/api/check-reminders.js) turut melangkau isTest.
+let testLeaveRecords = [];
+let leaveTestMode = false;   // suis "Mod Test" pada Borang Cuti
+// Semasa tindakan ke atas rekod test berjalan, testCtx = { ic, name, phone } penguji:
+// sendWhatsApp & addNotification menghala SEMUA mesej kepada penguji, berlabel [TEST].
+let testCtx = null;
+const canUseTestMode = u => !!u && ['super_admin', 'admin'].includes(u.role);
+// Cari rekod cuti mengikut id — rekod sebenar dahulu, kemudian rekod test.
+const findLeaveRecord = id => findLeaveRecord(id) || testLeaveRecords.find(r => r.id === id);
 // false sehingga snapshot pertama `leaves` sampai — dashboard tunjuk skeleton,
 // bukan angka 0 yang mengelirukan. Ralat/timeout juga set true supaya tidak tersekat.
 let leavesLoaded = false;
@@ -2535,7 +2605,7 @@ window.toggleAllMyRecords = function() {
 };
 
 window.printLeave = function(id) {
-    const record = leaveRecords.find(r => r.id === id);
+    const record = findLeaveRecord(id);
     if (!record) return;
 
     // Kira nilai sebenar dari rekod staf + getLeaveStats (selari dengan Management Hub)
@@ -2582,7 +2652,7 @@ window.printLeave = function(id) {
 
     let printHTML = `
     <div id="print-container" style="font-family: Arial, Helvetica, sans-serif; padding: 40px 44px; color: #1a202c;">
-        ${window.printHeaderHTML({ branch: record.branch, title: 'BORANG PERMOHONAN CUTI' })}
+        ${window.printHeaderHTML({ branch: record.branch, title: record.isTest ? 'BORANG PERMOHONAN CUTI — TEST' : 'BORANG PERMOHONAN CUTI' })}
 
         <div style="position:relative;z-index:1;border:1px solid #e2e8f0;border-radius:4px;padding:12px 14px;margin-bottom:18px;">
             <div style="font-size:8.5px;letter-spacing:1.6px;color:#a0aec0;font-weight:bold;margin-bottom:9px;">JENIS CUTI</div>
@@ -2629,7 +2699,7 @@ window.printLeave = function(id) {
 };
 
 window.editLeave = function(id) {
-    const rec = leaveRecords.find(r => r.id === id);
+    const rec = findLeaveRecord(id);
     if (!rec) return;
     const isAdminEditor = ['admin', 'hr', 'super_admin'].includes(user.role);
     const isOwner = rec.ic === user.ic;
@@ -2645,7 +2715,7 @@ window.editLeave = function(id) {
 // Kira semula bilangan hari (cadangan) bila tarikh diubah dalam modal edit.
 // Nilai boleh ditindih manual selepas ini.
 window.recalcEditLeaveDays = function() {
-    const rec = leaveRecords.find(r => r.id === editingLeaveId);
+    const rec = findLeaveRecord(editingLeaveId);
     if (!rec) return;
     const s = document.querySelector('#el-start')?.value;
     const e = document.querySelector('#el-end')?.value;
@@ -2721,7 +2791,7 @@ function selfHealPendingLeaveDays() {
 // masa depan (cth. butang baharu), WAJIB tambah semakan findOverlappingLeaves
 // dahulu — sama seperti modal edit (#edit-leave-form) sudah buat.
 window.staffEditOwnLeave = async function(id) {
-  const rec = leaveRecords.find(r => r.id === id);
+  const rec = findLeaveRecord(id);
   if (!rec) return;
   if (rec.ic !== user.ic) { showToast('Anda hanya boleh mengubah permohonan anda sendiri.'); return; }
   if (['APPROVED', 'REJECTED', 'CANCELLED'].includes(rec.status)) {
@@ -2789,7 +2859,7 @@ window.deleteLeave = async function(id) {
 };
 
 window.finalizeLeave = async function(id) {
-    const record = leaveRecords.find(r => r.id === id);
+    const record = findLeaveRecord(id);
     if(record) {
         // Kebenaran: hanya pelulus yang menguruskan staf/cawangan ini boleh meluluskan/menyokong.
         // Selari dengan tapisan UI senarai kelulusan dan guard rejectLeave/cancelLeave.
@@ -3007,7 +3077,7 @@ window.finalizeLeave = async function(id) {
 };
 
 window.resendApprovalWA = async function(id) {
-    const record = leaveRecords.find(r => r.id === id);
+    const record = findLeaveRecord(id);
     if (!record) return showToast('Rekod tidak dijumpai.');
     if (record.status !== 'APPROVED') return showToast('Hanya rekod yang sudah DILULUSKAN boleh dihantar semula.');
 
@@ -3028,7 +3098,7 @@ window.resendApprovalWA = async function(id) {
 };
 
 window.cancelLeave = async function(id) {
-    const req = leaveRecords.find(a => a.id === id);
+    const req = findLeaveRecord(id);
     if (!req) return;
 
     const finalRbac = window.effectivePerms(user);
@@ -3062,7 +3132,7 @@ window.cancelLeave = async function(id) {
 };
 
 window.rejectLeave = async function(id) {
-    const record = leaveRecords.find(r => r.id === id);
+    const record = findLeaveRecord(id);
     if (!record) return;
 
     // Kebenaran: hanya pelulus yang menguruskan staf/cawangan ini boleh menolak.
@@ -3094,7 +3164,7 @@ window.rejectLeave = async function(id) {
 };
 
 window.resendLeaveWA = function(id) {
-    const record = leaveRecords.find(r => r.id === id);
+    const record = findLeaveRecord(id);
     if (!record) return;
     const applicant = staffList.find(s => s.ic === record.ic);
     const leaveTypeName = (leaveCategories.find(c => c.id === record.type) || {}).name || record.type;
@@ -4115,10 +4185,12 @@ async function initData() {
   // Real-time Leave Records
   setTimeout(() => { if (!leavesLoaded) { leavesLoaded = true; render(); } }, 10000);
   onSnapshot(subsidiaryScoped('leaves', 'branch'), (snapshot) => {
-    leaveRecords = snapshot.docs.map(doc => ({
+    const _allLeaves = snapshot.docs.map(doc => ({
       ...doc.data(),
       docId: doc.id
     })).sort((a, b) => b.id - a.id);
+    leaveRecords = _allLeaves.filter(r => !r.isTest);
+    testLeaveRecords = _allLeaves.filter(r => r.isTest);
     leavesLoaded = true;
     console.log('Leave records updated from Firestore');
     selfHealPendingLeaveDays();
@@ -5173,6 +5245,12 @@ window.requestNotifPermission = function() {
 // ── Inbox: tambah notifikasi ke Firestore ──
 window.addNotification = async function(recipientIC, type, title, body, leaveId = null) {
   if (!recipientIC) return;
+  if (testCtx) {
+    const _orig = recipientIC === testCtx.ic ? null : staffList.find(s => s.ic === recipientIC);
+    recipientIC = testCtx.ic;
+    title = '🧪 [TEST] ' + title;
+    if (_orig) body = `(Asalnya untuk ${_orig.name}) ${body}`;
+  }
   try {
     const data = { recipientIC, type, title, body, read: false, createdAt: Date.now() };
     if (leaveId) data.leaveId = leaveId;
@@ -5575,6 +5653,8 @@ function renderDashboard() {
       // `finally` di hujung memulihkan butang walau upload/tulisan gagal —
       // jangan tukar kepada pemulihan manual di setiap `return`.
       leaveSubmitting = true;
+      const _isTestSubmit = leaveTestMode && canUseTestMode(user);
+      if (_isTestSubmit) testCtx = { ic: user.ic, name: user.name, phone: user.phone || '' };
       const _submitBtn = leaveForm.querySelector('button[type="submit"]');
       const _submitBtnHTML = _submitBtn ? _submitBtn.innerHTML : '';
       if (_submitBtn) {
@@ -5645,6 +5725,7 @@ function renderDashboard() {
           proofUrl: proofUrl || null,
           proofName: proofName || null
         };
+        if (_isTestSubmit) newRecord.isTest = true;
   
         try {
             await setDoc(doc(db, "leaves", newRecord.id.toString()), newRecord);
@@ -5711,7 +5792,9 @@ function renderDashboard() {
         // Build status message
         const waEnabled = WHATSAPP_ENABLED();
         const recipientNames = hodToNotify.map(h => h.name).join(', ');
-        let statusMsg = '✅ Permohonan Cuti Berjaya Dihantar!\n\n';
+        let statusMsg = _isTestSubmit
+          ? '🧪 CUTI TEST berjaya dihantar.\nRekod ini TIDAK dikira dalam baki, laporan atau Analisa. Semua WA & Inbox dihala kepada anda sahaja.\n\n'
+          : '✅ Permohonan Cuti Berjaya Dihantar!\n\n';
         if (!waEnabled) {
           statusMsg += '⚠️ AMARAN: Token WhatsApp belum dikonfigurasi. Notifikasi WA TIDAK dihantar. Sila hubungi Super Admin untuk tetapkan token Fonnte dalam WA Settings.';
         } else if (hodToNotify.length === 0) {
@@ -5725,9 +5808,11 @@ function renderDashboard() {
   
         navigator.clipboard.writeText(copyText).catch(() => {});
         showToast(statusMsg);
-        view = 'dashboard';
+        // Cuti test: kekal di Borang Cuti supaya panel "Cuti Test" kelihatan.
+        view = _isTestSubmit ? 'leave-form' : 'dashboard';
         render();
       } finally {
+        if (_isTestSubmit) testCtx = null;
         leaveSubmitting = false;
         if (_submitBtn) {
           _submitBtn.disabled = false;
@@ -5866,7 +5951,7 @@ function renderDashboard() {
       const elForm = document.querySelector('#edit-leave-form');
       if(elForm) elForm.addEventListener('submit', async (e) => {
           e.preventDefault();
-          const rec = leaveRecords.find(r => r.id === editingLeaveId);
+          const rec = findLeaveRecord(editingLeaveId);
           if(rec) {
               const isAdminEditor = ['admin', 'hr', 'super_admin'].includes(user.role);
               const isOwner = rec.ic === user.ic;
@@ -6976,6 +7061,7 @@ function renderView() {
       const selCat   = leaveCategories.find(c => c.id === selectedLeaveType) || leaveCategories[0];
 
       return `
+        ${canUseTestMode(user) ? renderTestModePanel() : ''}
         <div class="split-layout fade-in">
           <!-- Left Panel: Form -->
           <form class="glass-pane form-panel" id="leave-request-form" style="padding:0;overflow:hidden;">
@@ -6990,7 +7076,7 @@ function renderView() {
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#93c5fd" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                   </div>
                   <div>
-                    <h1 style="font-size:1.15rem;font-weight:800;color:#f1f5f9;margin:0;letter-spacing:-0.2px;">Borang Permohonan Cuti</h1>
+                    <h1 style="font-size:1.15rem;font-weight:800;color:#f1f5f9;margin:0;letter-spacing:-0.2px;">Borang Permohonan Cuti${leaveTestMode && canUseTestMode(user) ? ' <span style="font-size:0.7rem;background:#d97706;color:#fff;border-radius:6px;padding:0.15rem 0.5rem;vertical-align:middle;">🧪 TEST</span>' : ''}</h1>
                     <p style="font-size:0.72rem;color:rgba(148,163,184,0.9);margin:0.15rem 0 0;">New Leave Application</p>
                   </div>
                 </div>
@@ -11380,7 +11466,7 @@ render();
 
 function renderLeaveModal() {
     if (!editingLeaveId) return '';
-    const record = leaveRecords.find(r => r.id === editingLeaveId);
+    const record = findLeaveRecord(editingLeaveId);
     if (!record) return '';
     const isAdminEditor = ['admin', 'hr', 'super_admin'].includes(user.role);
 
@@ -11880,3 +11966,21 @@ if ('serviceWorker' in navigator && !window.__reloadGuardTripped) {
     });
   });
 }
+
+// ── Mod Test: tindakan ke atas rekod test ─────────────────────────────
+// Dibalut SELEPAS semua definisi supaya setiap butang/pemanggil (window.X) melalui
+// pembalut ini. Untuk rekod isTest, testCtx dipasang sepanjang tindakan supaya
+// sendWhatsApp/addNotification menghala mesej kepada penguji sahaja.
+['finalizeLeave', 'rejectLeave', 'cancelLeave', 'resendApprovalWA', 'resendLeaveWA', 'staffEditOwnLeave'].forEach(name => {
+  const orig = window[name];
+  if (typeof orig !== 'function') return;
+  window[name] = async function(id, ...rest) {
+    const rec = findLeaveRecord(id);
+    if (!rec || !rec.isTest) return orig.call(this, id, ...rest);
+    if (!canUseTestMode(user)) { showToast('Rekod test hanya boleh diuruskan oleh Super Admin / Admin.'); return; }
+    const prev = testCtx;
+    testCtx = { ic: user.ic, name: user.name, phone: user.phone || '' };
+    try { return await orig.call(this, id, ...rest); } finally { testCtx = prev; }
+  };
+});
+

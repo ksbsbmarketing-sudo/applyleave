@@ -135,6 +135,8 @@ export default async function handler(req, res) {
     const overdue = leavesSnap.docs
       .map((d) => ({ ...d.data(), docId: d.id }))
       .filter((r) => {
+        // Cuti test (Mod Test super_admin/admin) — jangan sesekali ingatkan pelulus sebenar.
+        if (r.isTest) return false;
         const age = now - (r.id || 0);
         if (age < OVERDUE_MS) return false;
         const lastSent = r.lastReminderSent || 0;
