@@ -98,8 +98,15 @@ test('RL requires NO proof — deliberate, do not "fix" this', () => {
   assert.strictEqual(proofRequirement('RL'), null);
 });
 
+test('HL (Hospitalization) requires proof — HR request, v2.5.5', () => {
+  const hl = proofRequirement('HL');
+  assert.ok(hl, 'HL must demand a document');
+  assert.strictEqual(hl.inputId, 'hl-upload');
+  assert.match(hl.hint, /JPG\/PNG\/PDF/);
+});
+
 test('types with no document requirement return null, not undefined', () => {
-  ['AL', 'UP', 'HL', 'ML', 'ML_PL', 'NONSENSE'].forEach(id =>
+  ['AL', 'UP', 'ML', 'ML_PL', 'NONSENSE'].forEach(id =>
     assert.strictEqual(proofRequirement(id), null, `${id} must not demand proof`));
 });
 

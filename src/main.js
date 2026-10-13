@@ -1446,7 +1446,7 @@ window.handleFileSelect = function(input, displayId, noticeId) {
 };
 
 // Kotak muat naik bukti — satu renderer untuk SEMUA jenis cuti yang perlukan
-// dokumen (MC / Ehsan / Kecemasan / CME). Isi kandungan datang dari LEAVE_PROOF
+// dokumen (MC / Ehsan / Kecemasan / CME / HL). Isi kandungan datang dari LEAVE_PROOF
 // dalam leaveTypes.js; jangan tambah blok HTML baharu untuk jenis cuti baharu.
 // Pulangkan '' jika jenis cuti itu tidak perlukan bukti.
 function renderProofSection(code) {
@@ -1480,7 +1480,7 @@ function renderProofSection(code) {
 }
 
 // Master Logs: HR/Admin muat naik atau ganti bukti untuk cuti yang perlukan bukti
-// (lihat LEAVE_PROOF — MC / Kecemasan / Ehsan / CME). Fail dimuat naik ke Cloudinary dan proofUrl/
+// (lihat LEAVE_PROOF — MC / Kecemasan / Ehsan / CME / HL). Fail dimuat naik ke Cloudinary dan proofUrl/
 // proofName dikemas kini pada rekod cuti. Berguna untuk rekod lama yang belum ada bukti.
 window.reuploadProof = function(id) {
   const rec = leaveRecords.find(r => r.id === id);

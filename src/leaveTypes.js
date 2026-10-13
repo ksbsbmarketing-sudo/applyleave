@@ -93,6 +93,18 @@ export const LEAVE_PROOF = Object.freeze({
     notice:      'BUKTI KECEMASAN BELUM DIMUAT NAIK — WAJIB SEBELUM HANTAR',
     error:       'MAAF, Borang ditolak. Anda WAJIB memuat naik dokumen/gambar bukti bagi permohonan Cuti Kecemasan.',
   }),
+  // HL: discharge note / hospital admission letter. Required since v2.5.5 (HR request).
+  HL: Object.freeze({
+    inputId:     'hl-upload',
+    title:       'Bukti Hospitalisasi',
+    hint:        'Sila muat naik surat masuk wad / discharge note / sijil dari hospital <strong>(JPG/PNG/PDF, maks 10MB)</strong>',
+    buttonLabel: 'PILIH FAIL BUKTI HL',
+    barFrom:     '#06b6d4',
+    barTo:       '#3b82f6',
+    boxColor:    '#06b6d4',   // same cyan as HL in LEAVE_CATEGORIES
+    notice:      'BUKTI HOSPITALISASI BELUM DIMUAT NAIK — WAJIB SEBELUM HANTAR',
+    error:       '🔴 WAJIB: Sila muat naik bukti hospitalisasi (surat masuk wad / discharge note dari hospital) sebelum menghantar permohonan.\n\nFormat yang diterima: Gambar (JPG/PNG) atau PDF.',
+  }),
   // CME is applied for BEFORE attending, so the attendance certificate does not
   // exist yet — the invitation letter or registration slip is what the doctor has.
   CME: Object.freeze({
