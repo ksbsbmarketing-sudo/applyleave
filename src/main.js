@@ -2447,14 +2447,18 @@ let staffList = [];
 
 // Jenama ikut cawangan — borang Uni Klinik Bentong guna logo/nama Bentong, Klinik Rakyat
 // guna KR, KSB Pharma guna logo KSB Pharma, KSBYMC guna logo KSB YMC, selebihnya KSB. Laporan tanpa cawangan (SEMUA) kekal KSB.
-//   wmOpacity — logo KR cakera hitam penuh, jadi perlu lebih pudar supaya teks kekal jelas.
-//   wmLogo    — watermark berasingan; KSB guna lambang resolusi tinggi (logo-ksb.png cuma 266px, kabur bila dibesarkan).
+//   logo      — logo asal (topbar app guna medan ini juga — jangan buang).
+//   hdrLogo   — logo header cetakan, margin kosong sudah dipotong; KSB/KSBYMC guna LAMBANG
+//               resolusi tinggi kerana nama syarikat sudah ditaip di sebelahnya.
+//   wmLogo    — watermark satu-warna (warna jenama) berlatar lutsinar. Dijana oleh
+//               gen_print_assets.cjs → public/print/. Tukar logo? Jalankan semula skrip itu.
+//   hdrHeight — tinggi logo header (px); wordmark lebar dipendekkan supaya seimbang dengan lambang.
 const PRINT_BRANDS = {
-    ksb:     { name: 'KLINIK SYED BADARUDDIN SDN. BHD.', tagline: 'Servicing Community Since 1991', logo: '/logo-ksb.png',     wmLogo: '/logo-ksb-mark.png', accent: '#9b2c2c', sub: '#7a3b3b', wmWidth: 360, wmOpacity: 0.10 },
-    bentong: { name: 'UNI KLINIK BENTONG',               tagline: '',                               logo: '/logo-bentong.png', accent: '#283a6e', sub: '#d9480f', wmWidth: 460, wmOpacity: 0.14 },
-    pharma:  { name: 'KSB PHARMA SDN. BHD.',             tagline: 'We care beyond drug',            logo: '/logo-ksb-pharma.png', accent: '#0f3d2e', sub: '#a8862b', wmWidth: 420, wmOpacity: 0.12 },
-    ksbymc:  { name: 'KSB YPHIM MANAGE CARE SDN. BHD.',  tagline: 'KSB YMC',                        logo: '/logo-ksbymc.png', wmLogo: '/logo-ksbymc-mark.png', accent: '#c81e28', sub: '#4a4a4a', wmWidth: 340, wmOpacity: 0.10 },
-    kr:      { name: 'KLINIK RAKYAT DAN X-RAY DUNGUN',   tagline: 'We Care',                        logo: '/logo-kr.png',      accent: '#1a1a1a', sub: '#4a5568', wmWidth: 380, wmOpacity: 0.08 },
+    ksb:     { name: 'KLINIK SYED BADARUDDIN SDN. BHD.', tagline: 'Servicing Community Since 1991', logo: '/logo-ksb.png',        hdrLogo: '/print/hdr-ksb.png',     hdrHeight: 62, wmLogo: '/print/wm-ksb.png',     accent: '#9b2c2c', sub: '#c05621', wmWidth: 330, wmOpacity: 0.07 },
+    bentong: { name: 'UNI KLINIK BENTONG',               tagline: '',                               logo: '/logo-bentong.png',    hdrLogo: '/print/hdr-bentong.png', hdrHeight: 44, wmLogo: '/print/wm-bentong.png', accent: '#283a6e', sub: '#d9480f', wmWidth: 440, wmOpacity: 0.07 },
+    pharma:  { name: 'KSB PHARMA SDN. BHD.',             tagline: 'We care beyond drug',            logo: '/logo-ksb-pharma.png', hdrLogo: '/print/hdr-pharma.png',  hdrHeight: 54, wmLogo: '/print/wm-pharma.png',  accent: '#0f3d2e', sub: '#a8862b', wmWidth: 400, wmOpacity: 0.07 },
+    ksbymc:  { name: 'KSB YPHIM MANAGE CARE SDN. BHD.',  tagline: 'KSB YMC',                        logo: '/logo-ksbymc.png',     hdrLogo: '/print/hdr-ksbymc.png',  hdrHeight: 62, wmLogo: '/print/wm-ksbymc.png',  accent: '#c81e28', sub: '#4a4a4a', wmWidth: 300, wmOpacity: 0.07 },
+    kr:      { name: 'KLINIK RAKYAT DAN X-RAY DUNGUN',   tagline: 'We Care',                        logo: '/logo-kr.png',         hdrLogo: '/print/hdr-kr.png',      hdrHeight: 62, wmLogo: '/print/wm-kr.png',      accent: '#1a1a1a', sub: '#718096', wmWidth: 340, wmOpacity: 0.06 },
 };
 window.printBrandFor = function(branch) {
     const b = String(branch || '');
@@ -2471,6 +2475,8 @@ window.printBrandFor = function(branch) {
 //   opts.isReport — true untuk laporan agregat → guna main branch jika tiada cawangan.
 //   opts.title    — tajuk dokumen (cth. BORANG PERMOHONAN CUTI).
 //   opts.meta     — [{label,value}] baris kecil di bawah tajuk (cth. Tahun, Jenis, Jana).
+// Garisan dibuat dengan border (bukan background) supaya tetap tercetak walaupun
+// pengguna tidak tanda "Background graphics" dalam dialog cetak.
 window.printHeaderHTML = function(opts) {
     opts = opts || {};
     const branchLine = (opts.branch && opts.branch !== 'SEMUA')
@@ -2483,17 +2489,27 @@ window.printHeaderHTML = function(opts) {
         : '';
     const brand = window.printBrandFor(opts.branch);
     return `
-        <img src="${brand.wmLogo || brand.logo}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:${brand.wmWidth}px;max-width:80vw;opacity:${brand.wmOpacity};pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
-        <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;border-bottom:3px solid ${brand.accent};padding-bottom:14px;margin-bottom:18px;position:relative;z-index:1;">
-            <img src="${brand.logo}" style="height:64px;max-width:190px;object-fit:contain;justify-self:start;" alt="Logo">
-            <div style="text-align:center;">
-                <h1 style="color:${brand.accent};font-size:21px;font-weight:bold;margin:0;letter-spacing:0.5px;">${brand.name}</h1>
-                ${brand.tagline ? `<p style="color:${brand.sub};font-size:10px;letter-spacing:1.5px;margin:3px 0 0;text-transform:uppercase;">${brand.tagline}</p>` : ''}
-                <p style="color:#4a5568;font-size:11px;font-weight:bold;margin:6px 0 0;">Cawangan: ${branchLine}</p>
+        <img src="${brand.wmLogo}" style="position:fixed;top:52%;left:50%;transform:translate(-50%,-50%);width:${brand.wmWidth}px;max-width:70vw;opacity:${brand.wmOpacity};pointer-events:none;z-index:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;" alt="">
+        <div style="position:relative;z-index:1;font-family:Arial,Helvetica,sans-serif;">
+            <div style="display:flex;align-items:center;gap:16px;padding-bottom:12px;">
+                <img src="${brand.hdrLogo}" style="height:${brand.hdrHeight}px;max-width:200px;object-fit:contain;flex-shrink:0;" alt="Logo">
+                <div style="flex:1;min-width:0;border-left:1px solid #e2e8f0;padding-left:16px;">
+                    <div style="color:${brand.accent};font-size:18px;font-weight:bold;letter-spacing:0.6px;line-height:1.2;">${brand.name}</div>
+                    ${brand.tagline ? `<div style="color:${brand.sub};font-size:9px;letter-spacing:2.2px;margin-top:4px;text-transform:uppercase;">${brand.tagline}</div>` : ''}
+                </div>
+                <div style="text-align:right;flex-shrink:0;">
+                    <div style="font-size:8.5px;letter-spacing:1.6px;text-transform:uppercase;color:#a0aec0;">Cawangan</div>
+                    <div style="font-size:12px;font-weight:bold;color:#2d3748;margin-top:2px;">${branchLine}</div>
+                </div>
             </div>
-            <div></div>
+            <div style="border-top:3px solid ${brand.accent};"></div>
+            <div style="border-top:1px solid ${brand.sub};opacity:0.55;margin:2px 0 ${title ? '18px' : '20px'};"></div>
+            ${title ? `<div style="display:flex;align-items:center;gap:14px;margin-bottom:${metaLine ? '8px' : '22px'};">
+                <div style="flex:1;border-top:1px solid #e2e8f0;"></div>
+                <div style="font-size:14px;font-weight:bold;letter-spacing:3px;color:${brand.accent};white-space:nowrap;">${title}</div>
+                <div style="flex:1;border-top:1px solid #e2e8f0;"></div>
+            </div>` : ''}
         </div>
-        ${title ? `<div style="text-align:center;margin-bottom:${metaLine ? '10px' : '20px'};position:relative;z-index:1;"><span style="border:2px solid ${brand.accent};display:inline-block;padding:5px 26px;font-weight:bold;letter-spacing:2px;font-size:13px;color:${brand.accent};">${title}</span></div>` : ''}
         ${metaLine}
     `;
 };
@@ -2545,80 +2561,65 @@ window.printLeave = function(id) {
     const kelayakan = record.type === 'AL' ? window.getEntitlementAL(staffObj) : stats.ent;
     const fmtHari = n => (Number.isFinite(n) ? (Math.round(n * 10) / 10).toString() : '0') + ' Hari';
 
+    // Warna ikut jenama cawangan (bukan merah tetap) — kotak nilai berbingkai kelabu
+    // lembut dengan jalur kiri warna jenama.
+    const _brand = window.printBrandFor(record.branch);
+    const _acc = _brand.accent;
+    // Kotak tanda: SEMUA jenis cuti yang boleh dipohon. Sebelum ini hanya 6 jenis,
+    // jadi borang MC / Kecemasan / HL / Paterniti tercetak tanpa sebarang tanda.
+    const _typeBoxes = [
+        ['AL', 'CUTI TAHUNAN'], ['MC', 'CUTI SAKIT'], ['EL_EMG', 'CUTI KECEMASAN'], ['EL', 'CUTI EHSAN'],
+        ['HL', 'CUTI HOSPITALISASI'], ['ML', 'CUTI BERSALIN'], ['ML_PL', 'CUTI PATERNITI'], ['CME', 'CUTI CME'],
+        ['RL', 'CUTI GANTI'], ['UP', 'TANPA GAJI'],
+    ].map(([code, label]) => {
+        const on = record.type === code || (code === 'ML_PL' && record.type === 'PL');
+        return `<div style="display:flex;align-items:center;gap:7px;font-size:10px;font-weight:bold;color:${on ? _acc : '#718096'};">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border:1.5px solid ${on ? _acc : '#a0aec0'};border-radius:2px;font-size:11px;line-height:1;color:${_acc};">${on ? '✓' : ''}</span>${label}</div>`;
+    }).join('');
+    const _lbl = 'width:32%;padding:6px 0;color:#4a5568;font-size:10.5px;font-weight:bold;letter-spacing:0.4px;vertical-align:middle;';
+    const _box = `border:1px solid #cbd5e0;border-left:3px solid ${_acc};border-radius:3px;padding:8px 11px;color:#1a202c;font-size:12px;font-weight:bold;background:rgba(255,255,255,0.85);`;
+    const _row = (label, value, extra = '') => `<tr><td style="${_lbl}">${label}</td><td style="padding:4px 0;"><div style="${_box}${extra}">${value}</div></td></tr>`;
+
     let printHTML = `
-    <div id="print-container" style="font-family: Arial, sans-serif; padding: 40px; color: #841824;">
+    <div id="print-container" style="font-family: Arial, Helvetica, sans-serif; padding: 40px 44px; color: #1a202c;">
         ${window.printHeaderHTML({ branch: record.branch, title: 'BORANG PERMOHONAN CUTI' })}
-        
-        <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 11px; font-weight: bold;">
-            <span>[ ${record.type === 'AL' ? 'X' : ' '} ] CUTI TAHUNAN</span>
-            <span>[ ${record.type === 'CME' ? 'X' : ' '} ] CUTI CME</span>
-            <span>[ ${record.type === 'RL' ? 'X' : ' '} ] CUTI GANTI</span>
-            <span>[ ${record.type === 'ML' ? 'X' : ' '} ] CUTI BERSALIN</span>
-            <span>[ ${record.type === 'EL' ? 'X' : ' '} ] CUTI EHSAN</span>
-            <span>[ ${record.type === 'UP' ? 'X' : ' '} ] TANPA GAJI</span>
+
+        <div style="position:relative;z-index:1;border:1px solid #e2e8f0;border-radius:4px;padding:12px 14px;margin-bottom:18px;">
+            <div style="font-size:8.5px;letter-spacing:1.6px;color:#a0aec0;font-weight:bold;margin-bottom:9px;">JENIS CUTI</div>
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:9px 10px;">${_typeBoxes}</div>
         </div>
-        
-        <table style="width: 100%; border-collapse: separate; border-spacing: 0 10px; font-size: 12px; font-weight: bold;">
+
+        <table style="position:relative;z-index:1;width: 100%; border-collapse: collapse;">
+            ${_row('TARIKH MEMOHON CUTI', record.startDate)}
+            ${_row('NAMA PEMOHON', record.name)}
+            ${_row('NO. K/P', record.ic)}
+            ${_row('TARIKH MULA BEKERJA', startWork)}
+            ${_row('KELAYAKAN CUTI TAHUNAN', fmtHari(kelayakan))}
+            ${_row('BAKI CUTI TERDAHULU', fmtHari(bakiTerdahulu))}
             <tr>
-                <td style="width: 30%; color: #4a5568;">TARIKH MEMOHON CUTI</td>
-                <td style="border: 2px solid #e53e3e; padding: 8px;">${record.startDate}</td>
-            </tr>
-            <tr>
-                <td style="color: #4a5568;">NAMA PEMOHON</td>
-                <td style="border: 2px solid #e53e3e; padding: 8px;">${record.name}</td>
-            </tr>
-            <tr>
-                <td style="color: #4a5568;">NO. K/P</td>
-                <td style="border: 2px solid #e53e3e; padding: 8px;">${record.ic}</td>
-            </tr>
-            <tr>
-                <td style="color: #4a5568;">TARIKH MULA BEKERJA</td>
-                <td style="border: 2px solid #e53e3e; padding: 8px;">${startWork}</td>
-            </tr>
-            <tr>
-                <td style="color: #4a5568;">KELAYAKAN CUTI TAHUNAN</td>
-                <td style="border: 2px solid #e53e3e; padding: 8px;">${fmtHari(kelayakan)}</td>
-            </tr>
-            <tr>
-                <td style="color: #4a5568;">BAKI CUTI TERDAHULU</td>
-                <td style="border: 2px solid #e53e3e; padding: 8px;">${fmtHari(bakiTerdahulu)}</td>
-            </tr>
-            <tr>
-                <td style="color: #4a5568;">JUMLAH CUTI DIPOHON</td>
-                <td>
+                <td style="${_lbl}">JUMLAH CUTI DIPOHON</td>
+                <td style="padding:4px 0;">
                     <div style="display: flex; gap: 10px; align-items: center;">
-                        <div style="border: 2px solid #e53e3e; padding: 8px; flex: 1; text-align: center;">${record.days} Hari</div>
-                        <span style="color: #4a5568; font-size: 10px;">TARIKH:</span>
-                        <div style="border: 2px solid #e53e3e; padding: 8px; flex: 3;">${record.startDate} to ${record.endDate}</div>
+                        <div style="${_box}flex: 1; text-align: center;">${record.days} Hari</div>
+                        <span style="color: #718096; font-size: 9.5px; font-weight:bold; letter-spacing:0.4px;">TARIKH</span>
+                        <div style="${_box}flex: 3;">${record.startDate} &nbsp;hingga&nbsp; ${record.endDate}</div>
                     </div>
                 </td>
             </tr>
-            <tr>
-                <td style="color: #4a5568;">BAKI CUTI</td>
-                <td style="border: 2px solid #e53e3e; padding: 8px;">${fmtHari(bakiSelepas)}</td>
-            </tr>
-            <tr>
-                <td style="color: #4a5568;">TUGASAN DIGANTI OLEH (LOCUM)</td>
-                <td style="border: 1px solid #718096; padding: 8px; color: black;">${record.locumName || record.handoverName || 'Belum Ditentukan'}</td>
-            </tr>
-            <tr>
-                <td></td>
-                <td style="border: 2px solid #e53e3e; padding: 20px 8px; margin-top: 10px; font-style: italic; color: #4a5568;">
-                    <span style="font-weight: bold; font-style: normal; display: inline-block; width: 80px;">SEBAB CUTI</span> ${record.reason}
-                </td>
-            </tr>
+            ${_row('BAKI CUTI', fmtHari(bakiSelepas))}
+            ${_row('TUGASAN DIGANTI OLEH (LOCUM)', record.locumName || record.handoverName || 'Belum Ditentukan', 'border-left-color:#a0aec0;font-weight:normal;')}
+            ${_row('SEBAB CUTI', record.reason || '—', 'min-height:44px;font-weight:normal;font-style:italic;color:#2d3748;')}
         </table>
-        
-        <table style="width: 100%; border-collapse: collapse; margin-top: 40px; text-align: center; font-size: 10px; font-weight: bold;">
+
+        <table style="position:relative;z-index:1;border-collapse: separate; border-spacing: 14px 0; margin: 46px -14px 0; width: calc(100% + 28px); table-layout: fixed;">
             <tr>
-                <td style="border: 1px solid black; padding: 5px;">T/TANGAN PEMOHON</td>
-                <td style="border: 1px solid black; padding: 5px;">DISOKONG</td>
-                <td style="border: 1px solid black; padding: 5px;">DILULUSKAN/TIDAK LULUS</td>
-            </tr>
-            <tr>
-                <td style="border: 1px solid black; height: 80px;"></td>
-                <td style="border: 1px solid black; height: 80px;"></td>
-                <td style="border: 1px solid black; height: 80px;"></td>
+                ${['T/TANGAN PEMOHON', 'DISOKONG OLEH', 'DILULUSKAN / TIDAK DILULUSKAN'].map(t => `
+                <td style="vertical-align:bottom;text-align:center;">
+                    <div style="height:70px;"></div>
+                    <div style="border-top:1px solid #4a5568;padding-top:6px;font-size:9.5px;font-weight:bold;letter-spacing:0.6px;color:#2d3748;">${t}</div>
+                    <div style="font-size:8.5px;color:#a0aec0;margin-top:10px;text-align:left;">Nama:</div>
+                    <div style="font-size:8.5px;color:#a0aec0;margin-top:6px;text-align:left;">Tarikh:</div>
+                </td>`).join('')}
             </tr>
         </table>
     </div>
