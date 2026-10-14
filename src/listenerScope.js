@@ -102,7 +102,11 @@ export const needsAllStaff = needsAllLeaves;
 // renders renderAnalyticsDashboard(user.branch). So their branch's leave + staff
 // covers everything. Like needsAllLeaves, any permission beyond that list widens
 // back to 'all'.
-export const BRANCH_SCOPED_ROLES = ['doctor_pic'];
+//
+// Team Leader likewise: canManageRequest() only lets a TL act on PENDING leave of
+// `operation_balok` staff, and getStaffGroup() puts only Balok-branch staff in
+// that group — so the TL's own (Balok) branch covers their whole queue.
+export const BRANCH_SCOPED_ROLES = ['doctor_pic', 'team_leader'];
 const BRANCH_ONLY_PERMS = [...OWN_ONLY_PERMS, 'manage_pending', 'branch_analisa', 'can_cancel', 'os_balok', 'os_pahang'];
 const granted = v => v !== false && v !== 'false' && v != null;
 

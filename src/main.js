@@ -3963,6 +3963,7 @@ let auditLogUnsub = null;
 function ensureAuditLogListener() {
   if (auditLogUnsub) return;                                    // sudah dipasang
   if (!user || window.isSubsidiaryUser(user) || !canSeeAuditLogs(user.role, window.rbacMatrix)) return;
+  if (view !== 'management' || managementTab !== 'login_audit') return;   // tunggu tab dibuka
   auditLogUnsub = onSnapshot(
     query(collection(db, "audit_logs"), orderBy("createdAt", "desc"), limit(AUDIT_LOG_LIMIT)),
     (snapshot) => {
@@ -3981,6 +3982,7 @@ function ensureAuditLogListener() {
 let waLogsLoaded = false;
 async function ensureWaLogsLoaded() {
   if (waLogsLoaded || !user || window.isSubsidiaryUser(user) || !canSeeWaLogs(user.role, window.rbacMatrix)) return;
+  if (view !== 'management' || managementTab !== 'whatsapp_settings') return;   // tunggu tab dibuka
   waLogsLoaded = true;
   try {
     const logsSnap = await getDocs(query(collection(db, 'wa_logs'), orderBy('ts', 'desc'), limit(200)));
@@ -7875,6 +7877,12 @@ function renderView() {
           }
       }
       
+      // audit_logs / wa_logs (200 dokumen setiap satu) dimuat MALAS — hanya bila
+      // tabnya benar-benar dibuka, bukan pada setiap cold load Admin/Super Admin.
+      // Kedua-dua fungsi idempotent; snapshot/get yang tiba akan render() semula.
+      if (managementTab === 'login_audit') ensureAuditLogListener();
+      if (managementTab === 'whatsapp_settings') ensureWaLogsLoaded();
+
       // Tapis staff mengikut skop negeri pengguna
       const userStateScope = window.getUserStateScope(user);
       let filteredStaff = staffList.filter(s => {

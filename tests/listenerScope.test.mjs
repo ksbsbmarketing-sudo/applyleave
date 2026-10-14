@@ -133,7 +133,7 @@ const DOCTOR_PERMS = {
 test('scope: plain staff → own, default doctor_pic → branch, everyone else → all', () => {
   assert.strictEqual(listenerScope('staff', STAFF_PERMS), 'own');
   assert.strictEqual(listenerScope('doctor_pic', DOCTOR_PERMS), 'branch');
-  for (const r of ['super_admin', 'admin', 'hr', 'hod_cawangan', 'hod_balok', 'supervisor', 'team_leader'])
+  for (const r of ['super_admin', 'admin', 'hr', 'hod_cawangan', 'hod_balok', 'supervisor'])
     assert.strictEqual(listenerScope(r, DOCTOR_PERMS), 'all', r);
 });
 
@@ -151,4 +151,10 @@ test('wa_logs: only roles with wa_setting load them', () => {
   assert.strictEqual(canSeeWaLogs('staff', m), false);
   assert.strictEqual(canSeeWaLogs('x', m), true);
   assert.strictEqual(canSeeWaLogs('nobody', m), false);
+});
+
+test('scope: team_leader with default perms (staff dashboard, manage_pending) → branch', () => {
+  const TL = { ...STAFF_PERMS, manage_pending: true, os_balok: true };
+  assert.strictEqual(listenerScope('team_leader', TL), 'branch');
+  assert.strictEqual(listenerScope('team_leader', { ...TL, manage_reports: true }), 'all');
 });
