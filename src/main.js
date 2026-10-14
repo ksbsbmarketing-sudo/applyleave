@@ -4465,10 +4465,14 @@ console.log(`[SYSTEM] Version ${APP_VERSION}`);
     await auth.authStateReady();
     if (auth.currentUser && !auth.currentUser.isAnonymous) {
       console.log('[AUTH] Restored real session:', auth.currentUser.uid);
-      await loadDirectory();
       // Mesti SEBELUM initData(): ia yang menetapkan `user.role`, dan initData
       // menggunakan peranan itu untuk memutuskan pendengar mana patut dipasang.
-      await restoreSessionUser();
+      const restored = await restoreSessionUser();
+      // `directory` (~120 dokumen) hanya digunakan oleh skrin log masuk. Dulu ia
+      // dimuat pada SETIAP cold load, termasuk pengguna yang sesinya dipulihkan
+      // terus ke dashboard — bacaan sia-sia terbesar selepas leaves/staff dikecilkan.
+      // Muat hanya bila skrin log masuk memang akan dipaparkan.
+      if (!restored) await loadDirectory();
       initData();
       // Sengaja TIADA render() di sini: pendengar `staff` tetap akan panggil render()
       // bila datanya tiba. Melukis lebih awal hanya akan memaparkan dashboard dengan
