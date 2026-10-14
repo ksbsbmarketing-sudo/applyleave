@@ -640,6 +640,7 @@ let manageBranchFilter = 'All';
 let editingStaff = null;
 let managementTab = 'pending';
 let managementGroup = 'approvals'; // 'approvals' | 'people' | 'reports' | 'config'
+let policyTab = 'ringkasan'; // tab Polisi: ringkasan | aliran | kelayakan | peraturan | cuti_umum
 let hrReportTab = 'all'; // 'all' | 'approved' | 'balance' | 'jenis'
 let masterLogState = SCOPE_ALL;   // SCOPE_ALL | 'Pahang' | 'Terengganu'
 let masterLogBranch = SCOPE_ALL;
@@ -3337,6 +3338,7 @@ window.resendLeaveWA = function(id) {
 };
 
 window.setHrReportTab = function(tab) { hrReportTab = tab; render(); };
+window.setPolicyTab = function(tab) { policyTab = tab; render(); };
 window.setApprovedReportBranch = function(val) { approvedReportBranch = val; render(); };
 window.setApprovedReportType = function(val) { approvedReportType = val; render(); };
 window.setApprovedReportYear = function(val) { approvedReportYear = val; render(); };
@@ -10833,375 +10835,207 @@ function renderView() {
       // Anak syarikat (KSB Pharma) melihat polisi syarikat sendiri — tiada kandungan klinik.
       const _isCoPol = window.isSubsidiaryUser(user);
       const _pol = window.activePolicy();
-      
+
+      // ── Reka bentuk moden (2026-10-14): hero baki + sub-tab, kandungan sama. ──
+      const _f2 = (n) => parseFloat((Number(n) || 0).toFixed(2));
+      const _alUsedAll = _f2((_polAlStats.usedPre || 0) + (_polAlStats.used || 0) + (_polAlStats.pelarasan || 0));
+      const _alPct = _polAlStats.ent > 0 ? Math.max(0, Math.min(100, Math.round((_alUsedAll / _polAlStats.ent) * 100))) : 0;
+      const _polTabs = [
+        { id: 'ringkasan', label: 'Ringkasan',        icon: 'layout-dashboard' },
+        { id: 'aliran',    label: 'Aliran Kelulusan', icon: 'git-branch' },
+        { id: 'kelayakan', label: 'Kelayakan',        icon: 'table-2' },
+        { id: 'peraturan', label: 'Peraturan',        icon: 'scroll-text' },
+        { id: 'cuti_umum', label: 'Cuti Umum',        icon: 'calendar-days' },
+      ];
+      const _pTab = _polTabs.some(t => t.id === policyTab) ? policyTab : 'ringkasan';
+      // Warna kod glosari (kod paparan rasmi HR, bukan id storan).
+      const _glossColor = { AL:'#3b82f6', MC:'#10b981', CME:'#8b5cf6', EL:'#ef4444', CL:'#f59e0b', HL:'#06b6d4', ML:'#ec4899', PL:'#6366f1', RL:'#14b8a6', UPL:'#64748b' };
+
+      const _flowCard = (title, color, steps) => `
+        <div class="pol-flow" style="--fc:${color};">
+          <div class="pol-flow-head"><span class="pol-dot"></span>${title}<span class="pol-flow-count">${steps.length} peringkat</span></div>
+          <div class="pol-steps">
+            ${steps.map((s, i) => `
+              ${i > 0 ? '<div class="pol-step-arrow" aria-hidden="true"><i data-lucide="chevron-right" width="18" height="18"></i></div>' : ''}
+              <div class="pol-step ${i === steps.length - 1 ? 'is-final' : ''}">
+                <div class="pol-step-badge">${s.code}</div>
+                <div class="pol-step-title">${s.label}</div>
+                <div class="pol-step-desc">${s.desc}</div>
+              </div>`).join('')}
+          </div>
+        </div>`;
+      const _flowsHTML = _isCoPol
+        ? _flowCard(`Staf ${window.printBrandFor(user.branch).name}`, '#3b82f6', [
+            { code: 'P1', label: 'Pelulus Pertama', desc: 'Pelulus peringkat pertama syarikat menilai dan menyokong permohonan.' },
+            { code: 'P2', label: 'Kelulusan Akhir — Pengurus Besar', desc: 'Cuti hanya dikira <strong>SAH</strong> selepas kelulusan akhir diberi.' },
+          ])
+        : [
+            _flowCard('Staff Operasi — Klinik Syed Badaruddin Balok', '#f43f5e', [
+              { code: 'P0', label: 'Team Leader (TL)', desc: 'Sokongan <strong>Team Leader Balok</strong> yang dipilih semasa menghantar borang.' },
+              { code: 'P1', label: 'Supervisor', desc: 'Supervisor Balok menilai dan meluluskan <strong>selepas</strong> sokongan TL.' },
+              { code: 'P2', label: 'HR / Admin', desc: 'Cuti hanya dikira <strong>SAH</strong> selepas kelulusan akhir HR/Admin.' },
+            ]),
+            _flowCard('Doktor / Staff Admin / Staff Operasi Lain', '#3b82f6', [
+              { code: 'P1', label: 'Doctor PIC / HOD Balok / Supervisor', desc: 'Pelulus yang dipilih semasa menghantar borang menyokong permohonan.' },
+              { code: 'P2', label: 'HR / Admin', desc: 'Cuti hanya dikira <strong>SAH</strong> selepas kelulusan akhir HR/Admin.' },
+            ]),
+            _flowCard('Staff Terengganu (Dungun / Kerteh / Paka)', '#8b5cf6', [
+              { code: 'P1', label: 'Doctor PIC Cawangan', desc: 'Doctor PIC cawangan anda menilai dan menyokong permohonan.' },
+              { code: 'P2', label: 'HR Terengganu', desc: 'Cuti hanya dikira <strong>SAH</strong> selepas kelulusan akhir HR Terengganu.' },
+            ]),
+            `<div class="pol-callout"><i data-lucide="info" width="16" height="16"></i><div>Cawangan Pahang yang <strong>tiada Doctor PIC</strong> (cth. RPCM) — Peringkat 1 ialah <strong>Supervisor Balok (HQ)</strong>. Klinik Utama mengikut laluan Balok (HQ).</div></div>`,
+          ].join('');
+
+      const _entTable = (title, color, rows, note = '') => `
+        <div class="pol-ent" style="--ec:${color};">
+          <div class="pol-ent-title">${title}</div>
+          ${rows.map(r => `<div class="pol-ent-row">${r.period ? `<span>${r.period}</span>` : ''}<strong>${r.days}</strong></div>`).join('')}
+          ${note ? `<div class="pol-ent-note">${note}</div>` : ''}
+        </div>`;
+      const _isTrgBranch = !!(user && user.branch && (user.branch.includes('Dungun') || user.branch.includes('Kerteh') || user.branch.includes('Paka')));
+      const _showPahang = !user || !user.branch || !_isTrgBranch;
+      const _showTrg    = !user || !user.branch || _isTrgBranch;
+
+      const _ruleCard = (n, title, color, icon, items, extra = '') => `
+        <div class="pol-rule" style="--rc:${color};">
+          <div class="pol-rule-head"><span class="pol-rule-icon"><i data-lucide="${icon}" width="17" height="17"></i></span><span class="pol-rule-num">${n}</span>${title}</div>
+          ${items && items.length ? `<ul class="pol-list">${items.map(r => `<li>${r}</li>`).join('')}</ul>` : ''}
+          ${extra}
+        </div>`;
+
+      const _hol = (() => {
+        const branchObj = branches.find(b => b.name === user.branch);
+        const isTerengganu = branchObj && branchObj.state === 'Terengganu';
+        const state = isTerengganu ? 'terengganu' : 'pahang';
+        const list = (publicHolidays[state] || []).slice().sort((a,b) => a.date.localeCompare(b.date));
+        const today = new Date(); today.setHours(0,0,0,0);
+        const nextIdx = list.findIndex(h => new Date(h.date + 'T00:00:00') >= today);
+        return { stateLabel: isTerengganu ? 'Terengganu' : 'Pahang', list, nextIdx,
+                 year: list.length ? list[0].date.substring(0,4) : new Date().getFullYear(), today };
+      })();
+
+      let _tabBody = '';
+      if (_pTab === 'ringkasan') {
+        _tabBody = `
+          ${_pol.notice ? `<div class="pol-notice"><i data-lucide="megaphone" width="18" height="18"></i><div>${_pol.notice}</div></div>` : ''}
+          <section class="pol-card">
+            <div class="pol-card-title"><i data-lucide="calculator" width="18" height="18"></i>Formula Pengiraan Pro-Rata</div>
+            <div class="pol-formula">
+              <span>Cuti Pro-Rata Sebulan</span><b>=</b>
+              <span class="pol-frac"><span>Kelayakan Cuti Setahun</span><span>12 Bulan</span></span>
+            </div>
+            <div class="pol-calc">
+              <span>Peruntukan <b>${_f2(_polAlStats.ent)}</b></span><em>−</em>
+              <span>Guna Sebelum <b>${_f2(_polAlStats.usedPre)}</b></span><em>−</em>
+              <span>Guna Sistem <b>${_f2(_polAlStats.used)}</b></span><em>−</em>
+              <span>Pelarasan <b>${_f2(_polAlStats.pelarasan)}</b></span><em>=</em>
+              <span class="is-result">Baki <b>${_f2(_polAlStats.bal)} hari</b></span>
+            </div>
+            <p class="pol-muted">*Prorata ialah rujukan formula sahaja. Baki sebenar = Jumlah Peruntukan − Guna Sebelum Sistem − Guna Dalam Sistem − Pelarasan HR.</p>
+          </section>
+          <section class="pol-card">
+            <div class="pol-card-title"><i data-lucide="book-a" width="18" height="18"></i>Senarai Kategori Cuti</div>
+            <div class="pol-gloss">
+              ${_pol.glossary.map(g => { const c = _glossColor[g.code] || '#9b2c2c'; return `<div class="pol-gloss-item"><span class="pol-code" style="--cc:${c};">${g.code}</span><span>${g.name}</span></div>`; }).join('')}
+            </div>
+          </section>`;
+      } else if (_pTab === 'aliran') {
+        _tabBody = `
+          <section class="pol-card">
+            <div class="pol-card-title"><i data-lucide="git-branch" width="18" height="18"></i>Aliran Kelulusan Cuti</div>
+            <p class="pol-muted" style="margin-bottom:1rem;">Setiap permohonan cuti mesti melalui peringkat berikut sebelum dikira <strong>SAH</strong>.</p>
+            <div class="pol-flows">${_flowsHTML}</div>
+          </section>`;
+      } else if (_pTab === 'kelayakan') {
+        _tabBody = `
+          <section class="pol-card">
+            <div class="pol-card-title"><i data-lucide="table-2" width="18" height="18"></i>${_isCoPol ? 'Kelayakan Cuti Tahunan (AL)' : 'Kelayakan Cuti Tahunan (AL) Mengikut Lokasi'}</div>
+            <div class="pol-ent-grid">
+              ${_isCoPol
+                ? _entTable('Semua Staf', '#9b2c2c', _pol.entitlementAL || [])
+                : [
+                    _showPahang ? _entTable('Negeri Pahang', '#9b2c2c', _pol.entitlementPahang) : '',
+                    _showTrg ? _entTable('Negeri Terengganu', '#059669', _pol.entitlementTerengganu, 'Terhad kepada cawangan Dungun, Kerteh dan Paka.') : '',
+                    _entTable('Kategori Doktor (Semua Kawasan)', '#dc2626', _pol.entitlementDoktor),
+                  ].join('')}
+            </div>
+          </section>
+          ${_pol.entitlementMC && _pol.entitlementMC.length ? `
+          <section class="pol-card">
+            <div class="pol-card-title"><i data-lucide="stethoscope" width="18" height="18"></i>Kelayakan Cuti Sakit (MC)</div>
+            <div class="pol-ent-grid">${_entTable('Mengikut Tempoh Berkhidmat', '#10b981', _pol.entitlementMC)}</div>
+          </section>` : ''}`;
+      } else if (_pTab === 'peraturan') {
+        const _cmp = [
+          ['Tujuan', 'Kecemasan peribadi (kereta rosak, banjir, isteri bersalin kecemasan dll)', 'Kematian ahli keluarga terdekat <em>(Ibu, Bapa, Suami/Isteri, Anak sahaja)</em>'],
+          ['Tolak baki cuti', 'Ya — ditolak dari AL. Jika baki AL sudah <strong>habis (0)</strong>, dikira sebagai <strong>Unpaid Leave (UPL)</strong>.', 'Tambahan percuma untuk 3 hari pertama. Lebihan melebihi 3 hari ditolak dari AL.'],
+          ['Had', 'Fleksibel (mengikut baki AL; selepas AL habis → UPL)', 'Maksimum 3 hari berturut-turut bagi setiap kes'],
+          ['Bukti wajib', 'Gambar kemalangan / tayar pancit dll', 'Sijil Kematian'],
+        ];
+        let _n = 0;
+        _tabBody = `
+          <div class="pol-rules">
+            ${_ruleCard(++_n, 'Cuti Tahunan (AL)', '#3b82f6', 'calendar-check', _pol.rulesAL)}
+            ${_ruleCard(++_n, 'Cuti Sakit (MC)', '#10b981', 'stethoscope', _pol.rulesMC)}
+            ${_ruleCard(++_n, 'Cuti Kecemasan (EL) vs Cuti Ehsan (CL)', '#ef4444', 'scale', [], `
+              <div class="pol-cmp">
+                ${[['Cuti Kecemasan (EL)', '#ef4444', 1], ['Cuti Ehsan (CL)', '#f59e0b', 2]].map(([t, c, k]) => `
+                  <div class="pol-cmp-col" style="--cc:${c};">
+                    <div class="pol-cmp-title">${t}</div>
+                    ${_cmp.map(row => `<div class="pol-cmp-row"><span>${row[0]}</span><div>${row[k]}</div></div>`).join('')}
+                  </div>`).join('')}
+              </div>
+              <div class="pol-callout is-danger"><i data-lucide="file-warning" width="16" height="16"></i><div>Borang yang dihantar tanpa dokumen sokongan akan dihalang oleh sistem serta-merta.</div></div>`)}
+            ${_isCoPol ? '' : _ruleCard(++_n, 'Cuti Pendidikan (CME)', '#8b5cf6', 'graduation-cap', _pol.rulesCME)}
+            ${_ruleCard(++_n, 'Notis Berhenti Kerja', '#64748b', 'file-text', _pol.rulesNotice)}
+          </div>`;
+      } else {
+        _tabBody = `
+          <section class="pol-card">
+            <div class="pol-card-title"><i data-lucide="calendar-days" width="18" height="18"></i>Cuti Umum ${_hol.stateLabel} ${_hol.year}<span class="pol-pill">${_hol.list.length} hari</span></div>
+            ${_hol.list.length ? `<div class="pol-hols">
+              ${_hol.list.map((h, i) => {
+                const d = new Date(h.date + 'T00:00:00');
+                const past = d < _hol.today;
+                return `<div class="pol-hol ${past ? 'is-past' : ''} ${i === _hol.nextIdx ? 'is-next' : ''}">
+                  <div class="pol-hol-date"><b>${d.getDate()}</b><span>${d.toLocaleDateString('ms-MY', { month: 'short' })}</span></div>
+                  <div class="pol-hol-name">${h.name}<small>${d.toLocaleDateString('ms-MY', { weekday: 'long' })}</small></div>
+                  ${i === _hol.nextIdx ? '<span class="pol-pill is-next">Akan datang</span>' : ''}
+                </div>`;
+              }).join('')}
+            </div>` : '<p class="pol-muted">Tiada cuti umum direkodkan lagi.</p>'}
+          </section>`;
+      }
+
       return `
         <header class="top-bar">
-          <h1>Policy Reference Guidelines</h1>
+          <h1>Polisi Cuti</h1>
           <button class="neu-btn primary-text" onclick="window.setView('dashboard')">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
               Kembali ke Dashboard
           </button>
         </header>
-        
-        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; margin-top: 2rem;">
-            <!-- Main Policy Definitions -->
-            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-                <!-- PRO RATA WIDGET -->
-                <section class="glass-card fade-in" style="padding: 2rem; background: rgba(255,255,255,0.02); border: 1px solid rgba(59, 130, 246, 0.2);">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.5rem; color: var(--primary); font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
-                        Formula Pengiraan Pro-Rata
-                    </div>
-                    <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 2rem;">Untuk mendapatkan jumlah cuti yang layak bagi setiap bulan bekerja:</p>
-                    
-                    <div style="display: flex; justify-content: center; align-items: center; gap: 1rem; margin-bottom: 2.5rem; font-weight: 700;">
-                       <span style="color: var(--text-muted);">Cuti Pro-Rata Sebulan</span>
-                       <span style="color: var(--primary); font-size: 1.5rem;">=</span>
-                       <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem;">
-                          <span>Kelayakan Cuti Setahun</span>
-                          <div style="width: 100%; height: 2px; background: currentColor;"></div>
-                          <span>12 Bulan</span>
-                       </div>
-                    </div>
 
-                    <div class="neu-panel" style="padding: 1.5rem;">
-                       <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.5rem; color: var(--text-muted); font-weight: 700; font-size: 0.75rem; letter-spacing: 1px;">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-                          BAGI KES ANDA (${currentMonthName}) - CUTI TAHUNAN (AL)
-                       </div>
-                       
-                       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
-                          <div>
-                             <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem;">Kelayakan Setahun</div>
-                             <div style="font-size: 2rem; font-weight: 700; color: var(--primary);">${entitlementAL} <span style="font-size: 1rem; color: var(--text-muted); font-weight: 500;">hari</span></div>
-                          </div>
-                          <div>
-                             <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem;">Pro-Rata Sebulan</div>
-                             <div style="font-size: 2rem; font-weight: 700; color: var(--secondary);">${(entitlementAL / 12).toFixed(2)} <span style="font-size: 1rem; color: var(--text-muted); font-weight: 500;">hari</span></div>
-                          </div>
-                          <div>
-                             <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem;">Jumlah Peruntukan</div>
-                             <div style="font-size: 2rem; font-weight: 700; color: var(--accent);">${parseFloat(_polAlStats.ent.toFixed(2))} <span style="font-size: 1rem; color: var(--text-muted); font-weight: 500;">hari</span></div>
-                          </div>
-                           <div>
-                             <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem;">Baki Tersedia Sekarang</div>
-                             <div style="font-size: 2rem; font-weight: 700; color: var(--primary);">${parseFloat(_polAlStats.bal.toFixed(2))} <span style="font-size: 1rem; color: var(--text-muted); font-weight: 500;">hari</span></div>
-                          </div>
-                       </div>
-
-                       <div style="text-align: right; font-size: 0.75rem; color: var(--primary); font-style: italic; border-top: 1px dashed var(--border); padding-top: 1rem; font-weight: 600;">
-                          Jumlah Peruntukan ${parseFloat(_polAlStats.ent.toFixed(2))} − Guna Sebelum ${parseFloat((_polAlStats.usedPre||0).toFixed(2))} − Guna Sistem ${parseFloat(_polAlStats.used.toFixed(2))} − Pelarasan ${parseFloat((_polAlStats.pelarasan||0).toFixed(2))} = Baki ${parseFloat(_polAlStats.bal.toFixed(2))} hari
-                       </div>
-                       <div style="text-align: right; font-size: 0.65rem; color: var(--text-muted); font-style: italic; margin-top: 0.4rem;">
-                          *Prorata di atas adalah rujukan formula sahaja. Baki sebenar = Jumlah Peruntukan − Guna Sebelum Sistem − Guna Dalam Sistem − Pelarasan HR.
-                       </div>
-                    </div>
-                </section>
-
-                <!-- ALIRAN KELULUSAN SECTION -->
-                ${_isCoPol ? `
-                <section class="glass-card fade-in" style="padding: 2rem; border: 1px solid rgba(139,92,246,0.25); background: rgba(139,92,246,0.03);">
-                   <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--secondary); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                     Aliran Kelulusan Cuti (Approval Flow)
-                   </h2>
-                   <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.5rem;">Setiap permohonan cuti staf ${window.printBrandFor(user.branch).name} melalui peringkat berikut sebelum dikira SAH.</p>
-                   <div style="border-radius: 14px; border: 1.5px solid #3b82f633; background: rgba(59,130,246,0.04); padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 0.6rem;">
-                     <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
-                       <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #3b82f6; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P1</div>
-                       <div>
-                         <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Pelulus Pertama</div>
-                         <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Pelulus peringkat pertama syarikat menilai dan menyokong permohonan.</div>
-                       </div>
-                     </div>
-                     <div style="border-left: 2px dashed rgba(59,130,246,0.3); height: 16px; margin-left: 13px;"></div>
-                     <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
-                       <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #059669; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P2</div>
-                       <div>
-                         <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Kelulusan Akhir — Pengurus Besar</div>
-                         <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Cuti hanya dikira <strong>SAH</strong> selepas kelulusan akhir diberi.</div>
-                       </div>
-                     </div>
-                   </div>
-                </section>` : `
-                <section class="glass-card fade-in" style="padding: 2rem; border: 1px solid rgba(139,92,246,0.25); background: rgba(139,92,246,0.03);">
-                   <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--secondary); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                     Aliran Kelulusan Cuti (Approval Flow)
-                   </h2>
-                   <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.5rem;">Setiap permohonan cuti mesti melalui peringkat kelulusan berikut sebelum dikira SAH.</p>
-
-                   <div style="display: flex; flex-direction: column; gap: 1rem;">
-
-                     <!-- Op Balok — 3 peringkat -->
-                     <div style="border-radius: 14px; border: 1.5px solid #f43f5e33; background: rgba(244,63,94,0.04); padding: 1.25rem 1.5rem;">
-                       <div style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #f43f5e; margin-bottom: 1rem;">Staff Operasi — Klinik Syed Badaruddin Balok (3 Peringkat)</div>
-                       <div style="display: flex; flex-direction: column; gap: 0.6rem;">
-                         <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
-                           <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #f43f5e; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P0</div>
-                           <div>
-                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Sokongan Peringkat 0 — Team Leader (TL)</div>
-                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Permohonan mesti disokong oleh <strong>Team Leader Balok</strong> yang dipilih semasa menghantar borang sebelum boleh ke Supervisor.</div>
-                           </div>
-                         </div>
-                         <div style="border-left: 2px dashed rgba(244,63,94,0.3); height: 16px; margin-left: 13px;"></div>
-                         <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
-                           <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #f59e0b; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P1</div>
-                           <div>
-                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Nilai & Lulus Peringkat 1 — Supervisor</div>
-                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Supervisor Balok menilai dan meluluskan <strong>selepas</strong> sokongan Team Leader diterima.</div>
-                           </div>
-                         </div>
-                         <div style="border-left: 2px dashed rgba(245,158,11,0.3); height: 16px; margin-left: 13px;"></div>
-                         <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
-                           <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #059669; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P2</div>
-                           <div>
-                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Kelulusan Akhir Peringkat 2 — HR / Admin</div>
-                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Cuti hanya dikira <strong>SAH</strong> selepas HR/Admin memberi kelulusan akhir.</div>
-                           </div>
-                         </div>
-                       </div>
-                     </div>
-
-                     <!-- Doktor, Admin, Op Lain — 2 peringkat -->
-                     <div style="border-radius: 14px; border: 1.5px solid #3b82f633; background: rgba(59,130,246,0.04); padding: 1.25rem 1.5rem;">
-                       <div style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #3b82f6; margin-bottom: 1rem;">Doktor / Staff Admin / Staff Operasi Lain (2 Peringkat)</div>
-                       <div style="display: flex; flex-direction: column; gap: 0.6rem;">
-                         <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
-                           <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #3b82f6; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P1</div>
-                           <div>
-                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Sokongan Peringkat 1 — Doctor PIC / HOD Balok / Supervisor</div>
-                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Pelulus Peringkat 1 yang dipilih semasa menghantar borang menilai dan menyokong permohonan. Cawangan Pahang yang <strong>tiada Doctor PIC</strong> (cth. RPCM) — Peringkat 1 ialah <strong>Supervisor Balok (HQ)</strong>. Klinik Utama mengikut laluan Balok (HQ).</div>
-                           </div>
-                         </div>
-                         <div style="border-left: 2px dashed rgba(59,130,246,0.3); height: 16px; margin-left: 13px;"></div>
-                         <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
-                           <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #059669; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P2</div>
-                           <div>
-                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Kelulusan Akhir Peringkat 2 — HR / Admin</div>
-                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Cuti hanya dikira <strong>SAH</strong> selepas HR/Admin memberi kelulusan akhir.</div>
-                           </div>
-                         </div>
-                       </div>
-                     </div>
-
-                     <!-- Terengganu — 2 peringkat sejak 2026-08-03 (Doctor PIC → HR Terengganu) -->
-                     <div style="border-radius: 14px; border: 1.5px solid #8b5cf633; background: rgba(139,92,246,0.04); padding: 1.25rem 1.5rem;">
-                       <div style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #8b5cf6; margin-bottom: 1rem;">Staff Terengganu (Dungun / Kerteh / Paka) — 2 Peringkat</div>
-                       <div style="display: flex; flex-direction: column; gap: 0.6rem;">
-                         <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
-                           <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #8b5cf6; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P1</div>
-                           <div>
-                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Sokongan Peringkat 1 — Doctor PIC Cawangan</div>
-                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Doctor PIC cawangan anda menilai dan menyokong permohonan.</div>
-                           </div>
-                         </div>
-                         <div style="border-left: 2px dashed rgba(139,92,246,0.3); height: 16px; margin-left: 13px;"></div>
-                         <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
-                           <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #059669; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P2</div>
-                           <div>
-                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Kelulusan Akhir Peringkat 2 — HR Terengganu</div>
-                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Cuti hanya dikira <strong>SAH</strong> selepas HR Terengganu memberi kelulusan akhir.</div>
-                           </div>
-                         </div>
-                       </div>
-                     </div>
-
-                   </div>
-                </section>`}
-
-                ${_pol.notice ? `<div style="margin-bottom:1.5rem;padding:1rem 1.25rem;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-left:4px solid #f59e0b;border-radius:10px;font-size:0.88rem;color:var(--text);line-height:1.6;">📢 ${_pol.notice}</div>` : ''}
-                <section class="glass-card fade-in" style="padding: 2rem;">
-                   <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--primary); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> Senarai Kategori Cuti (Glossary)</h2>
-                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                     ${_pol.glossary.map(g => `<div class="neu-panel" style="padding: 1rem;"><strong style="color: var(--primary);">${g.code}:</strong> ${g.name}</div>`).join('')}
-                   </div>
-                </section>
-
-                <section class="glass-card fade-in" style="padding: 2rem;">
-                   <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--primary); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg> ${_isCoPol ? 'Jadual Kelayakan Cuti Tahunan' : 'Jadual Kelayakan Cuti Tahunan Mengikut Lokasi'}</h2>
-                   
-                   ${_isCoPol ? `
-                   <div>
-                     <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted);">
-                       <thead><tr style="background: rgba(155,44,44,0.07); color: var(--text);">
-                         <th style="padding: 0.5rem; border: 1px solid var(--border);">Tempoh Berkhidmat</th>
-                         <th style="padding: 0.5rem; border: 1px solid var(--border);">Kelayakan Tahunan (AL)</th>
-                       </tr></thead>
-                       <tbody>${(_pol.entitlementAL || []).map((r,i) => `
-                         <tr style="${i%2===1?'background:rgba(59,130,246,0.07);':''}">
-                           <td style="padding:0.5rem;border:1px solid var(--border);">${r.period}</td>
-                           <td style="padding:0.5rem;border:1px solid var(--border);font-weight:bold;color:var(--primary);">${r.days}</td>
-                         </tr>`).join('')}
-                       </tbody>
-                     </table>
-                   </div>` : `
-                   ${(!user || !user.branch || (!user.branch.includes('Dungun') && !user.branch.includes('Kerteh') && !user.branch.includes('Paka'))) ? `
-                   <div style="margin-bottom: 2rem;">
-                     <h3 style="color: var(--primary); font-size: 1rem; margin-bottom: 0.5rem;">Negeri Pahang</h3>
-                     <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted);">
-                       <thead><tr style="background: rgba(155,44,44,0.07); color: var(--text);">
-                         <th style="padding: 0.5rem; border: 1px solid var(--border);">Tempoh Berkhidmat</th>
-                         <th style="padding: 0.5rem; border: 1px solid var(--border);">Kelayakan Tahunan (AL)</th>
-                       </tr></thead>
-                       <tbody>${_pol.entitlementPahang.map((r,i) => `
-                         <tr style="${i%2===1?'background:rgba(59,130,246,0.07);':''}">
-                           <td style="padding:0.5rem;border:1px solid var(--border);font-weight:${i>0?'bold':'normal'};color:${i>0?'var(--primary)':'inherit'};">${r.period}</td>
-                           <td style="padding:0.5rem;border:1px solid var(--border);font-weight:${i>0?'bold':'normal'};color:${i>0?'var(--primary)':'inherit'};">${r.days}</td>
-                         </tr>`).join('')}
-                       </tbody>
-                     </table>
-                   </div>` : ''}
-
-                   ${(!user || !user.branch || (user.branch.includes('Dungun') || user.branch.includes('Kerteh') || user.branch.includes('Paka'))) ? `
-                   <div>
-                     <h3 style="color: var(--accent); font-size: 1rem; margin-bottom: 0.5rem;">Negeri Terengganu</h3>
-                     <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted);">
-                       <thead><tr style="background: rgba(155,44,44,0.07); color: var(--text);">
-                         <th style="padding: 0.5rem; border: 1px solid var(--border);">Tempoh Berkhidmat</th>
-                         <th style="padding: 0.5rem; border: 1px solid var(--border);">Kelayakan Tahunan (AL)</th>
-                       </tr></thead>
-                       <tbody>${_pol.entitlementTerengganu.map((r,i) => `
-                         <tr style="background:rgba(192,132,252,0.1);">
-                           <td style="padding:0.5rem;border:1px solid var(--border);color:var(--accent);font-weight:bold;">${r.period}</td>
-                           <td style="padding:0.5rem;border:1px solid var(--border);color:var(--accent);font-weight:bold;">${r.days}</td>
-                         </tr>`).join('')}
-                       </tbody>
-                     </table>
-                     <p style="font-size:0.75rem;color:var(--text-muted);margin-top:0.5rem;font-style:italic;">*Terhad kepada cawangan Dungun, Kerteh, dan Paka.</p>
-                   </div>` : ''}
-
-                   <div style="margin-top: 2rem;">
-                     <h3 style="color: var(--danger); font-size: 1rem; margin-bottom: 0.5rem;">Kategori Doktor (Semua Kawasan)</h3>
-                     <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted);">
-                       <thead><tr style="background: rgba(155,44,44,0.07); color: var(--text);">
-                         <th style="padding: 0.5rem; border: 1px solid var(--border);">Peringkat Cuti Tahunan (AL)</th>
-                       </tr></thead>
-                       <tbody>${_pol.entitlementDoktor.map((r,i) => `
-                         <tr style="${i%2===1?'background:rgba(248,113,113,0.1);':''}">
-                           <td style="padding:0.5rem;border:1px solid var(--border);color:var(--danger);font-weight:bold;">${r.days}</td>
-                         </tr>`).join('')}
-                       </tbody>
-                     </table>
-                   </div>`}
-                </section>
-
-                <section class="glass-card fade-in" style="padding: 2rem;">
-                   <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--primary); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> Syarat & Peraturan Utama</h2>
-                   
-                   <div style="display: flex; flex-direction: column; gap: 1rem;">
-                       <div class="neu-panel" style="border-left: 4px solid var(--accent); padding-left: 1.5rem;">
-                          <h3 style="font-size: 1rem; color: var(--accent); margin-bottom: 0.5rem;">1. Cuti Tahunan (Annual Leave - AL)</h3>
-                          <ul style="color: var(--text-muted); font-size: 0.9rem; padding-left: 1.5rem; line-height: 1.6; margin: 0;">
-                            ${_pol.rulesAL.map(r => `<li>${r}</li>`).join('')}
-                          </ul>
-                       </div>
-
-                       <div class="neu-panel" style="border-left: 4px solid #eab308; padding-left: 1.5rem;">
-                          <h3 style="font-size: 1rem; color: #eab308; margin-bottom: 0.5rem;">2. Cuti Sakit (Medical Leave - MC)</h3>
-                          <ul style="color: var(--text-muted); font-size: 0.9rem; padding-left: 1.5rem; line-height: 1.6; margin: 0;">
-                            ${_pol.rulesMC.map(r => `<li>${r}</li>`).join('')}
-                          </ul>
-                          ${_pol.entitlementMC && _pol.entitlementMC.length > 0 ? `
-                          <div style="margin-top:1rem;">
-                            <div style="font-size:0.78rem;font-weight:700;color:#eab308;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.5px;">Jadual Kelayakan MC</div>
-                            <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
-                              <thead><tr style="background:rgba(234,179,8,0.1);">
-                                <th style="padding:0.45rem 0.6rem;border:1px solid rgba(234,179,8,0.25);text-align:left;color:#eab308;">Tempoh Berkhidmat</th>
-                                <th style="padding:0.45rem 0.6rem;border:1px solid rgba(234,179,8,0.25);text-align:center;color:#eab308;">Hari Kelayakan</th>
-                              </tr></thead>
-                              <tbody>${_pol.entitlementMC.map((r,i) => `
-                                <tr style="${i%2===1?'background:rgba(234,179,8,0.05);':''}">
-                                  <td style="padding:0.4rem 0.6rem;border:1px solid rgba(163,177,198,0.2);color:var(--text-muted);">${r.period}</td>
-                                  <td style="padding:0.4rem 0.6rem;border:1px solid rgba(163,177,198,0.2);text-align:center;font-weight:700;color:#eab308;">${r.days}</td>
-                                </tr>`).join('')}
-                              </tbody>
-                            </table>
-                          </div>` : ''}
-                       </div>
-
-                       <div class="neu-panel" style="border-left: 4px solid var(--danger); padding-left: 1.5rem;">
-                          <h3 style="font-size: 1rem; color: var(--danger); margin-bottom: 0.5rem;">3. Perbandingan: Cuti Kecemasan (EL) vs Cuti Ehsan (CL)</h3>
-                          <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-muted); margin-top: 1rem;">
-                            <thead>
-                                <tr style="background: rgba(155,44,44,0.07); color: var(--text);">
-                                    <th style="padding: 0.5rem; border: 1px solid var(--border);">Aspek</th>
-                                    <th style="padding: 0.5rem; border: 1px solid var(--border); color: var(--danger);">Cuti Kecemasan (EL)</th>
-                                    <th style="padding: 0.5rem; border: 1px solid var(--border); color: var(--secondary);">Cuti Ehsan (CL)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);"><strong>Tujuan</strong></td>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);">Kecemasan peribadi (kereta rosak, banjir, isteri bersalin kecemasan dll)</td>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);">Kematian ahli keluarga terdekat <em>(Ibu, Bapa, Suami/Isteri, Anak sahaja)</em></td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);"><strong>Tolak Baki Cuti?</strong></td>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);">Ya. Ditolak dari Annual Leave (AL). Jika baki AL sudah <strong>habis (0)</strong>, dikira sebagai <strong>Unpaid Leave (UPL)</strong>.</td>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);">Tambahan percuma untuk 3 hari pertama. Lebihan melebihi 3 hari ditolak dari AL.</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);"><strong>Had Limit</strong></td>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);">Fleksibel (Mengikut baki AL sedia ada; selepas AL habis → UPL)</td>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);">Max 3 Hari berturut-turut untuk setiap kes</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);"><strong>Bukti WAJIB</strong></td>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);">Gambar kemalangan / tayar pancit dll</td>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);">Sijil Kematian</td>
-                                </tr>
-                            </tbody>
-                          </table>
-                          <p style="color: var(--danger); font-size: 0.8rem; margin-top: 1rem; font-style: italic;">*Nota: Borang yang dihantar tanpa dokumen sokongan akan dihalang oleh sistem serta-merta.</p>
-                       </div>
-
-                       ${_isCoPol ? '' : `<div class="neu-panel" style="border-left: 4px solid #c084fc; padding-left: 1.5rem;">
-                          <h3 style="font-size: 1rem; color: var(--secondary); margin-bottom: 0.5rem;">4. Cuti Pendidikan (CME Leave)</h3>
-                          <ul style="color: var(--text-muted); font-size: 0.9rem; padding-left: 1.5rem; line-height: 1.6; margin: 0;">
-                            ${_pol.rulesCME.map(r => `<li>${r}</li>`).join('')}
-                          </ul>
-                       </div>`}
-
-                       <div class="neu-panel" style="border-left: 4px solid #94a3b8; padding-left: 1.5rem;">
-                          <h3 style="font-size: 1rem; color: #94a3b8; margin-bottom: 0.5rem;">${_isCoPol ? '4' : '5'}. Notis Berhenti Kerja (Notice Period)</h3>
-                          <ul style="color: var(--text-muted); font-size: 0.9rem; padding-left: 1.5rem; line-height: 1.6; margin: 0;">
-                            ${_pol.rulesNotice.map(r => `<li>${r}</li>`).join('')}
-                          </ul>
-                       </div>
-                   </div>
-                </section>
+        <div class="pol-page fade-in">
+          <section class="pol-hero">
+            <div class="pol-hero-main">
+              <div class="pol-hero-label">Baki Cuti Tahunan (AL) · ${currentMonthName}</div>
+              <div class="pol-hero-value">${_f2(_polAlStats.bal)}<span>hari</span></div>
+              <div class="pol-bar"><div style="width:${_alPct}%;"></div></div>
+              <div class="pol-hero-sub">${_alUsedAll} daripada ${_f2(_polAlStats.ent)} hari peruntukan telah digunakan</div>
             </div>
-
-            <!-- Side Information: Public Holidays (dynamic) -->
-            <div>
-               <section class="glass-card fade-in" style="position: sticky; top: 2rem; padding: 2rem;">
-                  ${(() => {
-                    const branchObj = branches.find(b => b.name === user.branch);
-                    const isTerengganu = branchObj && branchObj.state === 'Terengganu';
-                    const state = isTerengganu ? 'terengganu' : 'pahang';
-                    const stateLabel = isTerengganu ? 'Terengganu' : 'Pahang';
-                    const list = (publicHolidays[state] || []).slice().sort((a,b) => a.date.localeCompare(b.date));
-                    const year = list.length ? list[0].date.substring(0,4) : new Date().getFullYear();
-                    return `
-                  <h2 style="font-size: 1.1rem; font-weight: 600; color: var(--text); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                    Cuti Umum ${stateLabel} ${year}
-                  </h2>
-                  <div style="border-radius: 12px; padding: 1.5rem; font-size: 0.85rem; border: 1px solid var(--border); box-shadow: var(--shadow-inset-sm);">
-                    <div style="color: var(--primary); font-weight: 600; margin-bottom: 1.5rem; text-align: center; border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; text-transform: uppercase;">Jumlah: ${list.length} Hari Pelepasan Am</div>
-                    <table style="width: 100%; border-collapse: collapse; color: var(--text-muted); font-weight: 600; font-size: 0.8rem;">
-                      ${list.map((h, i) => {
-                        const d = new Date(h.date + 'T00:00:00');
-                        const label = d.toLocaleDateString('ms-MY', { day: 'numeric', month: 'short' });
-                        const isLast = i === list.length - 1;
-                        return `<tr style="${isLast ? '' : 'border-bottom: 1px solid var(--border);'}"><td style="padding: 0.6rem 0;">${label}</td><td style="text-align: right; color: var(--text);">${h.name}</td></tr>`;
-                      }).join('')}
-                    </table>
-                  </div>`;
-                  })()}
-               </section>
+            <div class="pol-hero-stats">
+              <div><span>Kelayakan Setahun</span><b>${entitlementAL}<small> hari</small></b></div>
+              <div><span>Pro-Rata Sebulan</span><b>${(entitlementAL / 12).toFixed(2)}<small> hari</small></b></div>
+              <div><span>Jumlah Peruntukan</span><b>${_f2(_polAlStats.ent)}<small> hari</small></b></div>
             </div>
+          </section>
+
+          <nav class="pol-tabs" role="tablist">
+            ${_polTabs.map(t => `<button role="tab" aria-selected="${t.id === _pTab}" class="pol-tab ${t.id === _pTab ? 'active' : ''}" onclick="window.setPolicyTab('${t.id}')"><i data-lucide="${t.icon}" width="15" height="15"></i>${t.label}</button>`).join('')}
+          </nav>
+
+          <div class="pol-body">${_tabBody}</div>
         </div>
       `;
 
