@@ -109,7 +109,11 @@ service cloud.firestore {
     }
 
     match /leaves/{id} {
-      allow read: if signedIn() && companyOK(resource.data.branch);
+      // Own leave is always readable. Beyond being obviously right, this is what
+      // lets plain staff subscribe with just `where('ic', '==', myIC)` (src/main.js
+      // ensureLeavesListener) — companyOK alone cannot be proven from a query that
+      // does not filter on branch, so that query would be rejected outright.
+      allow read: if signedIn() && ( resource.data.ic == myIC() || companyOK(resource.data.branch) );
       allow create: if ( canApprove() && companyOK(request.resource.data.get('branch', '')) )
         || ( signedIn()
              && request.resource.data.ic == myIC()

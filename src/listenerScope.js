@@ -46,3 +46,36 @@ export function canSeeRegistrations(role) {
   if (!role || typeof role !== 'string') return false;
   return REGISTRATION_ROLES.includes(role);
 }
+
+// ── leaves: whole collection vs. the caller's own records ────────────────────
+//
+// `leaves` is the one listener that grows without bound — every application adds
+// a document, and every user downloaded all of them on every cold load. A plain
+// staff member only ever looks at their own leave (history, balance, overlap
+// check), so for them `where('ic', '==', myIC)` returns the same screens for a
+// handful of reads instead of the whole company's history.
+//
+// Fail OPEN, not closed: subscribing to too much only costs quota, but
+// subscribing to too little silently empties an approval queue or a report. So
+// only a role explicitly listed here, whose permissions grant nothing beyond its
+// own leave, is narrowed. Approver roles are never narrowed even if RBAC turns
+// their flags off, because canManageRequest() and the zone viewers in main.js
+// decide by role name, not by RBAC.
+export const OWN_LEAVES_ROLES = ['staff', 'juru_xray', 'sonographer', 'juru_audio', 'pemandu'];
+
+// Permissions that only touch the user's own data. Any OTHER permission switched
+// on (manage_pending, reports, locum_records, a flag added later…) may open a
+// screen that lists colleagues' leave, so it widens the listener.
+const OWN_ONLY_PERMS = ['leave_request', 'policy', 'settings', 'inbox', 'wa_setting'];
+
+export function needsAllLeaves(role, perms) {
+  if (!role || typeof role !== 'string') return true;
+  if (!OWN_LEAVES_ROLES.includes(role)) return true;
+  if (!perms || typeof perms !== 'object') return true;
+  if (perms.dashboard !== 'staff') return true;          // branch/analisa dashboards list others
+  return Object.keys(perms).some(k =>
+    k !== 'dashboard' && !OWN_ONLY_PERMS.includes(k)
+    // Firestore has held the STRING "true"/"false" — count anything but a real
+    // false/"false" as granted, so a malformed flag widens rather than hides.
+    && perms[k] !== false && perms[k] !== 'false' && perms[k] != null);
+}

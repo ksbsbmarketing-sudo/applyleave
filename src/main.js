@@ -10,7 +10,7 @@ import { ALL as SCOPE_ALL, NO_BRANCH, visibleStates, branchOptions, filterByScop
 import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps,
          findApprovedOverlaps, findOverlapGroups } from './leaveOverlap.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
-import { canSeeAuditLogs, canSeeRegistrations } from './listenerScope.js';
+import { canSeeAuditLogs, canSeeRegistrations, needsAllLeaves } from './listenerScope.js';
 import { getNoticeDays, isNoticeExempt } from './leaveNotice.js';
 import { validateLeaveReason } from './leaveReason.js';
 import { showToast, showConfirm, restorePendingToasts } from './notify.js';
@@ -3948,6 +3948,49 @@ function ensureAuditLogListener() {
   );
 }
 
+// Pendengar `leaves` — staf biasa hanya muat cuti SENDIRI (needsAllLeaves).
+//
+// Dulu setiap pengguna memuat turun SELURUH koleksi cuti pada setiap cold load,
+// dan koleksi itu bertambah dengan setiap permohonan — bacaan terbesar yang terus
+// membesar di pelan Spark (50k/hari). Staf biasa (~90% pengguna) hanya melihat
+// sejarah, baki dan semakan pertindihan cuti sendiri, jadi `where ic ==` memberi
+// skrin yang sama dengan beberapa bacaan sahaja.
+//
+// Selamat dipanggil berulang kali (sama seperti ensureAuditLogListener): pendengar
+// RBAC memanggilnya semula, dan jika settings/rbac memberi staf kebenaran tambahan
+// skopnya dilebarkan kepada semua tanpa perlu muat semula app.
+let leavesUnsub = null;
+let leavesScopeAll = null;
+function ensureLeavesListener() {
+  if (!user) return;
+  const wantAll = needsAllLeaves(user.role, window.effectivePerms(user));
+  if (leavesUnsub && leavesScopeAll === wantAll) return;          // skop tidak berubah
+  if (leavesUnsub) leavesUnsub();
+  leavesScopeAll = wantAll;
+  // Pertanyaan `ic ==` lulus rules melalui klausa cuti-sendiri (firestore.rules
+  // match /leaves) — tanpa itu ia ditolak kerana tidak menapis cawangan.
+  const q = wantAll ? subsidiaryScoped('leaves', 'branch')
+                    : query(collection(db, 'leaves'), where('ic', '==', user.ic));
+  leavesUnsub = onSnapshot(q, (snapshot) => {
+    const _allLeaves = snapshot.docs.map(doc => ({
+      ...doc.data(),
+      docId: doc.id
+    })).sort((a, b) => b.id - a.id);
+    leaveRecords = _allLeaves.filter(r => !r.isTest);
+    testLeaveRecords = _allLeaves.filter(r => r.isTest);
+    leavesLoaded = true;
+    console.log(`Leave records updated from Firestore (${wantAll ? 'all' : 'own'}: ${_allLeaves.length})`);
+    selfHealPendingLeaveDays();
+    render();
+  }, (err) => {
+    // Contoh: kuota Spark habis. Jangan biar skeleton berpusing selama-lamanya.
+    console.error('leaves listener failed:', err);
+    leavesUnsub = null;                      // benarkan percubaan semula
+    leavesLoaded = true;
+    render();
+  });
+}
+
 // Koleksi untuk pendengar — pengasingan DUA HALA (firestore.rules companyOK):
 //  • staf anak syarikat → dokumen syarikat sendiri sahaja;
 //  • staf/HR klinik     → semua KECUALI anak syarikat;
@@ -4184,23 +4227,7 @@ async function initData() {
 
   // Real-time Leave Records
   setTimeout(() => { if (!leavesLoaded) { leavesLoaded = true; render(); } }, 10000);
-  onSnapshot(subsidiaryScoped('leaves', 'branch'), (snapshot) => {
-    const _allLeaves = snapshot.docs.map(doc => ({
-      ...doc.data(),
-      docId: doc.id
-    })).sort((a, b) => b.id - a.id);
-    leaveRecords = _allLeaves.filter(r => !r.isTest);
-    testLeaveRecords = _allLeaves.filter(r => r.isTest);
-    leavesLoaded = true;
-    console.log('Leave records updated from Firestore');
-    selfHealPendingLeaveDays();
-    render();
-  }, (err) => {
-    // Contoh: kuota Spark habis. Jangan biar skeleton berpusing selama-lamanya.
-    console.error('leaves listener failed:', err);
-    leavesLoaded = true;
-    render();
-  });
+  ensureLeavesListener();
 
   // Real-time Registration Requests — hanya untuk peranan yang memang ada tab
   // "Daftar Baharu" (admin / hr / super_admin). Peranan lain tidak pernah membaca
@@ -4322,6 +4349,7 @@ async function initData() {
         // Nilai semula sekarang, jika tidak pengguna itu terpaksa muat semula app
         // sebelum jadual audit terisi.
         ensureAuditLogListener();
+        ensureLeavesListener();
         render();
     } else {
         console.warn('RBAC matrix not found in Firestore, using defaults');

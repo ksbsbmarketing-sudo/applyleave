@@ -407,3 +407,19 @@ test("group admin: sees and manages both clinics and KSB Pharma", async () => {
   await assertSucceeds(getDocs(collection(db, "branches")));
   await assertSucceeds(updateDoc(doc(db, "leaves", "LP1"), { status: "APPROVED" }));
 });
+
+// ── Cuti sendiri: staf biasa langgan `where ic ==` sahaja (ensureLeavesListener) ──
+test("staff can query own leaves by ic alone", async () => {
+  const db = testEnv.authenticatedContext("S1", staffAuth("S1")).firestore();
+  const snap = await assertSucceeds(getDocs(query(collection(db, "leaves"), where("ic", "==", "S1"))));
+  assert.ok(snap.size >= 1);
+});
+
+test("pharma staff: own-ic query works, but cannot reach clinic leave by ic", async () => {
+  // Clinic staff could already read clinic leave via companyOK; the new clause must
+  // not open anything for KSB Pharma staff, who are confined to their own company.
+  await seedPharma();
+  const db = testEnv.authenticatedContext("PS1", staffAuth("PS1")).firestore();
+  await assertSucceeds(getDocs(query(collection(db, "leaves"), where("ic", "==", "PS1"))));
+  await assertFails(getDocs(query(collection(db, "leaves"), where("ic", "==", "S1"))));
+});

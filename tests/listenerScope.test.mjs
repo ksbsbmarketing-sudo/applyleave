@@ -72,3 +72,40 @@ test('everyone else skips the registration_requests listener', () => {
     assert.strictEqual(canSeeRegistrations(r), false, String(r) + ' should not subscribe');
   }
 });
+
+// ── leaves listener scope ────────────────────────────────────────────────────
+import { needsAllLeaves, OWN_LEAVES_ROLES } from '../src/listenerScope.js';
+
+const STAFF_PERMS = {
+  dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true,
+  settings: true, wa_setting: false, inbox: true, manage_pending: false, manage_staff: false,
+  manage_reports: false, report_attendance: false, can_cancel: false, os_balok: false,
+  os_pahang: false, locum_records: false,
+};
+
+test('leaves: plain staff with default perms reads only own leave', () => {
+  for (const role of OWN_LEAVES_ROLES) assert.strictEqual(needsAllLeaves(role, STAFF_PERMS), false, role);
+});
+
+test('leaves: approver and admin roles always read everything, whatever RBAC says', () => {
+  for (const role of ['super_admin', 'admin', 'hr', 'hod_cawangan', 'hod_balok', 'doctor_pic', 'supervisor', 'team_leader'])
+    assert.strictEqual(needsAllLeaves(role, STAFF_PERMS), true, role);
+});
+
+test('leaves: a staff role granted any extra permission widens to everything', () => {
+  assert.strictEqual(needsAllLeaves('staff', { ...STAFF_PERMS, manage_pending: true }), true);
+  assert.strictEqual(needsAllLeaves('staff', { ...STAFF_PERMS, locum_records: true }), true);
+  assert.strictEqual(needsAllLeaves('staff', { ...STAFF_PERMS, dashboard: 'branch' }), true);
+  assert.strictEqual(needsAllLeaves('staff', { ...STAFF_PERMS, some_future_flag: true }), true);
+});
+
+test('leaves: string "true" counts as granted, string "false" does not', () => {
+  assert.strictEqual(needsAllLeaves('staff', { ...STAFF_PERMS, manage_reports: 'true' }), true);
+  assert.strictEqual(needsAllLeaves('staff', { ...STAFF_PERMS, manage_reports: 'false' }), false);
+});
+
+test('leaves: unknown role or missing perms fails open (reads everything)', () => {
+  assert.strictEqual(needsAllLeaves('custom_role', STAFF_PERMS), true);
+  assert.strictEqual(needsAllLeaves('staff', undefined), true);
+  assert.strictEqual(needsAllLeaves(undefined, STAFF_PERMS), true);
+});
