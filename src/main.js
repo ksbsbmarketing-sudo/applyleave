@@ -5778,7 +5778,11 @@ function renderDashboard() {
       e.preventDefault();
       if (leaveSubmitting) return;
 
-      const leaveTypeName = leaveCategories.find(c => c.id === selectedLeaveType)?.name || selectedLeaveType;
+      let leaveTypeName = leaveCategories.find(c => c.id === selectedLeaveType)?.name || selectedLeaveType;
+      // Jenis yang DISIMPAN. Biasanya sama dengan pilihan; AL bertukar kepada UP
+      // apabila baki AL sudah habis (lihat di bawah). Laluan kelulusan, polisi notis
+      // dan semakan pelulus tetap guna selectedLeaveType (AL) — kelulusan macam biasa.
+      let storedLeaveType = selectedLeaveType;
       const startDate = leaveStartDate;
       const endDate = leaveEndDate;
       const reason = leaveForm.querySelector('textarea').value.trim();
@@ -5818,7 +5822,13 @@ function renderDashboard() {
           // Baki AL sebenar = Formula B (Jumlah − Guna Sebelum − Guna Sistem − Pelarasan HR)
           const currentBal = window.getLeaveStats(user, 'AL').bal;
 
-          if (diffDays > currentBal) {
+          if (currentBal <= 0) {
+              // Baki AL = 0 → keseluruhan permohonan terus menjadi Unpaid Leave (UPL).
+              storedLeaveType = 'UP';
+              leaveTypeName = leaveCategories.find(c => c.id === 'UP')?.name || 'Unpaid Leave (UPL)';
+              leaveBreakdown = "\n*AL HABIS → UPL*\nBaki AL: " + currentBal.toFixed(2) + " hari\nUnpaid Leave (UPL): " + diffDays + " hari";
+              showToast("Notis: Baki Cuti Tahunan (AL) anda telah habis (" + currentBal.toFixed(2) + " hari). Permohonan " + diffDays + " hari ini akan dihantar sebagai Unpaid Leave (UPL — Cuti Tanpa Gaji). Kelulusan tetap seperti biasa.");
+          } else if (diffDays > currentBal) {
               const unpaidDays = diffDays - Math.max(0, currentBal);
               const paidDays = diffDays - unpaidDays;
               leaveBreakdown = "\n*SPLIT LEAVE DETECTED*\nEarned AL Used: " + paidDays + " days\nUnpaid Leave (UPL): " + unpaidDays + " days\n(Automatic split due to insufficient earned prorate)";
@@ -5847,8 +5857,17 @@ function renderDashboard() {
           const emgBal = window.getLeaveStats(user, 'EL_EMG').bal;
           const fromEMG = Math.min(diffDays, emgBal);
           const toAL = diffDays - fromEMG;
-          if (toAL > 0) {
-              const alBal = window.getLeaveStats(user, 'AL').bal;
+          const _alBalEmg = window.getLeaveStats(user, 'AL').bal;
+          if (toAL > 0 && fromEMG <= 0 && _alBalEmg <= 0) {
+              // Masih ada baki AL → tolak AL (cabang di bawah). Baki AL sudah habis →
+              // keseluruhan Cuti Kecemasan disimpan sebagai Unpaid Leave (UPL).
+              // Kelulusan tetap ikut laluan EL biasa (selectedLeaveType tidak berubah).
+              storedLeaveType = 'UP';
+              leaveTypeName = leaveCategories.find(c => c.id === 'UP')?.name || 'Unpaid Leave (UPL)';
+              leaveBreakdown = "\n*EL (Cuti Kecemasan) → UPL*\nBaki AL: " + _alBalEmg.toFixed(2) + " hari\nUnpaid Leave (UPL): " + diffDays + " hari";
+              showToast("Notis: Cuti Kecemasan (EL) ditolak dari Cuti Tahunan (AL), tetapi baki AL anda telah habis (" + _alBalEmg.toFixed(2) + " hari). Permohonan " + diffDays + " hari ini akan dihantar sebagai Unpaid Leave (UPL — Cuti Tanpa Gaji). Kelulusan tetap seperti biasa.");
+          } else if (toAL > 0) {
+              const alBal = _alBalEmg;
               leaveBreakdown = "\n*EL (Cuti Kecemasan) → AL*\n" + (fromEMG > 0 ? "EL Bucket Used: " + fromEMG.toFixed(1) + " days\n" : "")
                   + "Annual Leave (AL) Used: " + toAL.toFixed(1) + " days\n(Cuti Kecemasan is deducted from Annual Leave)";
               let emgMsg = fromEMG > 0
@@ -5969,7 +5988,9 @@ function renderDashboard() {
           name: user.name,
           ic: user.ic,
           branch: user.branch,
-          type: selectedLeaveType,
+          type: storedLeaveType,
+          // Dimohon sebagai AL tetapi baki AL habis → disimpan sebagai UP.
+          ...(storedLeaveType !== selectedLeaveType ? { requestedType: selectedLeaveType } : {}),
           days: diffDays,
           startDate,
           endDate,
@@ -8878,7 +8899,7 @@ function renderView() {
                               <td style="padding: 1.5rem 1rem; text-align: right;">
                                   <div style="display: flex; gap: 1.25rem; justify-content: flex-end;">
                                       ${r.proofUrl ? `<a href="${r.proofUrl}" target="_blank" rel="noopener" title="Lihat Bukti${r.proofName ? ' (' + r.proofName + ')' : ''}" class="icon-btn is-proof"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></a>` : ''}
-                                      ${PROOF_REQUIRED_TYPES.includes(r.type) && window.canEditAnyLeave(user) ? `<button class="icon-btn is-upload" onclick="window.reuploadProof(${r.id})" title="${r.proofUrl ? 'Ganti' : 'Muat Naik'} Bukti (JPG/PNG/PDF, maks 10MB)" aria-label="Bukti"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></button>` : ''}
+                                      ${PROOF_REQUIRED_TYPES.includes(r.requestedType || r.type) && window.canEditAnyLeave(user) ? `<button class="icon-btn is-upload" onclick="window.reuploadProof(${r.id})" title="${r.proofUrl ? 'Ganti' : 'Muat Naik'} Bukti (JPG/PNG/PDF, maks 10MB)" aria-label="Bukti"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></button>` : ''}
                                       ${window.canManageRequest(user, r) && r.status !== 'CANCELLED' && window.effectivePerms(user).can_cancel ? `<button class="icon-btn is-cancel" onclick="window.cancelLeave(${r.id})" title="Batal Cuti" aria-label="Batal Cuti"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg></button>` : ''}
                                       <button class="icon-btn is-print" onclick="printLeave(${r.id})" title="Cetak" aria-label="Cetak"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg></button>
                                       ${window.canEditAnyLeave(user) ? `
