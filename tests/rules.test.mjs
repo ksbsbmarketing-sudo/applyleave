@@ -106,11 +106,12 @@ test("only manageStaff can write staff records", async () => {
   await assertSucceeds(setDoc(doc(hr, "staff", "S9"), { ic: "S9", role: "staff" }));
 });
 
-test("approver (canApprove only) cannot write config/rolePermissions; manageStaff can", async () => {
+test("approver (canApprove only) cannot write config/rolePermissions; since v2.5.17 neither can HR (manageStaff)", async () => {
   const approver = ctxDb(approverAuth("SUP"));
   await assertFails(setDoc(doc(approver, "config", "rolePermissions"), { supervisor: { canApprove: true, manageStaff: true } }));
+  // Access control is Admin/Super Admin only — see "access control docs" below.
   const hr = ctxDb(hrAuth("HR1"));
-  await assertSucceeds(setDoc(doc(hr, "config", "rolePermissions"), { supervisor: { canApprove: true, manageStaff: false } }));
+  await assertFails(setDoc(doc(hr, "config", "rolePermissions"), { supervisor: { canApprove: true, manageStaff: false } }));
 });
 
 // ── config/publicHolidays — HOD Cawangan ──────────────────────────────────────
@@ -445,4 +446,25 @@ test("clinic doctor_pic: branch-equality queries on leaves and staff are allowed
   const lv = await assertSucceeds(getDocs(query(collection(db, "leaves"), where("branch", "==", "Klinik A"))));
   assert.ok(lv.size >= 1);
   await assertSucceeds(getDocs(query(collection(db, "staff"), where("branch", "==", "Klinik A"))));
+});
+
+// ── Kawalan akses: RBAC + rolePermissions hanya Admin/Super Admin ─────────────
+test("access control docs: only admin/super_admin can write; HR keeps other config", async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const d = ctx.firestore();
+    await setDoc(doc(d, "staff", "ADM"), { ic: "ADM", name: "ADMIN", branch: "Management / HQ", role: "admin" });
+    await setDoc(doc(d, "staff", "HR1"), { ic: "HR1", name: "HR", branch: "Klinik A", role: "hr" });
+  });
+  const hr = ctxDb(hrAuth("HR1"));
+  await assertFails(setDoc(doc(hr, "settings", "rbac"), { staff: {} }));
+  await assertFails(setDoc(doc(hr, "config", "rolePermissions"), { staff: { canApprove: true } }));
+  await assertFails(setDoc(doc(hr, "config", "rolePermissionsSync"), { pendingRoles: [] }));
+  await assertSucceeds(setDoc(doc(hr, "settings", "staff_config"), { staffCategories: [] }));
+  await assertSucceeds(setDoc(doc(hr, "config", "approvalRouting"), { x: 1 }));
+  await assertSucceeds(getDoc(doc(hr, "settings", "rbac")));
+
+  const adm = ctxDb(hrAuth("ADM"));
+  await assertSucceeds(setDoc(doc(adm, "settings", "rbac"), { staff: {} }));
+  await assertSucceeds(setDoc(doc(adm, "config", "rolePermissions"), { staff: { canApprove: false } }));
+  await assertSucceeds(setDoc(doc(adm, "config", "rolePermissionsSync"), { pendingRoles: [] }));
 });

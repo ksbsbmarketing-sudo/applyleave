@@ -10,6 +10,7 @@ import { ALL as SCOPE_ALL, NO_BRANCH, visibleStates, branchOptions, filterByScop
 import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps,
          findApprovedOverlaps, findOverlapGroups } from './leaveOverlap.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
+import { deriveRolePermissions, changedRoles } from './rolePermissions.js';
 import { canSeeAuditLogs, canSeeRegistrations, listenerScope, canSeeWaLogs, STAFF_APPROVER_ROLES } from './listenerScope.js';
 import { getNoticeDays, isNoticeExempt } from './leaveNotice.js';
 import { validateLeaveReason } from './leaveReason.js';
@@ -56,6 +57,7 @@ import {
   addDoc,
   getDocs,
   writeBatch,
+  arrayUnion,
   query,
   where,
   orderBy,
@@ -1017,10 +1019,9 @@ window.rbacMatrix = {
     },
     hod_cawangan: {
         dashboard: 'branch', branch_analisa: true, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
-        // manage_staff mesti sepadan dengan config/rolePermissions.hod_cawangan.manageStaff.
-        // Butang di UI datang dari sini, tetapi Firestore rules percaya custom claim yang
-        // dijana dari config/rolePermissions — jadi kalau dua-dua tak sama, HOD nampak
-        // butang Simpan yang sentiasa gagal dengan "Missing or insufficient permissions".
+        // manage_staff di sini = urus staf CAWANGAN SENDIRI (firestore.rules isBranchHodOf).
+        // Ia sengaja TIDAK menjadi claim manageStaff seluruh syarikat — lihat
+        // BRANCH_LIMITED_STAFF_ROLES dalam src/rolePermissions.js.
         manage_pending: false, manage_staff: true, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: true, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: true, report_attendance: true,
         can_cancel: true, locum_records: false
@@ -1091,10 +1092,44 @@ window.toggleRbac = function(role, module) {
     render();
 };
 
-window.saveRbac = async function() {
+// Satu-satunya laluan menulis kawalan akses. Matriks RBAC disimpan BERSAMA
+// config/rolePermissions yang dijana daripadanya (src/rolePermissions.js) dalam
+// satu batch — dua dokumen itu tidak boleh lagi tersasar. Peranan yang claimsnya
+// berubah direkod dalam config/rolePermissionsSync.pendingRoles sehingga
+// `node sync-claims.js` dijalankan. firestore.rules: Admin/Super Admin sahaja.
+const canEditAccessControl = u => !!u && ['admin', 'super_admin'].includes(u.role);
+let claimsSyncInfo = null;          // config/rolePermissionsSync — dimuat bila tab Kawalan Akses dibuka
+async function loadClaimsSyncInfo() {
     try {
-        await setDoc(doc(db, "settings", "rbac"), window.rbacMatrix);
-        showToast('Kebenaran Akses (RBAC) berjaya disimpan ke Firestore!');
+        const snap = await getDoc(doc(db, 'config', 'rolePermissionsSync'));
+        claimsSyncInfo = snap.exists() ? snap.data() : { pendingRoles: [] };
+    } catch (e) { console.warn('rolePermissionsSync load failed:', e); claimsSyncInfo = { pendingRoles: [] }; }
+    render();
+}
+async function persistRbac() {
+    const next = deriveRolePermissions(window.rbacMatrix);
+    const prevSnap = await getDoc(doc(db, 'config', 'rolePermissions'));
+    const changed = changedRoles(prevSnap.exists() ? prevSnap.data() : {}, next);
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'settings', 'rbac'), window.rbacMatrix);
+    batch.set(doc(db, 'config', 'rolePermissions'), next);
+    if (changed.length) {
+        batch.set(doc(db, 'config', 'rolePermissionsSync'),
+            { pendingRoles: arrayUnion(...changed), updatedAt: Date.now(), updatedBy: user?.name || user?.ic || '' },
+            { merge: true });
+    }
+    await batch.commit();
+    if (changed.length) loadClaimsSyncInfo();
+    return changed;
+}
+
+window.saveRbac = async function() {
+    if (!canEditAccessControl(user)) { showToast('Hanya Admin / Super Admin boleh mengubah kawalan akses.'); return; }
+    try {
+        const changed = await persistRbac();
+        showToast(changed.length
+            ? `RBAC disimpan. Kuasa simpan berubah untuk: ${changed.join(', ')} — jalankan "node sync-claims.js" supaya berkuat kuasa.`
+            : 'Kebenaran Akses (RBAC) berjaya disimpan ke Firestore!');
     } catch (e) {
         console.error("Error persisting RBAC Matrix:", e);
         showToast('Ralat: Gagal menyimpan tetapan matrix. Sila semak sambungan internet.');
@@ -2336,6 +2371,8 @@ window.deleteStaffCategory = async function(name) {
 };
 
 window.addCustomRole = async function() {
+  // Peranan baharu menambah baris pada matriks RBAC — kawalan akses, Admin sahaja.
+  if (!canEditAccessControl(user)) { showToast('Hanya Admin / Super Admin boleh menambah peranan.'); return; }
   const key = (prompt('Kunci peranan (huruf kecil, tiada ruang, contoh: ketua_unit):') || '').trim().toLowerCase().replace(/\s+/g, '_');
   if (!key) return;
   if (window.rbacMatrix[key]) { showToast('Peranan sudah wujud.'); return; }
@@ -2346,18 +2383,19 @@ window.addCustomRole = async function() {
   window.staffConfig.roleLabels[key] = label;
   window.staffConfig.customRoles.push({ key, label });
   await saveStaffConfig();
-  await setDoc(doc(db, 'settings', 'rbac'), window.rbacMatrix);
+  await persistRbac();
   render();
 };
 
 window.deleteCustomRole = async function(key) {
+  if (!canEditAccessControl(user)) { showToast('Hanya Admin / Super Admin boleh memadam peranan.'); return; }
   if (CORE_ROLES.includes(key)) { showToast('Peranan teras tidak boleh dipadam.'); return; }
   if (!await showConfirm('Padam peranan "' + key + '"? Staff dengan peranan ini perlu dikemas kini secara manual.')) return;
   delete window.rbacMatrix[key];
   delete window.staffConfig.roleLabels[key];
   window.staffConfig.customRoles = window.staffConfig.customRoles.filter(r => r.key !== key);
   await saveStaffConfig();
-  await setDoc(doc(db, 'settings', 'rbac'), window.rbacMatrix);
+  await persistRbac();
   render();
 };
 
@@ -4450,7 +4488,9 @@ async function initData() {
             }
         }
         window.rbacMatrix = data;
-        if (needsMigration) setDoc(doc(db, "settings", "rbac"), data);
+        // Hanya Admin boleh menulis settings/rbac (firestore.rules) — klien lain
+        // cuma guna data yang dimigrasi dalam memori.
+        if (needsMigration && canEditAccessControl(user)) setDoc(doc(db, "settings", "rbac"), data).catch(e => console.warn('RBAC migration write skipped:', e?.code || e));
         console.log('RBAC matrix updated from Firestore');
         // Firestore boleh memberi `manage_login_audit` yang lalai dalam kod tolak.
         // Nilai semula sekarang, jika tidak pengguna itu terpaksa muat semula app
@@ -4462,7 +4502,7 @@ async function initData() {
         render();
     } else {
         console.warn('RBAC matrix not found in Firestore, using defaults');
-        setDoc(doc(db, "settings", "rbac"), window.rbacMatrix);
+        if (canEditAccessControl(user)) setDoc(doc(db, "settings", "rbac"), window.rbacMatrix).catch(e => console.warn('RBAC seed skipped:', e?.code || e));
     }
   });
 }
@@ -7876,6 +7916,7 @@ function renderView() {
       // Kedua-dua fungsi idempotent; snapshot/get yang tiba akan render() semula.
       if (managementTab === 'login_audit') ensureAuditLogListener();
       if (managementTab === 'whatsapp_settings') ensureWaLogsLoaded();
+      if (managementTab === 'access_control' && !claimsSyncInfo) { claimsSyncInfo = { pendingRoles: [] }; loadClaimsSyncInfo(); }
 
       // Tapis staff mengikut skop negeri pengguna
       const userStateScope = window.getUserStateScope(user);
@@ -10221,6 +10262,16 @@ function renderView() {
             </div>
           </div>
 
+          ${(() => {
+            const pending = (claimsSyncInfo && claimsSyncInfo.pendingRoles) || [];
+            if (!pending.length) return '';
+            return `<div style="margin-bottom:1.25rem;padding:0.9rem 1.15rem;border-radius:12px;border:1px solid rgba(245,158,11,0.45);background:rgba(245,158,11,0.08);font-size:0.8rem;line-height:1.5;">
+              <b>⚠️ Kuasa simpan belum dikemas kini untuk: ${pending.map(r => window.staffConfig.roleLabels[r] || r).join(', ')}</b><br>
+              Paparan sudah berubah, tetapi Firestore masih guna kuasa lama — butang Simpan/Lulus peranan ini mungkin gagal.
+              Jalankan <code>node sync-claims.js</code> di komputer pentadbir, kemudian staf berkenaan log masuk semula (atau tunggu sehingga 1 jam).
+            </div>`;
+          })()}
+
           <!-- Toggle: Auto "Guna Dalam Sistem" -->
           <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem;padding:0.95rem 1.15rem;border-radius:12px;border:1px solid ${autoSystemUsage ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'};background:${autoSystemUsage ? 'rgba(16,185,129,0.06)' : 'rgba(245,158,11,0.06)'};">
             <div style="display:flex;align-items:flex-start;gap:0.7rem;">
@@ -10334,6 +10385,7 @@ function renderView() {
                       <div style="display:flex;flex-direction:column;gap:0.3rem;">
                         <span style="display:inline-block;background:${r.color}22;color:${r.color};border:1.5px solid ${r.color}55;border-radius:7px;padding:0.22rem 0.7rem;font-weight:800;font-size:0.8rem;width:fit-content;letter-spacing:0.2px;">${r.label}</span>
                         <span style="font-size:0.68rem;color:var(--text-muted);padding-left:0.15rem;">${r.desc}</span>
+                        ${((claimsSyncInfo && claimsSyncInfo.pendingRoles) || []).includes(r.key) ? `<span style="font-size:0.62rem;font-weight:700;color:#b45309;padding-left:0.15rem;">⚠️ Perlu sync-claims</span>` : ''}
                       </div>
                     </td>
                     ${renderRbacDashboardCell(r.key)}

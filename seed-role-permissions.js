@@ -23,6 +23,13 @@ const ROLE_PERMISSIONS = {
 };
 
 async function main() {
+  // SUPERSEDED (v2.5.17): config/rolePermissions is now generated from the RBAC
+  // matrix whenever Access Control is saved (src/rolePermissions.js). Running this
+  // overwrites that with the hardcoded table above and makes the two drift again.
+  if (!process.argv.includes("--force")) {
+    console.error("⛔ Diganti oleh skrin Kawalan Akses (v2.5.17). Simpan matriks di sana, kemudian `node sync-claims.js`.\n   Guna --force hanya untuk memulihkan dokumen yang hilang.");
+    process.exit(1);
+  }
   await db.doc("config/rolePermissions").set(ROLE_PERMISSIONS);
   console.log("✅ Wrote config/rolePermissions:", Object.keys(ROLE_PERMISSIONS).length, "roles");
 }
