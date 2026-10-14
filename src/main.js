@@ -10,7 +10,8 @@ import { ALL as SCOPE_ALL, NO_BRANCH, visibleStates, branchOptions, filterByScop
 import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps,
          findApprovedOverlaps, findOverlapGroups } from './leaveOverlap.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
-import { deriveRolePermissions, changedRoles } from './rolePermissions.js';
+import { deriveRolePermissions, changedRoles, claimsFor } from './rolePermissions.js';
+import { canEditHolidayState } from './holidayAccess.js';
 import { canSeeAuditLogs, canSeeRegistrations, listenerScope, canSeeWaLogs, STAFF_APPROVER_ROLES } from './listenerScope.js';
 import { getNoticeDays, isNoticeExempt } from './leaveNotice.js';
 import { validateLeaveReason } from './leaveReason.js';
@@ -1003,19 +1004,19 @@ window.rbacMatrix = {
         dashboard: 'analisa', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: true, inbox: true,
         manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: true, manage_reports: true, manage_routing: true, manage_access: true, manage_roles_categories: true, manage_holidays: true, manage_policy: true,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: true,
-        can_cancel: true, locum_records: true
+        can_cancel: true, locum_records: true, manage_registrations: true, edit_leave: true, leave_calendar: true
     },
     admin: {
         dashboard: 'analisa', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: true, manage_reports: true, manage_routing: true, manage_access: true, manage_roles_categories: true, manage_holidays: true, manage_policy: true,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: true,
-        can_cancel: true, locum_records: true
+        can_cancel: true, locum_records: true, manage_registrations: true, edit_leave: true, leave_calendar: true
     },
     hr: {
         dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: true, manage_holidays: true, manage_policy: true,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: true,
-        can_cancel: true, locum_records: true
+        can_cancel: true, locum_records: true, manage_registrations: true, edit_leave: true, leave_calendar: true
     },
     hod_cawangan: {
         dashboard: 'branch', branch_analisa: true, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
@@ -1024,61 +1025,61 @@ window.rbacMatrix = {
         // BRANCH_LIMITED_STAFF_ROLES dalam src/rolePermissions.js.
         manage_pending: false, manage_staff: true, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: true, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: true, report_attendance: true,
-        can_cancel: true, locum_records: false
+        can_cancel: true, locum_records: false, manage_registrations: false, edit_leave: false, leave_calendar: false
     },
     hod_balok: {
         dashboard: 'branch', branch_analisa: true, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
-        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: true, manage_policy: false,
+        manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: true, report_attendance: true,
-        can_cancel: true, locum_records: false
+        can_cancel: true, locum_records: false, manage_registrations: false, edit_leave: false, leave_calendar: true
     },
     doctor_pic: {
         dashboard: 'branch', branch_analisa: true, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: true, locum_records: false
+        can_cancel: true, locum_records: false, manage_registrations: false, edit_leave: false, leave_calendar: true
     },
     supervisor: {
         dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: true, locum_records: true
+        can_cancel: true, locum_records: true, manage_registrations: false, edit_leave: false, leave_calendar: true
     },
     team_leader: {
         dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: false, locum_records: false
+        can_cancel: false, locum_records: false, manage_registrations: false, edit_leave: false, leave_calendar: true
     },
     staff: {
         dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: false, locum_records: false
+        can_cancel: false, locum_records: false, manage_registrations: false, edit_leave: false, leave_calendar: false
     },
     juru_xray: {
         dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: false, locum_records: false
+        can_cancel: false, locum_records: false, manage_registrations: false, edit_leave: false, leave_calendar: false
     },
     sonographer: {
         dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: false, locum_records: false
+        can_cancel: false, locum_records: false, manage_registrations: false, edit_leave: false, leave_calendar: false
     },
     juru_audio: {
         dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: false, locum_records: false
+        can_cancel: false, locum_records: false, manage_registrations: false, edit_leave: false, leave_calendar: false
     },
     pemandu: {
         dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: false, locum_records: false
+        can_cancel: false, locum_records: false, manage_registrations: false, edit_leave: false, leave_calendar: false
     }
 };
 
@@ -1934,7 +1935,7 @@ const _groupFirstTab = {
   config:    ['policy_editor','routing','access_control','public_holidays','whatsapp_settings']
 };
 const _tabPermMap = {
-  pending:'manage_pending', staff:'manage_staff', branches:'manage_branches',
+  pending:'manage_pending', staff:'manage_staff', branches:'manage_branches', reg_requests:'manage_registrations',
   roles_categories:'manage_roles_categories', hr_reports:'manage_reports',
   locum_records:'locum_records', master_audit:'manage_audit', login_audit:'manage_login_audit',
   balance_view:'manage_reports',
@@ -1949,15 +1950,28 @@ const _tabPermMap = {
 window.canOpenManagement = function(u) {
   if (!u) return false;
   const p = window.effectivePerms(u);
-  return Object.values(_tabPermMap).some(k => p[k] === true || p[k] === 'true')
-    || ['admin', 'hr', 'super_admin'].includes(u.role);           // tab Daftar Baharu
+  return Object.values(_tabPermMap).some(k => p[k] === true || p[k] === 'true');
+};
+// Kebenaran yang dulu ditetapkan terus dalam kod (admin/hr/super_admin) — kini
+// lajur RBAC (v2.5.19). Setiap satu juga perlukan claim yang Firestore semak,
+// supaya tiada butang yang muncul lalu gagal (src/rolePermissions.js claimsFor).
+const _granted = v => v === true || v === 'true';
+// Tab Daftar Baharu: lulus pendaftaran = cipta dokumen staff → claim manageStaff.
+window.canSeeRegRequests = function(u) {
+  return !!u && canSeeRegistrations(u.role, window.effectivePerms(u));
+};
+// Edit cuti orang lain + muat naik semula bukti → claim canApprove.
+window.canEditAnyLeave = function(u) {
+  if (!u) return false;
+  const p = window.effectivePerms(u);
+  return _granted(p.edit_leave) && claimsFor(u.role, p).canApprove;
 };
 window.setManageGroup = function(group) {
   managementGroup = group;
   const perms = user ? window.effectivePerms(user) : {};
   const tabs = _groupFirstTab[group] || [];
   for (const t of tabs) {
-    if (t === 'reg_requests') { if (user && ['admin','hr','super_admin'].includes(user.role)) { managementTab = t; break; } }
+    if (t === 'reg_requests') { if (window.canSeeRegRequests(user)) { managementTab = t; break; } }
     else if (!_tabPermMap[t] || perms[_tabPermMap[t]]) { managementTab = t; break; }
   }
   render();
@@ -2782,7 +2796,7 @@ window.printLeave = function(id) {
 window.editLeave = function(id) {
     const rec = findLeaveRecord(id);
     if (!rec) return;
-    const isAdminEditor = ['admin', 'hr', 'super_admin'].includes(user.role);
+    const isAdminEditor = window.canEditAnyLeave(user);
     const isOwner = rec.ic === user.ic;
     const isApprover = window.canManageRequest(user, rec) || window.canCorrectBranchLeave(user, rec);
     const finalized = ['APPROVED', 'REJECTED', 'CANCELLED'].includes(rec.status);
@@ -4053,6 +4067,21 @@ async function ensureWaLogsLoaded() {
 // Selamat dipanggil berulang kali (sama seperti ensureAuditLogListener): pendengar
 // RBAC memanggilnya semula, dan jika settings/rbac memberi staf kebenaran tambahan
 // skopnya dilebarkan kepada semua tanpa perlu muat semula app.
+// Pendengar registration_requests — hanya untuk yang boleh buka tab Daftar Baharu
+// (window.canSeeRegRequests). Peranan lain tidak pernah membacanya, jadi melanggan
+// cuma membakar kuota. Borang pendaftaran awam berjalan SEBELUM log masuk (array
+// kosong ketika itu), jadi gate ini tidak melemahkan semakan pendua di sana.
+// Dipanggil semula oleh pendengar RBAC supaya kebenaran baharu berkuat kuasa.
+let registrationUnsub = null;
+function ensureRegistrationListener() {
+  if (registrationUnsub || !window.canSeeRegRequests(user)) return;
+  registrationUnsub = onSnapshot(subsidiaryScoped('registration_requests', 'branch'), (snapshot) => {
+    registrationRequests = snapshot.docs.map(d => ({ ...d.data(), docId: d.id }))
+      .sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
+    render();
+  }, (err) => { console.warn('registration_requests listener failed:', err); registrationUnsub = null; });
+}
+
 let leavesUnsubs = [];
 let leavesScope = null;
 function ensureLeavesListener() {
@@ -4384,20 +4413,9 @@ async function initData() {
   setTimeout(() => { if (!leavesLoaded) { leavesLoaded = true; render(); } }, 10000);
   ensureLeavesListener();
 
-  // Real-time Registration Requests — hanya untuk peranan yang memang ada tab
-  // "Daftar Baharu" (admin / hr / super_admin). Peranan lain tidak pernah membaca
-  // `registrationRequests`, jadi melanggannya cuma membakar kuota.
-  //
-  // Borang pendaftaran awam menyemak pendua terhadap array ini, tetapi borang itu
-  // berjalan SEBELUM log masuk — ketika itu initData() belum pernah dijalankan dan
-  // array memang kosong. Jadi gate ini tidak melemahkan semakan tersebut.
-  if (canSeeRegistrations(user && user.role)) {
-    onSnapshot(subsidiaryScoped('registration_requests', 'branch'), (snapshot) => {
-      registrationRequests = snapshot.docs.map(d => ({ ...d.data(), docId: d.id }))
-        .sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
-      render();
-    });
-  }
+  // Real-time Registration Requests — hanya untuk yang ada tab "Daftar Baharu"
+  // (RBAC manage_registrations + claim manageStaff). Lihat ensureRegistrationListener.
+  ensureRegistrationListener();
 
   // Real-time RBAC Matrix
   // Staff config: categories & role labels
@@ -4501,6 +4519,7 @@ async function initData() {
         ensureLeavesListener();
         ensureStaffListener();
         ensureWaLogsLoaded();
+        ensureRegistrationListener();
         render();
     } else {
         console.warn('RBAC matrix not found in Firestore, using defaults');
@@ -6142,7 +6161,7 @@ function renderDashboard() {
           e.preventDefault();
           const rec = findLeaveRecord(editingLeaveId);
           if(rec) {
-              const isAdminEditor = ['admin', 'hr', 'super_admin'].includes(user.role);
+              const isAdminEditor = window.canEditAnyLeave(user);
               const isOwner = rec.ic === user.ic;
               const isApprover = window.canManageRequest(user, rec) || window.canCorrectBranchLeave(user, rec);
               if (!isAdminEditor && ['APPROVED', 'REJECTED', 'CANCELLED'].includes(rec.status)) {
@@ -7002,11 +7021,12 @@ function renderPersonalDashboard() {
 // ── Kalendar Cuti ───────────────────────────────────────────────────────────
 // Siapa boleh lihat: admin/super_admin/HR (ikut zon) dan pelulus Peringkat 0/1
 // (cawangan sendiri sahaja). Staf biasa tidak nampak cuti orang lain.
+// RBAC leave_calendar (v2.5.19). Skop (zon vs cawangan) ditentukan dalam
+// renderLeaveCalendar; pemerhati bukan-zon perlu ada cawangan untuk dikunci.
 window.canSeeLeaveCalendar = function(u) {
   if (!u) return false;
-  if (['super_admin', 'admin', 'hr'].includes(u.role)) return true;
-  const rb = window.effectivePerms(u);
-  return !!rb.manage_pending && !!u.branch;
+  if (!_granted(window.effectivePerms(u).leave_calendar)) return false;
+  return ['super_admin', 'admin', 'hr'].includes(u.role) || !!u.branch;
 };
 window.calShift = function(delta) { calMonth = shiftMonth(calMonth, delta); render(); };
 window.calToday = function() {
@@ -7903,7 +7923,7 @@ function renderView() {
           'public_holidays': userPerms.manage_holidays,
           'policy_editor': userPerms.manage_policy,
           'balance_view': userPerms.manage_reports,
-          'reg_requests': ['admin', 'hr', 'super_admin'].includes(user.role)
+          'reg_requests': window.canSeeRegRequests(user)
       };
 
       if (!tabPermissions[managementTab]) {
@@ -8115,11 +8135,11 @@ function renderView() {
           if (isHODRole) return leaveRecords.filter(r => window.canManageRequest(user, r) && ['PENDING','TL APPROVED'].includes(r.status)).length;
           return 0;
         })() : 0;
-        const pendingRegs = ['admin','hr','super_admin'].includes(user.role) ? window.regRequestsInScope(registrationRequests).filter(r => r.status === 'pending').length : 0;
+        const pendingRegs = window.canSeeRegRequests(user) ? window.regRequestsInScope(registrationRequests).filter(r => r.status === 'pending').length : 0;
 
         // which main groups are visible for this role
         const showApprovals = userPerms.manage_pending;
-        const showPeople    = userPerms.manage_staff || userPerms.manage_branches || userPerms.manage_roles_categories || ['admin','hr','super_admin'].includes(user.role);
+        const showPeople    = userPerms.manage_staff || userPerms.manage_branches || userPerms.manage_roles_categories || window.canSeeRegRequests(user);
         const showReports   = userPerms.manage_reports || userPerms.locum_records || userPerms.manage_audit || userPerms.manage_login_audit;
         const showConfig    = userPerms.manage_routing || userPerms.manage_access || userPerms.manage_holidays || userPerms.wa_setting || userPerms.manage_policy;
 
@@ -8156,7 +8176,7 @@ function renderView() {
             ${userPerms.manage_staff ? `<button class="neu-tab ${managementTab==='staff'?'active':''}" onclick="window.setManageTab('staff')" style="border-radius:8px;">Staff</button>` : ''}
             ${userPerms.manage_branches ? `<button class="neu-tab ${managementTab==='branches'?'active':''}" onclick="window.setManageTab('branches')" style="border-radius:8px;">Cawangan</button>` : ''}
             ${userPerms.manage_roles_categories ? `<button class="neu-tab ${managementTab==='roles_categories'?'active':''}" onclick="window.setManageTab('roles_categories')" style="border-radius:8px;">Peranan & Kategori</button>` : ''}
-            ${['admin','hr','super_admin'].includes(user.role) ? (() => { const pr=window.regRequestsInScope(registrationRequests).filter(r=>r.status==='pending').length; return `<button class="neu-tab ${managementTab==='reg_requests'?'active':''}" onclick="window.setManageTab('reg_requests')" style="border-radius:8px;">Daftar Baharu${pr>0?` <span style="background:#ef4444;color:#fff;border-radius:999px;padding:0 5px;font-size:0.65rem;font-weight:800;">${pr}</span>`:''}</button>`; })() : ''}
+            ${window.canSeeRegRequests(user) ? (() => { const pr=window.regRequestsInScope(registrationRequests).filter(r=>r.status==='pending').length; return `<button class="neu-tab ${managementTab==='reg_requests'?'active':''}" onclick="window.setManageTab('reg_requests')" style="border-radius:8px;">Daftar Baharu${pr>0?` <span style="background:#ef4444;color:#fff;border-radius:999px;padding:0 5px;font-size:0.65rem;font-weight:800;">${pr}</span>`:''}</button>`; })() : ''}
           ` : ''}
           ${activeGroup === 'reports' ? `
             ${userPerms.manage_reports ? `<button class="neu-tab ${managementTab==='hr_reports'?'active':''}" onclick="window.setManageTab('hr_reports')" style="border-radius:8px;">HR Reports</button>` : ''}
@@ -8593,7 +8613,7 @@ function renderView() {
           `;
         })() : ''}
 
-        ${managementTab === 'reg_requests' && ['admin', 'hr', 'super_admin'].includes(user.role) ? `
+        ${managementTab === 'reg_requests' && window.canSeeRegRequests(user) ? `
           <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem; margin-top: 1rem;">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
             <h2 style="font-size: 1.25rem; font-weight: 600;">Permohonan Daftar Baharu</h2>
@@ -8805,10 +8825,10 @@ function renderView() {
                               <td style="padding: 1.5rem 1rem; text-align: right;">
                                   <div style="display: flex; gap: 1.25rem; justify-content: flex-end;">
                                       ${r.proofUrl ? `<a href="${r.proofUrl}" target="_blank" rel="noopener" title="Lihat Bukti${r.proofName ? ' (' + r.proofName + ')' : ''}" class="icon-btn is-proof"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></a>` : ''}
-                                      ${PROOF_REQUIRED_TYPES.includes(r.type) && ['admin','hr','super_admin'].includes(user.role) ? `<button class="icon-btn is-upload" onclick="window.reuploadProof(${r.id})" title="${r.proofUrl ? 'Ganti' : 'Muat Naik'} Bukti (JPG/PNG/PDF, maks 10MB)" aria-label="Bukti"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></button>` : ''}
+                                      ${PROOF_REQUIRED_TYPES.includes(r.type) && window.canEditAnyLeave(user) ? `<button class="icon-btn is-upload" onclick="window.reuploadProof(${r.id})" title="${r.proofUrl ? 'Ganti' : 'Muat Naik'} Bukti (JPG/PNG/PDF, maks 10MB)" aria-label="Bukti"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></button>` : ''}
                                       ${window.canManageRequest(user, r) && r.status !== 'CANCELLED' && window.effectivePerms(user).can_cancel ? `<button class="icon-btn is-cancel" onclick="window.cancelLeave(${r.id})" title="Batal Cuti" aria-label="Batal Cuti"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg></button>` : ''}
                                       <button class="icon-btn is-print" onclick="printLeave(${r.id})" title="Cetak" aria-label="Cetak"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg></button>
-                                      ${['admin', 'hr', 'super_admin'].includes(user.role) ? `
+                                      ${window.canEditAnyLeave(user) ? `
                                       <button class="icon-btn is-edit" onclick="editLeave(${r.id})" title="Edit Cuti" aria-label="Edit Cuti"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
                                       <button class="icon-btn is-delete" onclick="deleteLeave(${r.id})" title="Padam Rekod" aria-label="Padam Rekod"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
                                       ` : ''}
@@ -10218,7 +10238,8 @@ function renderView() {
               { title: 'Navigasi', color: '#3b82f6', cols: [
                 { key: 'dashboard', label: 'Dashboard', kind: 'dashboard' },
                 { key: 'branch_analisa', label: 'Analisa<br>Cawangan' },
-                { key: 'leave_request', label: 'Permohonan<br>Cuti' } ] },
+                { key: 'leave_request', label: 'Permohonan<br>Cuti' },
+                { key: 'leave_calendar', label: 'Kalendar<br>Cuti' } ] },
               { title: 'Tetapan', color: '#2dd4bf', cols: [
                 { key: 'policy', label: 'Polisi' },
                 { key: 'settings', label: 'Tetapan<br>Sistem' },
@@ -10228,7 +10249,9 @@ function renderView() {
                 { key: 'manage_pending', label: 'Luluskan<br>Permohonan', claims: true },
                 { key: 'manage_staff', label: 'Kakitangan', claims: true },
                 { key: 'manage_branches', label: 'Cawangan' },
-                { key: 'manage_roles_categories', label: 'Peranan &amp;<br>Kategori' } ] },
+                { key: 'manage_roles_categories', label: 'Peranan &amp;<br>Kategori' },
+                { key: 'manage_registrations', label: 'Daftar<br>Baharu', requires: 'manageStaff' },
+                { key: 'edit_leave', label: 'Edit<br>Cuti', requires: 'canApprove' } ] },
               { title: 'Rekod', color: '#ec4899', cols: [
                 { key: 'manage_audit', label: 'Audit<br>Rekod' },
                 { key: 'manage_login_audit', label: 'Log<br>Masuk' },
@@ -10254,6 +10277,8 @@ function renderView() {
           const renderCell = (role, col, last) =>
               col.kind === 'dashboard' ? cellDashboard(role, last)
             : col.kind === 'scope' ? cellScope(role, col.key, last, col.badge, col.color)
+            : col.requires && !claimsFor(role, window.rbacMatrix[role])[col.requires]
+              ? `<td style="padding:0.12rem 0.25rem;${tdBorder(last)};text-align:center;opacity:0.3;" title="Perlukan ${col.requires === 'manageStaff' ? 'Kakitangan 🔒' : 'Luluskan Permohonan 🔒'} — Firestore akan menolak tanpanya"><div style="width:${CELL};height:${CELL};margin:auto;border-radius:7px;display:flex;align-items:center;justify-content:center;background:rgba(163,177,198,0.08);border:1px dashed rgba(163,177,198,0.4);">${ICON_OFF}</div></td>`
             : cellToggle(role, col.key, last);
 
           const renderMatrix = (groups) => `
@@ -10285,7 +10310,7 @@ function renderView() {
 
           const legend = {
             akses: `<b>Dashboard</b> (klik untuk tukar): <span style="color:#10b981;font-weight:700;">ANALISA</span> carta semua cawangan · <span style="color:#f97316;font-weight:700;">CAWANGAN</span> carta cawangan sendiri · <span style="color:#64748b;font-weight:700;">STAFF</span> paparan peribadi sahaja`,
-            pengurusan: `Setiap lajur membuka satu tab dalam Management. 🔒 = juga kuasa simpan Firestore — selepas Simpan, jalankan <code>node sync-claims.js</code>.`,
+            pengurusan: `Setiap lajur membuka satu tab/butang dalam Management. 🔒 = juga kuasa simpan Firestore — selepas Simpan, jalankan <code>node sync-claims.js</code>. Sel pudar = perlukan lajur 🔒 dahulu (Daftar Baharu ← Kakitangan, Edit Cuti ← Luluskan Permohonan).`,
             laporan: `Skop laporan hanya aktif jika <b>Laporan</b> dibenarkan (tab Pengurusan). <span style="color:#ca8a04;font-weight:700;">Kuantan</span> = daerah Kuantan sahaja · <span style="color:#0284c7;font-weight:700;">Cawangan</span> = cawangan sendiri sahaja · tiada sekatan = semua rekod dalam zon.`,
           };
 
@@ -10453,8 +10478,10 @@ function renderView() {
         })() : ''}
 
         ${managementTab === 'public_holidays' && userPerms.manage_holidays ? (() => {
-          const canEditPahang     = ['super_admin','admin','hr'].includes(user.role);
-          const canEditTerengganu = ['super_admin','admin','hr','hod_cawangan'].includes(user.role);
+          // Zon sendiri sahaja (src/holidayAccess.js) — selari dengan firestore.rules.
+          const _hCtx = { role: user.role, perms: userPerms, zone: window.getUserStateScope(user) };
+          const canEditPahang     = canEditHolidayState(_hCtx, 'pahang');
+          const canEditTerengganu = canEditHolidayState(_hCtx, 'terengganu');
           const rowStyle = 'display:grid;grid-template-columns:150px 1fr auto;gap:0.5rem;align-items:center;padding:0.45rem 0.75rem;border-bottom:1px solid rgba(163,177,198,0.1);';
 
           const renderPanel = (state, label, color, canEdit) => {
@@ -10470,7 +10497,7 @@ function renderView() {
                 </div>
                 ${canEdit ? `<button onclick="window.addHoliday('${state}')" style="padding:0.3rem 0.8rem;border-radius:999px;border:1px solid ${color}55;background:${color}11;font-size:0.78rem;font-weight:600;color:${color};cursor:pointer;">+ Tambah</button>` : `<span style="font-size:0.72rem;color:var(--text-muted);font-style:italic;">Baca sahaja</span>`}
               </div>
-              ${!canEdit ? `<div style="padding:0.6rem 0.75rem;background:rgba(163,177,198,0.04);border-bottom:1px solid rgba(163,177,198,0.08);font-size:0.75rem;color:var(--text-muted);">⚠️ Hanya HR/Admin boleh mengubah cuti umum Pahang.</div>` : ''}
+              ${!canEdit ? `<div style="padding:0.6rem 0.75rem;background:rgba(163,177,198,0.04);border-bottom:1px solid rgba(163,177,198,0.08);font-size:0.75rem;color:var(--text-muted);">⚠️ Hanya Admin atau HR/HOD zon ${label} boleh mengubah senarai ini.</div>` : ''}
               <div style="padding:0.6rem 1rem;background:${color}0d;border-bottom:1px solid ${color}22;text-align:center;">
                 <span style="font-size:0.78rem;font-weight:700;color:${color};letter-spacing:0.5px;text-transform:uppercase;">
                   Jumlah: ${list.length} Hari Pelepasan Am
@@ -11571,7 +11598,7 @@ function renderLeaveModal() {
     if (!editingLeaveId) return '';
     const record = findLeaveRecord(editingLeaveId);
     if (!record) return '';
-    const isAdminEditor = ['admin', 'hr', 'super_admin'].includes(user.role);
+    const isAdminEditor = window.canEditAnyLeave(user);
 
     return `
     <div class="modal-overlay" id="leave-modal-backdrop">
@@ -11807,6 +11834,10 @@ window.updateHolidayField = function(state, idx, field, value) {
   }
 };
 window.savePublicHolidays = async function(state) {
+  if (!canEditHolidayState({ role: user.role, perms: window.effectivePerms(user), zone: window.getUserStateScope(user) }, state)) {
+    showToast('Anda hanya boleh mengubah cuti umum zon anda sendiri.');
+    return;
+  }
   const list = publicHolidays[state];
   for (let i = 0; i < list.length; i++) {
     if (!list[i].date || !list[i].name.trim()) {

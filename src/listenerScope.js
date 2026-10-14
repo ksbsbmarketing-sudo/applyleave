@@ -19,10 +19,12 @@
 // Kept as a pure module (no Firestore imports) so the rules can be tested
 // directly — the listeners themselves are not reachable from a test.
 
-// The "Daftar Baharu" management tab is rendered for exactly these roles in
-// src/main.js. The listener gate MUST stay in step with that check: subscribing
-// less than the UI shows produces an empty tab with no error.
-export const REGISTRATION_ROLES = ['admin', 'hr', 'super_admin'];
+// "Daftar Baharu" is the RBAC flag manage_registrations (v2.5.19; it used to be a
+// hardcoded admin/hr/super_admin list). Approving a registration creates a staff
+// doc, which firestore.rules only allows with the manageStaff claim — so the flag
+// counts only when the role also holds that claim, or the tab would list
+// requests the user cannot act on (and the listener itself would be rejected).
+import { claimsFor } from './rolePermissions.js';
 
 // `audit_logs` is gated on the same RBAC permission that gates the `login_audit`
 // view, rather than on a hardcoded role list, because that permission is
@@ -42,9 +44,11 @@ export function canSeeAuditLogs(role, rbacMatrix) {
   return perms.manage_login_audit === true;
 }
 
-export function canSeeRegistrations(role) {
+export function canSeeRegistrations(role, perms) {
   if (!role || typeof role !== 'string') return false;
-  return REGISTRATION_ROLES.includes(role);
+  if (!perms || typeof perms !== 'object') return false;
+  const on = perms.manage_registrations === true || perms.manage_registrations === 'true';
+  return on && claimsFor(role, perms).manageStaff;
 }
 
 // ── leaves: whole collection vs. the caller's own records ────────────────────
@@ -111,7 +115,8 @@ export const needsAllStaff = needsAllLeaves;
 // `operation_balok` staff, and getStaffGroup() puts only Balok-branch staff in
 // that group — so the TL's own (Balok) branch covers their whole queue.
 export const BRANCH_SCOPED_ROLES = ['doctor_pic', 'team_leader'];
-const BRANCH_ONLY_PERMS = [...OWN_ONLY_PERMS, 'manage_pending', 'branch_analisa', 'can_cancel'];
+// leave_calendar: a non-zone viewer's calendar is locked to user.branch (renderLeaveCalendar).
+const BRANCH_ONLY_PERMS = [...OWN_ONLY_PERMS, 'manage_pending', 'branch_analisa', 'can_cancel', 'leave_calendar'];
 const granted = v => v !== false && v !== 'false' && v != null;
 
 export function listenerScope(role, perms) {

@@ -22,15 +22,23 @@ export const BRANCH_LIMITED_STAFF_ROLES = ['hod_cawangan'];
 
 const granted = v => v === true || v === 'true';
 
+// The claims one role gets from its matrix row. Also used by the UI to grey out
+// RBAC flags whose action Firestore would reject without the underlying claim
+// (Daftar Baharu needs manageStaff, Edit Cuti needs canApprove).
+export function claimsFor(role, perms) {
+  const p = perms && typeof perms === 'object' ? perms : {};
+  return {
+    canApprove: granted(p.manage_pending),
+    manageStaff: granted(p.manage_staff) && !BRANCH_LIMITED_STAFF_ROLES.includes(role),
+  };
+}
+
 export function deriveRolePermissions(rbacMatrix) {
   const out = {};
   if (!rbacMatrix || typeof rbacMatrix !== 'object') return out;
   for (const [role, perms] of Object.entries(rbacMatrix)) {
     if (!perms || typeof perms !== 'object') continue;
-    out[role] = {
-      canApprove: granted(perms.manage_pending),
-      manageStaff: granted(perms.manage_staff) && !BRANCH_LIMITED_STAFF_ROLES.includes(role),
-    };
+    out[role] = claimsFor(role, perms);
   }
   return out;
 }

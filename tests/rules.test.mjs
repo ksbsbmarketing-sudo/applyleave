@@ -153,10 +153,43 @@ test("a signed-in user with no staff doc cannot save public holidays", async () 
     { terengganu: [{ date: "2026-09-16", name: "Hari Malaysia" }] }, { merge: true }));
 });
 
-test("HR keeps full config write access", async () => {
-  const hr = ctxDb(hrAuth("HR1"));
-  await assertSucceeds(setDoc(doc(hr, "config", "publicHolidays"),
-    { pahang: [{ date: "2026-09-16", name: "Hari Malaysia" }] }, { merge: true }));
+// Since v2.5.19 public holidays are per zone (src/holidayAccess.js mirrors this).
+const seedHR = (ic, hrState) => testEnv.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), "staff", ic), { ic, role: "hr", name: "HR", branch: "Klinik A", ...(hrState ? { hrState } : {}) });
+});
+const PH = (key) => ({ [key]: [{ date: "2026-09-16", name: "Hari Malaysia" }] });
+
+test("HR edits only its own zone's public holidays", async () => {
+  await seedHR("HRP", "Pahang"); await seedHR("HRT", "Terengganu");
+  const hrp = ctxDb(hrAuth("HRP")), hrt = ctxDb(hrAuth("HRT"));
+  await assertSucceeds(setDoc(doc(hrp, "config", "publicHolidays"), PH("pahang"), { merge: true }));
+  await assertFails(setDoc(doc(hrp, "config", "publicHolidays"), PH("terengganu"), { merge: true }));
+  await assertSucceeds(setDoc(doc(hrt, "config", "publicHolidays"), PH("terengganu"), { merge: true }));
+  // A DIFFERENT Pahang list — writing back identical data changes no key and is a harmless no-op.
+  await assertFails(setDoc(doc(hrt, "config", "publicHolidays"), { pahang: [] }, { merge: true }));
+});
+
+test("HR without hrState is treated as Pahang (same default as the app)", async () => {
+  await seedHR("HRX", null);
+  const hr = ctxDb(hrAuth("HRX"));
+  await assertSucceeds(setDoc(doc(hr, "config", "publicHolidays"), PH("pahang"), { merge: true }));
+  await assertFails(setDoc(doc(hr, "config", "publicHolidays"), PH("terengganu"), { merge: true }));
+});
+
+test("hod_cawangan cannot touch the Pahang list; admin edits both", async () => {
+  await seedStaffRole("HOD1", "hod_cawangan");
+  await assertFails(setDoc(doc(ctxDb(staffAuth("HOD1")), "config", "publicHolidays"), PH("pahang"), { merge: true }));
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "staff", "ADM"), { ic: "ADM", role: "admin", name: "A", branch: "Management / HQ" });
+  });
+  const adm = ctxDb(hrAuth("ADM"));
+  await assertSucceeds(setDoc(doc(adm, "config", "publicHolidays"), PH("pahang"), { merge: true }));
+  await assertSucceeds(setDoc(doc(adm, "config", "publicHolidays"), PH("terengganu"), { merge: true }));
+});
+
+test("HR keeps other config writes (routing)", async () => {
+  await seedHR("HRP", "Pahang");
+  await assertSucceeds(setDoc(doc(ctxDb(hrAuth("HRP")), "config", "approvalRouting"), { x: 1 }));
 });
 
 // ── Branch-scoped HOD Cawangan ───────────────────────────────────────────────

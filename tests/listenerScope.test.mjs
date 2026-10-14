@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { canSeeAuditLogs, canSeeRegistrations, REGISTRATION_ROLES } from '../src/listenerScope.js';
+import { canSeeAuditLogs, canSeeRegistrations } from '../src/listenerScope.js';
 
 // Shape of window.rbacMatrix: { [role]: { [permission]: boolean } }
 const MATRIX = {
@@ -59,18 +59,22 @@ test('a Firestore matrix that grants more than the code defaults is honoured', (
   assert.strictEqual(canSeeAuditLogs('hr', { hr: { manage_login_audit: true } }), true);
 });
 
-test('registration_requests follows the same three roles the UI tab uses', () => {
-  // src/main.js renders the "Daftar Baharu" tab for exactly these roles.
-  assert.deepStrictEqual([...REGISTRATION_ROLES].sort(), ['admin', 'hr', 'super_admin']);
-  for (const r of ['admin', 'hr', 'super_admin']) {
-    assert.strictEqual(canSeeRegistrations(r), true, r + ' should subscribe');
-  }
+test('registration_requests: needs the manage_registrations flag AND the manageStaff claim', () => {
+  const ADMINISH = { manage_registrations: true, manage_staff: true, manage_pending: true };
+  for (const r of ['admin', 'hr', 'super_admin']) assert.strictEqual(canSeeRegistrations(r, ADMINISH), true, r);
+  // Flag without manage_staff: rules would reject the listener, so do not subscribe.
+  assert.strictEqual(canSeeRegistrations('doctor_pic', { manage_registrations: true, manage_staff: false }), false);
+  // hod_cawangan's manage_staff is branch-limited and never becomes the claim.
+  assert.strictEqual(canSeeRegistrations('hod_cawangan', ADMINISH), false);
+  // manage_staff alone is not the tab.
+  assert.strictEqual(canSeeRegistrations('hr', { manage_registrations: false, manage_staff: true }), false);
 });
 
 test('everyone else skips the registration_requests listener', () => {
   for (const r of ['staff', 'hod', 'tl', 'locum', '', null, undefined]) {
-    assert.strictEqual(canSeeRegistrations(r), false, String(r) + ' should not subscribe');
+    assert.strictEqual(canSeeRegistrations(r, { manage_registrations: false }), false, String(r) + ' should not subscribe');
   }
+  assert.strictEqual(canSeeRegistrations('hr', undefined), false);
 });
 
 // ── leaves listener scope ────────────────────────────────────────────────────
@@ -163,4 +167,9 @@ test('scope: retired flags (os_*, messenger, management) never widen the scope',
   const retired = { os_balok: true, os_pahang: true, messenger: true, management: true };
   assert.strictEqual(listenerScope('staff', { ...STAFF_PERMS, ...retired }), 'own');
   assert.strictEqual(listenerScope('doctor_pic', { ...DOCTOR_PERMS, ...retired }), 'branch');
+});
+
+test('scope: leave_calendar keeps doctor_pic/TL branch-scoped but widens plain staff', () => {
+  assert.strictEqual(listenerScope('doctor_pic', { ...DOCTOR_PERMS, leave_calendar: true }), 'branch');
+  assert.strictEqual(listenerScope('staff', { ...STAFF_PERMS, leave_calendar: true }), 'all');
 });

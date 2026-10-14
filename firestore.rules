@@ -161,7 +161,7 @@ service cloud.firestore {
     // config/rolePermissions is the root of trust for custom claims, so these
     // admin-config collections are restricted to manageStaff (super_admin/admin/hr)
     // — a mid-tier approver must NOT be able to escalate their own claims.
-    match /config/{id}        { allow read: if signedIn(); allow write: if manageShared() && !(id in accessControlConfig()); }
+    match /config/{id}        { allow read: if signedIn(); allow write: if manageShared() && !(id in accessControlConfig()) && id != 'publicHolidays'; }
     match /system_config/{id} { allow read: if signedIn(); allow write: if manageShared(); }
     match /settings/{id}      { allow read: if signedIn(); allow write: if manageShared() && id != 'rbac'; }
 
@@ -184,12 +184,22 @@ service cloud.firestore {
     // is not deployed. Costs one document read per save; holidays change twice a
     // year. Grants are OR'd with the `config/{id}` rule above, so this widens
     // access to THIS document only and cannot reach config/rolePermissions.
+    // Cuti umum: satu kunci senarai per negeri (`pahang`, `terengganu`). Admin/Super
+    // Admin ubah semua; HR hanya kunci zonnya (hrState); HOD Cawangan hanya
+    // `terengganu` (kedua-dua HOD Cawangan di Terengganu — src/holidayAccess.js
+    // menyekat HOD di negeri lain di UI; rules tiada peta cawangan→negeri).
+    // Wildcard config/{id} di atas sengaja mengecualikan dokumen ini, jika tidak
+    // manageShared (semua HR) boleh menulis seluruh dokumen.
+    function holidayKeysChanged() {
+      return request.resource.data.diff(resource == null ? {} : resource.data).affectedKeys();
+    }
     match /config/publicHolidays {
       allow read: if signedIn();
-      allow write: if manageShared()
-        || ( signedIn()
-             && exists(/databases/$(database)/documents/staff/$(myIC()))
-             && get(/databases/$(database)/documents/staff/$(myIC())).data.role == 'hod_cawangan' );
+      allow write: if isGroupAdmin()
+        || ( manageShared() && selfStaff().role == 'hr'
+             && holidayKeysChanged().hasOnly([selfStaff().get('hrState', 'Pahang').lower()]) )
+        || ( hasStaffDoc() && selfStaff().role == 'hod_cawangan'
+             && holidayKeysChanged().hasOnly(['terengganu']) );
     }
 
     match /sessions/{ic} {
