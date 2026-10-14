@@ -326,3 +326,24 @@ test("waZoneOf picks the WhatsApp sender zone from the recipient", () => {
   assert.equal(waZoneOf({ branch: "Klinik Syed Badaruddin Kemaman", role: "admin" }, branches), "pahang");
   assert.equal(waZoneOf(null, branches), "pahang");
 });
+
+// ── Pahang branch without a Doctor PIC → Balok HQ supervisor (2026-10-14, RPCM) ──
+test("pahang_lain at a branch with no Doctor PIC routes P1 to the Balok supervisor", () => {
+  const branches = [{ name: "Klinik Syed Badaruddin RPCM", state: "Pahang" }, { name: BALOK_HQ, state: "Pahang" }];
+  const applicant = { ic: "SAP", role: "staff", category: "Operation Staff", branch: "Klinik Syed Badaruddin RPCM" };
+  const staffList = [applicant,
+    { ic: "HAS", role: "supervisor", branch: BALOK_HQ },
+    { ic: "PIC_OTHER", role: "doctor_pic", branch: "Klinik Syed Badaruddin Beserah" }];
+  const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
+  assert.deepStrictEqual(out.map((s) => s.ic), ["HAS"]);
+});
+
+test("pahang_lain at a branch WITH a Doctor PIC still goes to that Doctor PIC only", () => {
+  const branches = [{ name: "Klinik Syed Badaruddin Beserah", state: "Pahang" }];
+  const applicant = { ic: "B1", role: "staff", category: "Operation Staff", branch: "Klinik Syed Badaruddin Beserah" };
+  const staffList = [applicant,
+    { ic: "HAS", role: "supervisor", branch: BALOK_HQ },
+    { ic: "PIC", role: "doctor_pic", branch: "Klinik Syed Badaruddin Beserah" }];
+  const out = getRoutingP1Approvers(applicant, staffList, branches, ROUTING_DEFAULTS);
+  assert.deepStrictEqual(out.map((s) => s.ic), ["PIC"]);
+});

@@ -146,6 +146,13 @@ export function getRoutingP1Approvers(applicant, staffList, branches, approvalRo
     candidates.push(...staffList.filter((s) =>
       s.role === "doctor_pic" && s.branch === applicant.branch && !s.inactive && s.ic !== applicant.ic));
   }
+  // A Pahang branch with NO active Doctor PIC (e.g. RPCM) falls back to the Balok HQ
+  // supervisor at Peringkat 1. Mirrors usesBalokSupervisorFallback in src/main.js.
+  if (group === "pahang_lain" && cfg.p1_doctor_pic
+      && !staffList.some((s) => s.role === "doctor_pic" && s.branch === applicant.branch && !s.inactive)) {
+    candidates.push(...staffList.filter((s) =>
+      s.role === "supervisor" && s.branch === BALOK_HQ && !s.inactive && s.ic !== applicant.ic));
+  }
   if (cfg.p1_hod_balok) {
     candidates.push(...staffList.filter((s) =>
       s.role === "hod_balok" && s.branch === BALOK_HQ && !s.inactive && s.ic !== applicant.ic));

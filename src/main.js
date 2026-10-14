@@ -1466,6 +1466,10 @@ window.canManageRequest = function(user, req) {
     const group = window.getStaffGroup(applicant);
     const cfg   = approvalRouting[group] || {};
 
+    // Cawangan Pahang tanpa Doctor PIC → Supervisor Balok (lihat usesBalokSupervisorFallback).
+    if (user.role === 'supervisor' && (user.branch || '') === 'Klinik Syed Badaruddin Balok (HQ)'
+        && window.usesBalokSupervisorFallback(group, cfg, req.branch)) return true;
+
     const isP1 = (
         (cfg.p1_doctor_pic && user.role === 'doctor_pic') ||
         (cfg.p1_hod_balok  && user.role === 'hod_balok') ||
@@ -2257,6 +2261,14 @@ window.shouldSkipP1 = function(applicant, leaveType) {
   return false;
 };
 
+// pahang_lain menghala ke Doctor PIC cawangan sendiri; jika cawangan itu tiada
+// Doctor PIC aktif, Supervisor Balok HQ menjadi Peringkat 1 (sebelum ini senarai
+// kosong → permohonan terus ke HR tanpa sokongan).
+window.usesBalokSupervisorFallback = function(group, cfg, branch) {
+  return group === 'pahang_lain' && !!(cfg && cfg.p1_doctor_pic)
+    && !staffList.some(s => s.role === 'doctor_pic' && s.branch === branch && !s.inactive);
+};
+
 window.getRoutingP1Approvers = function(staffMember, leaveType) {
   if (window.shouldSkipP1(staffMember, leaveType)) return [];
   const group = window.getStaffGroup(staffMember);
@@ -2269,6 +2281,12 @@ window.getRoutingP1Approvers = function(staffMember, leaveType) {
   }
   if (cfg.p1_doctor_pic) {
     candidates.push(...staffList.filter(s => s.role === 'doctor_pic' && s.branch === staffMember.branch && !s.inactive && s.ic !== staffMember.ic));
+  }
+  // Cawangan Pahang TANPA Doctor PIC (cth. RPCM, 2026-10-14) → Supervisor Balok HQ
+  // pada Peringkat 1, bukan terus ke HR. Selari dengan canManageRequest dan
+  // otp-backend/lib/routing.js.
+  if (window.usesBalokSupervisorFallback(group, cfg, staffMember.branch)) {
+    candidates.push(...staffList.filter(s => s.role === 'supervisor' && s.branch === 'Klinik Syed Badaruddin Balok (HQ)' && !s.inactive && s.ic !== staffMember.ic));
   }
   if (group === 'ksb_pharma') {
     // HR Peringkat-1 KSB Pharma (Siti Noridah) — peranan HR, bukan supervisor.
