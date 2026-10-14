@@ -92,3 +92,35 @@ export function needsAllLeaves(role, perms) {
 // colleagues gets the full list — so it shares needsAllLeaves' criteria.
 export const STAFF_APPROVER_ROLES = ['super_admin', 'admin', 'hr', 'hod_cawangan', 'hod_balok', 'doctor_pic', 'supervisor', 'team_leader'];
 export const needsAllStaff = needsAllLeaves;
+
+// ── Three-level scope: 'own' | 'branch' | 'all' ──────────────────────────────
+//
+// Doctor PIC is the largest approver group (~18 of ~29). Every screen they can
+// open is confined to their own branch: canManageRequest() ends in
+// `req.branch === user.branch` (and their hodIC candidates are same-branch only),
+// the branch dashboard and calendar filter on user.branch, and branch_analisa
+// renders renderAnalyticsDashboard(user.branch). So their branch's leave + staff
+// covers everything. Like needsAllLeaves, any permission beyond that list widens
+// back to 'all'.
+export const BRANCH_SCOPED_ROLES = ['doctor_pic'];
+const BRANCH_ONLY_PERMS = [...OWN_ONLY_PERMS, 'manage_pending', 'branch_analisa', 'can_cancel', 'os_balok', 'os_pahang'];
+const granted = v => v !== false && v !== 'false' && v != null;
+
+export function listenerScope(role, perms) {
+  if (!needsAllLeaves(role, perms)) return 'own';
+  if (!BRANCH_SCOPED_ROLES.includes(role)) return 'all';
+  if (!perms || typeof perms !== 'object') return 'all';
+  if (!['branch', 'staff'].includes(perms.dashboard)) return 'all';
+  const extra = Object.keys(perms).some(k =>
+    k !== 'dashboard' && !BRANCH_ONLY_PERMS.includes(k) && granted(perms[k]));
+  return extra ? 'all' : 'branch';
+}
+
+// `wa_logs` (latest 200) feeds only the WhatsApp settings tab, which is gated on
+// the wa_setting permission — yet every clinic user used to read it on every
+// cold load. Same strictness rule as canSeeAuditLogs.
+export function canSeeWaLogs(role, rbacMatrix) {
+  if (!role || typeof role !== 'string') return false;
+  const perms = rbacMatrix && typeof rbacMatrix === 'object' ? rbacMatrix[role] : null;
+  return !!perms && typeof perms === 'object' && (perms.wa_setting === true || perms.wa_setting === 'true');
+}

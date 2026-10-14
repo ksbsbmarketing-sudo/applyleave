@@ -434,3 +434,15 @@ test("clinic staff: approver-roles query excluding KSB Pharma is allowed", async
   // Without the branch filter it would include Pharma HR and must be rejected.
   await assertFails(getDocs(query(collection(db, "staff"), where("role", "in", APPROVER_ROLES_Q))));
 });
+
+// ── Doctor PIC: langgan cawangan sendiri sahaja (listenerScope 'branch') ──────
+test("clinic doctor_pic: branch-equality queries on leaves and staff are allowed", async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "staff", "D1"), { ic: "D1", name: "DR A", branch: "Klinik A", role: "doctor_pic" });
+    await setDoc(doc(ctx.firestore(), "leaves", "LBR"), { ic: "S9", name: "X", branch: "Klinik A", status: "PENDING" });
+  });
+  const db = ctxDb(approverAuth("D1"));
+  const lv = await assertSucceeds(getDocs(query(collection(db, "leaves"), where("branch", "==", "Klinik A"))));
+  assert.ok(lv.size >= 1);
+  await assertSucceeds(getDocs(query(collection(db, "staff"), where("branch", "==", "Klinik A"))));
+});

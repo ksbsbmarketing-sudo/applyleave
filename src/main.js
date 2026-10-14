@@ -10,7 +10,7 @@ import { ALL as SCOPE_ALL, NO_BRANCH, visibleStates, branchOptions, filterByScop
 import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps,
          findApprovedOverlaps, findOverlapGroups } from './leaveOverlap.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
-import { canSeeAuditLogs, canSeeRegistrations, needsAllLeaves, needsAllStaff, STAFF_APPROVER_ROLES } from './listenerScope.js';
+import { canSeeAuditLogs, canSeeRegistrations, listenerScope, canSeeWaLogs, STAFF_APPROVER_ROLES } from './listenerScope.js';
 import { getNoticeDays, isNoticeExempt } from './leaveNotice.js';
 import { validateLeaveReason } from './leaveReason.js';
 import { showToast, showConfirm, restorePendingToasts } from './notify.js';
@@ -3978,7 +3978,18 @@ function ensureAuditLogListener() {
   );
 }
 
-// Pendengar `leaves` — staf biasa hanya muat cuti SENDIRI (needsAllLeaves).
+let waLogsLoaded = false;
+async function ensureWaLogsLoaded() {
+  if (waLogsLoaded || !user || window.isSubsidiaryUser(user) || !canSeeWaLogs(user.role, window.rbacMatrix)) return;
+  waLogsLoaded = true;
+  try {
+    const logsSnap = await getDocs(query(collection(db, 'wa_logs'), orderBy('ts', 'desc'), limit(200)));
+    waLogs = logsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    render();
+  } catch(e) { console.warn('WA logs load failed:', e); waLogsLoaded = false; }
+}
+
+// Pendengar `leaves` — staf biasa hanya cuti SENDIRI, Doctor PIC cawangannya (listenerScope).
 //
 // Dulu setiap pengguna memuat turun SELURUH koleksi cuti pada setiap cold load,
 // dan koleksi itu bertambah dengan setiap permohonan — bacaan terbesar yang terus
@@ -3989,36 +4000,46 @@ function ensureAuditLogListener() {
 // Selamat dipanggil berulang kali (sama seperti ensureAuditLogListener): pendengar
 // RBAC memanggilnya semula, dan jika settings/rbac memberi staf kebenaran tambahan
 // skopnya dilebarkan kepada semua tanpa perlu muat semula app.
-let leavesUnsub = null;
-let leavesScopeAll = null;
+let leavesUnsubs = [];
+let leavesScope = null;
 function ensureLeavesListener() {
   if (!user) return;
-  const wantAll = needsAllLeaves(user.role, window.effectivePerms(user));
-  if (leavesUnsub && leavesScopeAll === wantAll) return;          // skop tidak berubah
-  if (leavesUnsub) leavesUnsub();
-  leavesScopeAll = wantAll;
+  // 'own' = staf biasa; 'branch' = Doctor PIC (cawangan + cuti sendiri); 'all' = lain-lain.
+  const scope = listenerScope(user.role, window.effectivePerms(user));
+  if (leavesUnsubs.length && leavesScope === scope) return;       // skop tidak berubah
+  leavesUnsubs.forEach(u => u());
+  leavesUnsubs = [];
+  leavesScope = scope;
   // Pertanyaan `ic ==` lulus rules melalui klausa cuti-sendiri (firestore.rules
   // match /leaves) — tanpa itu ia ditolak kerana tidak menapis cawangan.
-  const q = wantAll ? subsidiaryScoped('leaves', 'branch')
-                    : query(collection(db, 'leaves'), where('ic', '==', user.ic));
-  leavesUnsub = onSnapshot(q, (snapshot) => {
-    const _allLeaves = snapshot.docs.map(doc => ({
+  const queries = scope === 'all' ? [subsidiaryScoped('leaves', 'branch')]
+    : scope === 'branch' ? [query(collection(db, 'leaves'), where('branch', '==', user.branch)),
+                            query(collection(db, 'leaves'), where('ic', '==', user.ic))]
+    : [query(collection(db, 'leaves'), where('ic', '==', user.ic))];
+  const parts = queries.map(() => []);
+  const apply = () => {
+    const _allLeaves = [...new Map(parts.flat().map(d => [d.id, d])).values()].map(doc => ({
       ...doc.data(),
       docId: doc.id
     })).sort((a, b) => b.id - a.id);
     leaveRecords = _allLeaves.filter(r => !r.isTest);
     testLeaveRecords = _allLeaves.filter(r => r.isTest);
     leavesLoaded = true;
-    console.log(`Leave records updated from Firestore (${wantAll ? 'all' : 'own'}: ${_allLeaves.length})`);
+    console.log(`Leave records updated from Firestore (${scope}: ${_allLeaves.length})`);
     selfHealPendingLeaveDays();
     render();
+  };
+  queries.forEach((q, i) => leavesUnsubs.push(onSnapshot(q, (snapshot) => {
+    parts[i] = snapshot.docs;
+    apply();
   }, (err) => {
     // Contoh: kuota Spark habis. Jangan biar skeleton berpusing selama-lamanya.
     console.error('leaves listener failed:', err);
-    leavesUnsub = null;                      // benarkan percubaan semula
+    leavesUnsubs.forEach(u => u());
+    leavesUnsubs = [];                       // benarkan percubaan semula
     leavesLoaded = true;
     render();
-  });
+  })));
 }
 
 // Pendengar `staff` — staf biasa klinik hanya muat PELULUS + rekod sendiri.
@@ -4035,33 +4056,39 @@ function ensureLeavesListener() {
 // Gagal TERBUKA: sebarang ralat pada pertanyaan sempit (cth. indeks komposit
 // belum siap) → tukar ke senarai penuh, bukan senarai kosong.
 let staffUnsubs = [];
-let staffScopeAll = null;
+let staffScope = null;
 function ensureStaffListener(forceAll = false) {
   const subs = Object.keys(OWN_HR_ZONE);
-  const wantAll = forceAll || !user || window.isSubsidiaryUser(user) || subs.length !== 1
-    || needsAllStaff(user.role, window.effectivePerms(user));
-  if (staffUnsubs.length && staffScopeAll === wantAll) return;
+  const scope = (forceAll || !user || window.isSubsidiaryUser(user) || subs.length !== 1) ? 'all'
+    : listenerScope(user.role, window.effectivePerms(user));
+  if (staffUnsubs.length && staffScope === scope) return;
   staffUnsubs.forEach(u => u());
   staffUnsubs = [];
-  staffScopeAll = wantAll;
-  if (wantAll) {
+  staffScope = scope;
+  if (scope === 'all') {
     staffUnsubs.push(onSnapshot(subsidiaryScoped('staff', 'branch'),
       snap => applyStaffDocs(snap.docs),
       err => console.error('staff listener failed:', err)));
     return;
   }
-  let apprDocs = [], selfDocs = [];
-  const merge = () => applyStaffDocs([...new Map([...apprDocs, ...selfDocs].map(d => [d.id, d])).values()]);
+  // 'own': pelulus + diri sendiri. 'branch' (Doctor PIC): tambah staf cawangannya —
+  // canManageRequest perlukan rekod pemohon untuk getStaffGroup().
+  const sources = [
+    query(collection(db, 'staff'), where('role', 'in', STAFF_APPROVER_ROLES), where('branch', '!=', subs[0])),
+    doc(db, 'staff', user.ic),
+  ];
+  if (scope === 'branch') sources.push(query(collection(db, 'staff'), where('branch', '==', user.branch)));
+  const parts = sources.map(() => []);
+  const merge = () => applyStaffDocs([...new Map(parts.flat().map(d => [d.id, d])).values()]);
   const fallback = (err) => {
-    console.warn('staff (approvers) listener failed — falling back to full list:', err);
-    staffScopeAll = null;
+    console.warn('staff (narrow) listener failed — falling back to full list:', err);
+    staffScope = null;
     ensureStaffListener(true);
   };
-  staffUnsubs.push(onSnapshot(
-    query(collection(db, 'staff'), where('role', 'in', STAFF_APPROVER_ROLES), where('branch', '!=', subs[0])),
-    snap => { apprDocs = snap.docs; merge(); }, fallback));
-  staffUnsubs.push(onSnapshot(doc(db, 'staff', user.ic),
-    snap => { selfDocs = snap.exists() ? [snap] : []; merge(); }, fallback));
+  sources.forEach((src, i) => staffUnsubs.push(onSnapshot(src, snap => {
+    parts[i] = snap.docs ? snap.docs : (snap.exists() ? [snap] : []);
+    merge();
+  }, fallback)));
 }
 
 function applyStaffDocs(docs) {
@@ -4226,11 +4253,11 @@ async function initData() {
     publicHolidays.terengganu = [...DEFAULT_HOLIDAYS_TERENGGANU];
   }
 
-  // Load WA notification logs (latest 200) — bukan untuk anak syarikat (rules tolak).
-  if (!_isSub) try {
-    const logsSnap = await getDocs(query(collection(db, 'wa_logs'), orderBy('ts', 'desc'), limit(200)));
-    waLogs = logsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  } catch(e) { console.warn('WA logs load failed:', e); }
+  // Load WA notification logs (latest 200) — bukan untuk anak syarikat (rules tolak),
+  // dan hanya untuk peranan yang boleh buka tab Tetapan WhatsApp (wa_setting).
+  // Dulu SETIAP pengguna klinik membaca 200 dokumen ini pada setiap cold load.
+  // Pendengar RBAC memanggilnya semula (seperti ensureAuditLogListener).
+  ensureWaLogsLoaded();
 
   // Branches — seed Firestore on first run, then stay live
   onSnapshot(subsidiaryScoped('branches', 'name'), (snapshot) => {
@@ -4426,6 +4453,7 @@ async function initData() {
         ensureAuditLogListener();
         ensureLeavesListener();
         ensureStaffListener();
+        ensureWaLogsLoaded();
         render();
     } else {
         console.warn('RBAC matrix not found in Firestore, using defaults');

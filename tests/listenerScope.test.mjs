@@ -120,3 +120,35 @@ test('staff: every approver role loads the full staff list itself', () => {
   for (const r of STAFF_APPROVER_ROLES) assert.strictEqual(needsAllStaff(r, STAFF_PERMS), true, r);
   assert.strictEqual(needsAllStaff('staff', STAFF_PERMS), false);
 });
+
+import { listenerScope, canSeeWaLogs } from '../src/listenerScope.js';
+
+const DOCTOR_PERMS = {
+  dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true,
+  settings: true, wa_setting: false, inbox: true, manage_pending: true, manage_staff: false,
+  manage_reports: false, report_attendance: false, can_cancel: true, os_balok: true, os_pahang: true,
+  locum_records: false,
+};
+
+test('scope: plain staff → own, default doctor_pic → branch, everyone else → all', () => {
+  assert.strictEqual(listenerScope('staff', STAFF_PERMS), 'own');
+  assert.strictEqual(listenerScope('doctor_pic', DOCTOR_PERMS), 'branch');
+  for (const r of ['super_admin', 'admin', 'hr', 'hod_cawangan', 'hod_balok', 'supervisor', 'team_leader'])
+    assert.strictEqual(listenerScope(r, DOCTOR_PERMS), 'all', r);
+});
+
+test('scope: doctor_pic granted reports/locum/management/analisa widens to all', () => {
+  for (const k of ['manage_reports', 'report_attendance', 'locum_records', 'management', 'manage_staff'])
+    assert.strictEqual(listenerScope('doctor_pic', { ...DOCTOR_PERMS, [k]: true }), 'all', k);
+  assert.strictEqual(listenerScope('doctor_pic', { ...DOCTOR_PERMS, dashboard: 'analisa' }), 'all');
+  assert.strictEqual(listenerScope('doctor_pic', undefined), 'all');
+});
+
+test('wa_logs: only roles with wa_setting load them', () => {
+  const m = { super_admin: { wa_setting: true }, admin: { wa_setting: false }, staff: { wa_setting: 'false' }, x: { wa_setting: 'true' } };
+  assert.strictEqual(canSeeWaLogs('super_admin', m), true);
+  assert.strictEqual(canSeeWaLogs('admin', m), false);
+  assert.strictEqual(canSeeWaLogs('staff', m), false);
+  assert.strictEqual(canSeeWaLogs('x', m), true);
+  assert.strictEqual(canSeeWaLogs('nobody', m), false);
+});
