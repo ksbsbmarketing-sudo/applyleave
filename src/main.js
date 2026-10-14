@@ -237,13 +237,43 @@ const emailForIC = (ic) => `${String(ic).replace(/[^a-zA-Z0-9]/g, '')}@${AUTH_EM
 const OTP_API_BASE = 'https://otp-backend-ochre.vercel.app';
 
 // Pre-login directory (branch + name + ic) loaded under the anonymous bootstrap session.
+//
+// Dicache dalam localStorage selama DIRECTORY_CACHE_TTL. Skrin log masuk membaca
+// seluruh koleksi (~120 dokumen) setiap kali dibuka — dan di PC kaunter yang
+// dikongsi, setiap log keluar (reload) membuka skrin itu semula untuk staf
+// seterusnya. Senarai ini jarang berubah, jadi cache menjimatkan hampir semua
+// bacaan itu. Data yang sama sudah pun disimpan dalam IndexedDB oleh
+// persistentLocalCache, jadi tiada pendedahan baharu pada peranti.
+//
+// Staf baru yang belum ada dalam cache: pautan "Muat semula senarai" dan semakan
+// semula automatik bila nama ditaip tidak dijumpai (pengendali #login-form) —
+// jadi cache lapuk tidak pernah mengunci sesiapa di luar.
+const DIRECTORY_CACHE_KEY = 'ksb_directory_cache';
+const DIRECTORY_CACHE_TTL = 6 * 60 * 60 * 1000;
 let directoryList = [];
-async function loadDirectory() {
+async function loadDirectory({ force = false } = {}) {
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(DIRECTORY_CACHE_KEY) || 'null'); } catch (e) { cached = null; }
+  const cacheOk = cached && Array.isArray(cached.list) && cached.list.length > 0;
+  if (!force && cacheOk && Date.now() - cached.ts < DIRECTORY_CACHE_TTL) {
+    directoryList = cached.list;
+    return;
+  }
   try {
     const snap = await getDocs(collection(db, 'directory'));
     directoryList = snap.docs.map(d => d.data()).filter(s => !s.inactive);
-  } catch (e) { console.error('loadDirectory failed:', e); directoryList = []; }
+    try { localStorage.setItem(DIRECTORY_CACHE_KEY, JSON.stringify({ ts: Date.now(), list: directoryList })); } catch (e) {}
+  } catch (e) {
+    console.error('loadDirectory failed:', e);
+    // Cth. kuota Spark habis — senarai lapuk lebih baik daripada skrin log masuk kosong.
+    directoryList = cacheOk ? cached.list : [];
+  }
 }
+window.refreshLoginDirectory = async function() {
+  await loadDirectory({ force: true });
+  render();
+  showToast('Senarai nama dikemas kini.');
+};
 
 const app = document.querySelector('#app')
 
@@ -4802,6 +4832,9 @@ function renderLogin() {
               `).join('')}
             </div>
             <input type="hidden" id="login-staff" value="${selectedLoginStaffIC || ''}">
+            <div style="text-align: right; margin-top: 0.35rem;">
+              <button type="button" onclick="window.refreshLoginDirectory()" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-family: inherit; font-size: 0.75rem;">Nama tiada dalam senarai? Muat semula senarai</button>
+            </div>
           </div>
 
           <div class="form-group">
@@ -4928,9 +4961,12 @@ function renderLogin() {
     // Fallback: typed name without clicking the dropdown.
     if (!ic && searchInput && searchInput.value.trim()) {
       const typedName = searchInput.value.trim().toLowerCase();
-      const matched = directoryList.find(s =>
+      const findTyped = () => directoryList.find(s =>
         (s.branch || "").trim().toLowerCase() === (selectedLoginBranch || "").trim().toLowerCase() &&
         s.name.toLowerCase() === typedName);
+      let matched = findTyped();
+      // Senarai mungkin dari cache lapuk (staf baru) — semak semula dari pelayan sekali.
+      if (!matched) { await loadDirectory({ force: true }); matched = findTyped(); }
       if (matched) ic = matched.ic;
     }
 
