@@ -713,9 +713,12 @@ let policyContent = {
   entitlementDoktor:     [{ days:'25 Hari' }, { days:'20 Hari' }, { days:'10 Hari' }],
   entitlementMC:         [{ period:'Kurang dari 2 tahun', days:'14 Hari' }, { period:'2 tahun hingga kurang 5 tahun', days:'18 Hari' }, { period:'5 tahun ke atas', days:'22 Hari' }],
   rulesAL: [
-    'Permohonan mesti dibuat sekurang-kurangnya <strong>3 hari</strong> sebelum tarikh percutian.',
+    'Permohonan mesti dibuat sekurang-kurangnya <strong>3 hari</strong> sebelum tarikh percutian bagi Staff Admin, Staff Operasi di cawangan, dan Doktor di Kerteh / Paka / Klinik Rakyat Dungun; <strong>7 hari</strong> bagi Staff Operasi di Balok (HQ) dan Doktor di lokasi lain.',
     'Kelulusan adalah tertakluk kepada budi bicara pihak pengurusan/HOD mengikut kepada keperluan operasi klinik.',
-    'Hanya maksimum baki sejumlah <strong>3 hari</strong> dibenarkan dibawa ke hadapan (carry forward) ke kalendar tahun berikutnya.'
+    'Hanya maksimum baki sejumlah <strong>3 hari</strong> dibenarkan dibawa ke hadapan (carry forward) ke kalendar tahun berikutnya.',
+    'Jika baki Cuti Tahunan (AL) anda sudah <strong>habis (0 hari)</strong>, permohonan AL akan disimpan sebagai <strong>Unpaid Leave (UPL — Cuti Tanpa Gaji)</strong>. Kelulusan tetap seperti biasa.',
+    'Bagi Staff Admin, hari <strong>hujung minggu dan cuti umum tidak dikira</strong> (Pahang: Sabtu &amp; Ahad; Terengganu: Jumaat &amp; Sabtu). Cuti Bersalin, Paterniti dan Hospitalisasi dikira mengikut hari kalendar berturut-turut.',
+    'Permohonan yang <strong>bertindih tarikh</strong> dengan permohonan sedia ada (kecuali yang ditolak/dibatalkan) akan dihalang oleh sistem.'
   ],
   rulesMC: [
     'Sijil Cuti Sakit (MC) yang asal <strong>mesti</strong> diserahkan kepada pihak pengurusan pada hari pertama kembali bekerja.',
@@ -751,7 +754,9 @@ const defaultCompanyPolicy = () => ({
   rulesAL: [
     'Permohonan mesti dibuat sekurang-kurangnya <strong>3 hari</strong> sebelum tarikh percutian.',
     'Kelulusan adalah tertakluk kepada budi bicara pihak pengurusan mengikut keperluan operasi syarikat.',
-    'Hanya maksimum baki sejumlah <strong>3 hari</strong> dibenarkan dibawa ke hadapan (carry forward) ke kalendar tahun berikutnya.'
+    'Hanya maksimum baki sejumlah <strong>3 hari</strong> dibenarkan dibawa ke hadapan (carry forward) ke kalendar tahun berikutnya.',
+    'Jika baki Cuti Tahunan (AL) anda sudah <strong>habis (0 hari)</strong>, permohonan AL akan disimpan sebagai <strong>Unpaid Leave (UPL — Cuti Tanpa Gaji)</strong>. Kelulusan tetap seperti biasa.',
+    'Permohonan yang <strong>bertindih tarikh</strong> dengan permohonan sedia ada (kecuali yang ditolak/dibatalkan) akan dihalang oleh sistem.'
   ],
   rulesMC: [
     'Sijil Cuti Sakit (MC) yang asal <strong>mesti</strong> diserahkan kepada pihak pengurusan pada hari pertama kembali bekerja.',
@@ -889,7 +894,7 @@ const HELP_FAQ = [
     a:'Cuti Tahunan (AL) mesti dimohon awal sebelum tarikh cuti: <strong>3 hari</strong> untuk Staff Admin &amp; Staff Operasi di cawangan, <strong>7 hari</strong> untuk Doktor &amp; Staff Operasi di Balok (HQ). <strong>MC, Cuti Kecemasan, Cuti Ehsan & Cuti Hospitalisasi (HL) dikecualikan</strong> (boleh hari ini/ke belakang) — tetapi wajib pilih pelulus & muat naik bukti.' },
   { id:'balance-insufficient', cat:'Masalah', keywords:['baki tak cukup','unpaid','split','ul','kurang baki'],
     q:'Baki cuti tak cukup / jadi Unpaid Leave',
-    a:'Jika hari AL yang dimohon <strong>melebihi baki</strong> anda, sistem akan <strong>bahagikan automatik</strong>: sebahagian sebagai AL (baki yang ada) dan selebihnya sebagai <strong>Unpaid Leave (UPL)</strong>. Notis akan dipaparkan semasa hantar.' },
+    a:'Jika baki Cuti Tahunan (AL) anda sudah <strong>habis (0 hari)</strong>, permohonan <strong>AL</strong> atau <strong>EL (Cuti Kecemasan)</strong> akan disimpan terus sebagai <strong>Unpaid Leave (UPL)</strong>. Kelulusan tetap seperti biasa. Jika baki AL masih ada tetapi kurang daripada hari dimohon, notis akan dipaparkan semasa hantar — semak dengan HR untuk pelarasan.' },
   { id:'half-day', cat:'Masalah', keywords:['separuh hari','half day','setengah hari'],
     q:'Macam mana mohon cuti separuh hari?',
     a:'Pada borang cuti, tanda kotak <strong>Half Day</strong>. Tempoh akan ditolak <strong>0.5 hari</strong> dari baki.' },
@@ -7083,7 +7088,7 @@ function renderPersonalDashboard() {
           
           <div class="glass-card" style="padding: 1.5rem; border: 1px dashed rgba(163,177,198,0.4); background: transparent;">
              <h3 style="font-size: 1.05rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> Policy Note</h3>
-             <p style="font-size: 1rem; color: var(--text-muted); line-height: 1.6;">Sila pastikan permohonan AL dibuat sekurang-kurangnya <strong>${user.category === 'Admin Staff' ? '3' : '7'} hari</strong> awal mengikut polisi ${window.isSubsidiaryUser(user) ? 'syarikat' : 'syarikat KSB'}.</p>
+             <p style="font-size: 1rem; color: var(--text-muted); line-height: 1.6;">Sila pastikan permohonan AL dibuat sekurang-kurangnya <strong>${getNoticeDays(user)} hari</strong> awal mengikut polisi ${window.isSubsidiaryUser(user) ? 'syarikat' : 'syarikat KSB'}.</p>
              <button class="neu-btn" style="margin-top: 1rem; font-size: 1.05rem;" onclick="window.setView('policy')">BUKA POLISI PENUH</button>
           </div>
         </div>
@@ -10965,8 +10970,8 @@ function renderView() {
                          <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
                            <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #3b82f6; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P1</div>
                            <div>
-                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Sokongan Peringkat 1 — HOD / PIC HOD / Supervisor</div>
-                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Pelulus Peringkat 1 yang dipilih semasa menghantar borang menilai dan menyokong permohonan.</div>
+                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Sokongan Peringkat 1 — Doctor PIC / HOD Balok / Supervisor</div>
+                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Pelulus Peringkat 1 yang dipilih semasa menghantar borang menilai dan menyokong permohonan. Cawangan Pahang yang <strong>tiada Doctor PIC</strong> (cth. RPCM) — Peringkat 1 ialah <strong>Supervisor Balok (HQ)</strong>. Klinik Utama mengikut laluan Balok (HQ).</div>
                            </div>
                          </div>
                          <div style="border-left: 2px dashed rgba(59,130,246,0.3); height: 16px; margin-left: 13px;"></div>
@@ -10980,14 +10985,24 @@ function renderView() {
                        </div>
                      </div>
 
-                     <!-- Terengganu — tanpa P2 -->
+                     <!-- Terengganu — 2 peringkat sejak 2026-08-03 (Doctor PIC → HR Terengganu) -->
                      <div style="border-radius: 14px; border: 1.5px solid #8b5cf633; background: rgba(139,92,246,0.04); padding: 1.25rem 1.5rem;">
-                       <div style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #8b5cf6; margin-bottom: 1rem;">Staff Terengganu (Dungun / Kerteh / Paka) — 1 Peringkat</div>
-                       <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
-                         <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #8b5cf6; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P1</div>
-                         <div>
-                           <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Kelulusan — HOD / PIC HOD</div>
-                           <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Cuti <strong>SAH</strong> selepas HOD / PIC HOD beri kelulusan. Tidak perlu kelulusan HR/Admin (Peringkat 2).</div>
+                       <div style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #8b5cf6; margin-bottom: 1rem;">Staff Terengganu (Dungun / Kerteh / Paka) — 2 Peringkat</div>
+                       <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+                         <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                           <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #8b5cf6; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P1</div>
+                           <div>
+                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Sokongan Peringkat 1 — Doctor PIC Cawangan</div>
+                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Doctor PIC cawangan anda menilai dan menyokong permohonan.</div>
+                           </div>
+                         </div>
+                         <div style="border-left: 2px dashed rgba(139,92,246,0.3); height: 16px; margin-left: 13px;"></div>
+                         <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                           <div style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #059669; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;">P2</div>
+                           <div>
+                             <div style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Kelulusan Akhir Peringkat 2 — HR Terengganu</div>
+                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Cuti hanya dikira <strong>SAH</strong> selepas HR Terengganu memberi kelulusan akhir.</div>
+                           </div>
                          </div>
                        </div>
                      </div>
@@ -11123,12 +11138,12 @@ function renderView() {
                                 </tr>
                                 <tr>
                                     <td style="padding: 0.5rem; border: 1px solid var(--border);"><strong>Tolak Baki Cuti?</strong></td>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);">Ya. Ditolak dari Annual Leave (AL)</td>
+                                    <td style="padding: 0.5rem; border: 1px solid var(--border);">Ya. Ditolak dari Annual Leave (AL). Jika baki AL sudah <strong>habis (0)</strong>, dikira sebagai <strong>Unpaid Leave (UPL)</strong>.</td>
                                     <td style="padding: 0.5rem; border: 1px solid var(--border);">Tambahan percuma untuk 3 hari pertama. Lebihan melebihi 3 hari ditolak dari AL.</td>
                                 </tr>
                                 <tr>
                                     <td style="padding: 0.5rem; border: 1px solid var(--border);"><strong>Had Limit</strong></td>
-                                    <td style="padding: 0.5rem; border: 1px solid var(--border);">Fleksibel (Mengikut baki AL sedia ada)</td>
+                                    <td style="padding: 0.5rem; border: 1px solid var(--border);">Fleksibel (Mengikut baki AL sedia ada; selepas AL habis → UPL)</td>
                                     <td style="padding: 0.5rem; border: 1px solid var(--border);">Max 3 Hari berturut-turut untuk setiap kes</td>
                                 </tr>
                                 <tr>
