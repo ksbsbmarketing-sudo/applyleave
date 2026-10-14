@@ -4147,8 +4147,18 @@ let staffUnsubs = [];
 let staffScope = null;
 function ensureStaffListener(forceAll = false) {
   const subs = Object.keys(OWN_HR_ZONE);
-  const scope = (forceAll || !user || window.isSubsidiaryUser(user) || subs.length !== 1) ? 'all'
-    : listenerScope(user.role, window.effectivePerms(user));
+  const isSub = !!user && window.isSubsidiaryUser(user);
+  const perms = user ? window.effectivePerms(user) : null;
+  // firestore.rules (v2.5.22): tanpa claim canApprove/manageStaff, hanya dokumen
+  // sendiri, dokumen pelulus, dan (HOD Cawangan) staf cawangan sendiri boleh
+  // dibaca — pertanyaan senarai penuh akan DITOLAK. Jadi skop mesti sempit.
+  const c = user ? claimsFor(user.role, perms) : { canApprove: false, manageStaff: false };
+  const canReadAll = c.canApprove || c.manageStaff;
+  let scope;
+  if (!user) scope = 'all';
+  else if (!canReadAll) scope = window.isBranchScopedHod(user) ? 'branch' : 'own';
+  else if (forceAll || isSub || subs.length !== 1) scope = 'all';
+  else scope = listenerScope(user.role, perms);
   if (staffUnsubs.length && staffScope === scope) return;
   staffUnsubs.forEach(u => u());
   staffUnsubs = [];
@@ -4159,16 +4169,23 @@ function ensureStaffListener(forceAll = false) {
       err => console.error('staff listener failed:', err)));
     return;
   }
-  // 'own': pelulus + diri sendiri. 'branch' (Doctor PIC): tambah staf cawangannya —
-  // canManageRequest perlukan rekod pemohon untuk getStaffGroup().
+  // 'own': pelulus + diri sendiri. 'branch' (Doctor PIC, TL, HOD Cawangan): tambah
+  // staf cawangannya — canManageRequest perlukan rekod pemohon untuk getStaffGroup().
+  // Penapis cawangan pada pertanyaan pelulus diperlukan oleh rules (companyOK):
+  // staf anak syarikat → syarikatnya sendiri; staf klinik → `!=` anak syarikat
+  // (hanya boleh untuk SATU anak syarikat — 'in' tidak boleh digabung dengan 'not-in').
   const sources = [
-    query(collection(db, 'staff'), where('role', 'in', STAFF_APPROVER_ROLES), where('branch', '!=', subs[0])),
+    query(collection(db, 'staff'), where('role', 'in', STAFF_APPROVER_ROLES),
+      isSub ? where('branch', '==', user.branch) : where('branch', '!=', subs[0])),
     doc(db, 'staff', user.ic),
   ];
   if (scope === 'branch') sources.push(query(collection(db, 'staff'), where('branch', '==', user.branch)));
   const parts = sources.map(() => []);
   const merge = () => applyStaffDocs([...new Map(parts.flat().map(d => [d.id, d])).values()]);
+  // Gagal terbuka hanya bagi yang BOLEH membaca senarai penuh (cth. indeks belum
+  // siap). Tanpa claim, senarai penuh pasti ditolak — jangan cuba.
   const fallback = (err) => {
+    if (!canReadAll) { console.error('staff (narrow) listener failed:', err); return; }
     console.warn('staff (narrow) listener failed — falling back to full list:', err);
     staffScope = null;
     ensureStaffListener(true);

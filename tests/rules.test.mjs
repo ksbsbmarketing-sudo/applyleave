@@ -421,8 +421,13 @@ test("clinic users: not-in query sees all clinic data; HR keeps config writes", 
     const db = ctxDb(tok);
     const lv = await assertSucceeds(getDocs(query(collection(db, "leaves"), where("branch", "not-in", [PHARMA]))));
     assert.strictEqual(lv.size, 2);
-    const st = await assertSucceeds(getDocs(query(collection(db, "staff"), where("branch", "not-in", [PHARMA]))));
-    assert.ok(st.docs.every(d => d.data().branch !== PHARMA));
+    // Whole staff list: HR yes; a plain staff member no (v2.5.22 — see "staff reads" tests).
+    if (tok.manageStaff) {
+      const st = await assertSucceeds(getDocs(query(collection(db, "staff"), where("branch", "not-in", [PHARMA]))));
+      assert.ok(st.docs.every(d => d.data().branch !== PHARMA));
+    } else {
+      await assertFails(getDocs(query(collection(db, "staff"), where("branch", "not-in", [PHARMA]))));
+    }
     const br = await assertSucceeds(getDocs(query(collection(db, "branches"), where("name", "not-in", [PHARMA]))));
     assert.strictEqual(br.size, 1);
     await assertSucceeds(getDoc(doc(db, "leaves", "L1")));
@@ -500,4 +505,51 @@ test("access control docs: only admin/super_admin can write; HR keeps other conf
   await assertSucceeds(setDoc(doc(adm, "settings", "rbac"), { staff: {} }));
   await assertSucceeds(setDoc(doc(adm, "config", "rolePermissions"), { staff: { canApprove: false } }));
   await assertSucceeds(setDoc(doc(adm, "config", "rolePermissionsSync"), { pendingRoles: [] }));
+});
+
+// ── Bacaan staf (v2.5.22): sendiri, pelulus, pemegang claim, HOD cawangan ─────
+const seedStaffReads = () => testEnv.withSecurityRulesDisabled(async (ctx) => {
+  const d = ctx.firestore();
+  await setDoc(doc(d, "staff", "P1"), { ic: "P1", role: "staff", name: "PLAIN 1", branch: "Klinik A" });
+  await setDoc(doc(d, "staff", "P2"), { ic: "P2", role: "staff", name: "PLAIN 2", branch: "Klinik A" });
+  await setDoc(doc(d, "staff", "PB"), { ic: "PB", role: "staff", name: "PLAIN B", branch: "Klinik B" });
+  await setDoc(doc(d, "staff", "DR"), { ic: "DR", role: "doctor_pic", name: "DR", branch: "Klinik A" });
+  await setDoc(doc(d, "staff", "HODA"), { ic: "HODA", role: "hod_cawangan", name: "HOD A", branch: "Klinik A" });
+});
+const APPROVER_ROLES_R = ['super_admin', 'admin', 'hr', 'hod_cawangan', 'hod_balok', 'doctor_pic', 'supervisor', 'team_leader'];
+
+test("staff reads: plain staff sees own doc and approvers, not colleagues", async () => {
+  await seedStaffReads(); await seedPharma();
+  const db = ctxDb(staffAuth("P1"));
+  await assertSucceeds(getDoc(doc(db, "staff", "P1")));
+  await assertFails(getDoc(doc(db, "staff", "P2")));
+  await assertFails(getDoc(doc(db, "staff", "PB")));
+  await assertSucceeds(getDoc(doc(db, "staff", "DR")));
+  await assertSucceeds(getDocs(query(collection(db, "staff"),
+    where("role", "in", APPROVER_ROLES_R), where("branch", "!=", PHARMA))));
+  await assertFails(getDocs(query(collection(db, "staff"), where("branch", "==", "Klinik A"))));
+});
+
+test("staff reads: HOD Cawangan reads own branch, not other branches' plain staff", async () => {
+  await seedStaffReads();
+  const db = ctxDb(staffAuth("HODA"));
+  await assertSucceeds(getDocs(query(collection(db, "staff"), where("branch", "==", "Klinik A"))));
+  await assertSucceeds(getDoc(doc(db, "staff", "P2")));
+  await assertFails(getDoc(doc(db, "staff", "PB")));
+  await assertFails(getDocs(query(collection(db, "staff"), where("branch", "==", "Klinik B"))));
+});
+
+test("staff reads: approver (canApprove) still reads the whole clinic list", async () => {
+  await seedStaffReads(); await seedPharma();
+  const db = ctxDb(approverAuth("DR"));
+  await assertSucceeds(getDocs(query(collection(db, "staff"), where("branch", "not-in", [PHARMA]))));
+  await assertSucceeds(getDoc(doc(db, "staff", "PB")));
+});
+
+test("staff reads: KSB Pharma plain staff reads own-company approvers only", async () => {
+  await seedPharma();
+  const db = ctxDb(staffAuth("PS1"));
+  await assertSucceeds(getDocs(query(collection(db, "staff"),
+    where("role", "in", APPROVER_ROLES_R), where("branch", "==", PHARMA))));
+  await assertFails(getDocs(query(collection(db, "staff"), where("branch", "==", PHARMA))));
 });

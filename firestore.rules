@@ -75,8 +75,23 @@ service cloud.firestore {
       allow create: if request.auth != null;
     }
 
+    // Bacaan staf (v2.5.22): dulu SEMUA staf klinik boleh membaca SETIAP dokumen
+    // staf (IC, telefon, alamat). Kini hanya:
+    //   • dokumen sendiri;
+    //   • pemegang claim canApprove / manageStaff (pelulus, HR, Admin) — semua;
+    //   • dokumen PELULUS — pemohon perlukan nama/telefon mereka untuk dropdown,
+    //     WhatsApp dan Inbox (src/main.js ensureStaffListener, STAFF_APPROVER_ROLES);
+    //   • HOD Cawangan — staf cawangannya sendiri.
+    // Senarai peranan mesti selari dengan STAFF_APPROVER_ROLES (src/listenerScope.js).
+    function isApproverRole(role) {
+      return role in ['super_admin', 'admin', 'hr', 'hod_cawangan', 'hod_balok', 'doctor_pic', 'supervisor', 'team_leader'];
+    }
     match /staff/{ic} {
-      allow read: if signedIn() && companyOK(resource.data.branch);
+      allow read: if signedIn() && companyOK(resource.data.branch) && (
+           ic == myIC()
+        || canApprove() || manageStaff()
+        || isApproverRole(resource.data.role)
+        || isBranchHodOf(resource.data.branch) );
       allow create: if manageStaff() && companyOK(request.resource.data.get('branch', ''));
       allow delete: if manageStaff() && companyOK(resource.data.get('branch', ''));
       // Staff may edit their OWN contact details and name. `name` is here so staff
