@@ -5103,6 +5103,10 @@ function renderLogin() {
     // Load the staff profile for the now-authenticated user.
     const snap = await getDoc(doc(db, 'staff', ic));
     if (!snap.exists()) { showToast('Profil staf tidak dijumpai. Sila hubungi HR/Admin.'); await signOut(auth); return; }
+    // HR menyahaktif staf dengan `inactive` pada dokumen staf, tetapi akaun Auth
+    // hanya dimatikan bila provision-one.js dijalankan (Spark: tiada onStaffWrite).
+    // Tanpa semakan ini staf yang sudah dinyahaktif masih boleh log masuk.
+    if (snap.data().inactive) { showToast('⚠️ Akaun anda tidak aktif. Sila hubungi HR/Admin.'); await signOut(auth); return; }
     user = snap.data();
     initData(); // subscribe to live data now that we have a real (non-anonymous) session
 
