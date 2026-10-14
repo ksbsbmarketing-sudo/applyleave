@@ -689,6 +689,8 @@ let selectedLoginBranch = '';
 let selectedLoginStaffIC = '';
 let showRegisterModal = false;
 let showFirstLoginWarning = false;
+const MUST_CHANGE_PWD_KEY = 'ksb_must_change_pwd';
+let firstLoginPwd = '';            // kata laluan lalai yang baru ditaip — memori sahaja, tidak pernah disimpan
 let showPhoneReminderModal = false;
 
 let publicHolidays = { pahang: [], terengganu: [] };
@@ -1796,23 +1798,27 @@ window.setProfileSettings = function(state) {
 
 window.changePassword = async function(event) {
   event.preventDefault();
-  const current = document.getElementById('pwd-current')?.value;
-  const next    = document.getElementById('pwd-new')?.value;
-  const confirm  = document.getElementById('pwd-confirm')?.value;
+  const form = event.target;
+  const current = form.querySelector('#pwd-current')?.value;
+  const next    = form.querySelector('#pwd-new')?.value;
+  const confirm  = form.querySelector('#pwd-confirm')?.value;
 
   if (!user) { showToast('Sesi tidak sah. Sila log masuk semula.'); return; }
   if (!auth.currentUser || auth.currentUser.isAnonymous) { showToast('Sesi tidak sah. Sila log masuk semula.'); return; }
   if (next !== confirm) { showToast('❌ Kata laluan baharu tidak sepadan. Sila cuba lagi.'); return; }
   if ((next || '').length < 6) { showToast('❌ Kata laluan baharu mesti sekurang-kurangnya 6 aksara.'); return; }
+  if (next === String(user.ic || '').trim()) { showToast('❌ Kata laluan baharu tidak boleh sama dengan No. IC anda.'); return; }
 
   try {
     const cred = EmailAuthProvider.credential(emailForIC(user.ic), current);
     await reauthenticateWithCredential(auth.currentUser, cred);
     await updatePassword(auth.currentUser, next);
     showToast('✅ Kata laluan berjaya ditukar!');
-    document.getElementById('pwd-current').value = '';
-    document.getElementById('pwd-new').value = '';
-    document.getElementById('pwd-confirm').value = '';
+    showFirstLoginWarning = false;
+    firstLoginPwd = '';
+    try { localStorage.removeItem(MUST_CHANGE_PWD_KEY); } catch (e) {}
+    ['#pwd-current', '#pwd-new', '#pwd-confirm'].forEach(sel => { const el = form.querySelector(sel); if (el) el.value = ''; });
+    render();
   } catch (err) {
     console.error('changePassword error:', err);
     if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
@@ -4571,6 +4577,7 @@ async function restoreSessionUser() {
   window.requestNotifPermission();
   startReminderScheduler();
   view = window.rbacMatrix[user.role]?.dashboard ? 'dashboard' : 'leave-form';
+  try { if (localStorage.getItem(MUST_CHANGE_PWD_KEY) === user.ic) showFirstLoginWarning = true; } catch (e) {}
   console.log(`[AUTH] Session restored for ${user.name} (${user.ic})`);
   return true;
 }
@@ -5083,6 +5090,13 @@ function renderLogin() {
     initData(); // subscribe to live data now that we have a real (non-anonymous) session
 
     showFirstLoginWarning = (pwd === (user.ic || '').trim());
+    // Wajib tukar: bendera bertahan selepas reload (localStorage) sehingga berjaya
+    // ditukar — modal tiada butang "abaikan". Kata laluan semasa disimpan dalam
+    // memori sahaja supaya borang tidak perlu ditaip semula.
+    try {
+      if (showFirstLoginWarning) { firstLoginPwd = pwd; localStorage.setItem(MUST_CHANGE_PWD_KEY, user.ic); }
+      else localStorage.removeItem(MUST_CHANGE_PWD_KEY);
+    } catch (e) {}
     const _ph = (user.phone || '').replace(/\D/g, '');
     showPhoneReminderModal = !showFirstLoginWarning && (!_ph || !_ph.startsWith('6'));
     currentSessionId = Date.now().toString() + '_' + Math.random().toString(36).substring(2);
@@ -12014,8 +12028,8 @@ function renderPhoneReminderModal() {
   `;
 }
 
-window.dismissFirstLoginWarning = function() { showFirstLoginWarning = false; render(); };
-window.goChangePassword = function() { showFirstLoginWarning = false; view = 'settings'; render(); };
+// Modal wajib tukar kata laluan: tiada "abaikan" — kata laluan lalai (IC) boleh
+// diteka kerana IC kelihatan di senarai log masuk. Pilihan: tukar, atau log keluar.
 
 function renderFirstLoginModal() {
   if (!showFirstLoginWarning) return '';
@@ -12031,21 +12045,23 @@ function renderFirstLoginModal() {
       <h2 style="text-align:center;font-size:1.25rem;font-weight:800;color:#ef4444;margin-bottom:0.5rem;">⚠️ TUKAR KATA LALUAN SEKARANG!</h2>
       <p style="text-align:center;font-size:0.9rem;color:var(--text-muted);line-height:1.6;margin-bottom:0.5rem;">
         Anda masih menggunakan <strong style="color:var(--text);">kata laluan lalai (No. IC)</strong> yang tidak selamat.<br>
-        Sila tukar kata laluan anda <strong style="color:#ef4444;">sebelum menggunakan sistem</strong> ini.
+        Anda <strong style="color:#ef4444;">wajib</strong> menukarnya sebelum menggunakan sistem ini.
       </p>
       <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:0.75rem;padding:0.85rem 1rem;margin-bottom:1.25rem;font-size:0.8rem;color:var(--text-muted);line-height:1.5;">
         <strong style="color:#ef4444;">Kenapa perlu tukar?</strong><br>
         Kata laluan lalai adalah nombor IC anda — sesiapa yang tahu IC anda boleh akses akaun ini. Lindungi maklumat cuti anda dengan kata laluan peribadi.
       </div>
-      <div style="display:flex;flex-direction:column;gap:0.75rem;">
-        <button onclick="window.goChangePassword()" class="btn-primary" style="width:100%;padding:1rem;font-size:1rem;font-weight:800;display:flex;align-items:center;justify-content:center;gap:0.6rem;background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 8px 24px rgba(239,68,68,0.35);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-          Tukar Kata Laluan Sekarang
+      <form onsubmit="window.changePassword(event)" style="display:flex;flex-direction:column;gap:0.6rem;">
+        <input type="password" id="pwd-current" placeholder="Kata laluan semasa (No. IC)" value="${firstLoginPwd.replace(/"/g, '&quot;')}" required autocomplete="current-password" class="neu-inset" style="width:100%;padding:0.75rem 0.9rem;border-radius:10px;font-size:0.9rem;">
+        <input type="password" id="pwd-new" placeholder="Kata laluan baharu (min. 6 aksara, bukan IC)" required minlength="6" autocomplete="new-password" class="neu-inset" style="width:100%;padding:0.75rem 0.9rem;border-radius:10px;font-size:0.9rem;">
+        <input type="password" id="pwd-confirm" placeholder="Sahkan kata laluan baharu" required minlength="6" autocomplete="new-password" class="neu-inset" style="width:100%;padding:0.75rem 0.9rem;border-radius:10px;font-size:0.9rem;">
+        <button type="submit" class="btn-primary" style="width:100%;padding:0.95rem;font-size:1rem;font-weight:800;background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 8px 24px rgba(239,68,68,0.35);">
+          🔒 Tukar Kata Laluan
         </button>
-        <button onclick="window.dismissFirstLoginWarning()" style="width:100%;padding:0.75rem;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:12px;color:var(--text-muted);cursor:pointer;font-size:0.82rem;">
-          Abaikan buat masa ini (tidak disyorkan)
+        <button type="button" onclick="window.logout()" style="width:100%;padding:0.7rem;background:transparent;border:1px solid rgba(163,177,198,0.4);border-radius:12px;color:var(--text-muted);cursor:pointer;font-size:0.82rem;">
+          Log Keluar
         </button>
-      </div>
+      </form>
     </div>
   </div>
   `;

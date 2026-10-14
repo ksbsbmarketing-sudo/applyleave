@@ -40,7 +40,7 @@ export const onStaffWrite = onDocumentWritten("staff/{ic}", async (event) => {
   const rp = perms[after.role] || { canApprove: false, manageStaff: false };
   const claims = { ic, canApprove: !!rp.canApprove, manageStaff: !!rp.manageStaff };
 
-  const u = await ensureAuthUser(email, after.password || String(ic), after.name);
+  const u = await ensureAuthUser(email, String(ic), after.name);   // no plaintext staff.password (removed 2026-10-14)
   await admin.auth().setCustomUserClaims(u.uid, claims);
   await admin.auth().updateUser(u.uid, { disabled: !!after.inactive });
 

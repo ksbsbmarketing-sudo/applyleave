@@ -28,14 +28,11 @@ async function main() {
   for (const d of staff.docs) {
     const s = d.data();
     const ic = d.id;
-    let pwd = (s.password || String(ic)).trim();
-    if (pwd.length < 6) {
-      pwd = pwd.padEnd(6, "0");
-      if (s.password) {
-        await db.doc(`staff/${ic}`).update({ password: pwd });
-        console.log(`\nUpdated short password for ${s.name} (${ic}) to ${pwd}`);
-      }
-    }
+    // Initial password = IC (app forces a change on first login). staff.password
+    // was a plaintext legacy field readable by every clinic user — removed
+    // 2026-10-14 by strip-password-field.js; never read or write it again.
+    let pwd = String(ic).trim();
+    if (pwd.length < 6) pwd = pwd.padEnd(6, "0");
     const u = await ensureUser(emailForIC(ic), pwd, s.name);
     const rp = perms[s.role] || { canApprove: false, manageStaff: false };
     await auth.setCustomUserClaims(u.uid, { ic, canApprove: !!rp.canApprove, manageStaff: !!rp.manageStaff });

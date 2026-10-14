@@ -4,7 +4,7 @@
 // every run. On the Spark plan that is a meaningful slice of the daily quota, and
 // it is wasted when only one new hire needs an account. This does the same three
 // things for the ICs you name:
-//   1. create the Firebase Auth user (password = IC unless staff.password is set)
+//   1. create the Firebase Auth user (initial password = IC; the app forces a change)
 //   2. set custom claims (ic, canApprove, manageStaff) from config/rolePermissions
 //   3. write directory/{ic} — the login-screen picker reads this, not staff/{ic},
 //      so without it the name never appears at login and cannot be typed either
@@ -38,7 +38,8 @@ async function run() {
     if (!d.exists) { console.log(`❌ ${ic}: tiada dokumen staff — langkau.`); continue; }
     const s = d.data();
 
-    let pwd = String(s.password || ic).trim();
+    // staff.password (plaintext legacy field) was removed 2026-10-14 — never use it.
+    let pwd = String(ic).trim();
     if (pwd.length < 6) pwd = pwd.padEnd(6, "0");
 
     let u, created = false;
