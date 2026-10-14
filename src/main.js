@@ -1098,6 +1098,8 @@ window.toggleRbac = function(role, module) {
 // berubah direkod dalam config/rolePermissionsSync.pendingRoles sehingga
 // `node sync-claims.js` dijalankan. firestore.rules: Admin/Super Admin sahaja.
 const canEditAccessControl = u => !!u && ['admin', 'super_admin'].includes(u.role);
+let rbacSection = 'akses';          // sub-tab jadual Kawalan Akses
+window.setRbacSection = function(k) { rbacSection = k; render(); };
 let claimsSyncInfo = null;          // config/rolePermissionsSync — dimuat bila tab Kawalan Akses dibuka
 async function loadClaimsSyncInfo() {
     try {
@@ -10165,58 +10167,32 @@ function renderView() {
         })() : ''}
 
         ${managementTab === 'access_control' ? (() => {
-          const CELL_SIZE = '38px';
-          const renderRbacDashboardCell = (role) => {
+          // Jadual RBAC padat dengan sub-tab — setiap bahagian muat satu skrin tanpa
+          // skrol mendatar (dulu 22 lajur × sel 38px dalam satu jadual).
+          const CELL = '22px';
+          const ICON_ON  = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>';
+          const ICON_OFF = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="3" opacity="0.55"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+          const tdBorder = last => last ? 'border-right:2px solid rgba(163,177,198,0.3)' : 'border-right:1px solid rgba(163,177,198,0.12)';
+
+          const cellDashboard = (role, last) => {
               const val = window.rbacMatrix[role].dashboard;
-              const isAnalisa = val === 'analisa';
-              const isBranch = val === 'branch';
-              const bg     = isAnalisa ? 'rgba(16,185,129,0.2)'  : isBranch ? 'rgba(251,146,60,0.2)'  : 'rgba(163,177,198,0.12)';
-              const border = isAnalisa ? '2px solid #34d399'      : isBranch ? '2px solid #fb923c'      : '1px solid rgba(163,177,198,0.3)';
-              const color  = isAnalisa ? '#10b981'                : isBranch ? '#f97316'                : '#64748b';
-              const icon = isAnalisa
-                ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>'
-                : isBranch
-                  ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>'
-                  : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
-              const label = isAnalisa ? 'ANALISA' : isBranch ? 'CAWANGAN' : 'STAFF';
-              return `<td style="padding:0.55rem 0.4rem;border-right:1px solid rgba(163,177,198,0.15);cursor:pointer;text-align:center;background:transparent;" onclick="window.toggleRbac('${role}', 'dashboard')">
-                <div style="display:flex;flex-direction:column;align-items:center;gap:0.3rem;pointer-events:none;">
-                  <div style="width:${CELL_SIZE};height:${CELL_SIZE};border-radius:9px;display:flex;align-items:center;justify-content:center;background:${bg};border:${border};box-shadow:0 1px 3px rgba(0,0,0,0.07);">${icon}</div>
-                  <span style="font-size:0.65rem;font-weight:800;letter-spacing:0.5px;color:${color};">${label}</span>
-                </div>
-              </td>`;
+              const m = val === 'analisa' ? { c: '#10b981', bg: 'rgba(16,185,129,0.15)', t: 'ANALISA' }
+                      : val === 'branch'  ? { c: '#f97316', bg: 'rgba(251,146,60,0.15)', t: 'CAWANGAN' }
+                      :                     { c: '#64748b', bg: 'rgba(163,177,198,0.12)', t: 'STAFF' };
+              return `<td style="padding:0.12rem 0.25rem;${tdBorder(last)};text-align:center;cursor:pointer;" onclick="window.toggleRbac('${role}', 'dashboard')" title="Klik untuk tukar: Analisa → Cawangan → Staff">
+                <span style="display:inline-block;min-width:64px;padding:0.1rem 0.4rem;border-radius:6px;background:${m.bg};border:1.5px solid ${m.c};color:${m.c};font-size:0.6rem;font-weight:800;letter-spacing:0.4px;">${m.t}</span></td>`;
           };
-
-          const renderRbacCell = (role, module, isLastInGroup) => {
-              const checked = window.rbacMatrix[role][module];
-              const borderStyle = isLastInGroup ? 'border-right:2px solid rgba(163,177,198,0.3)' : 'border-right:1px solid rgba(163,177,198,0.15)';
-              return `<td style="padding:0.55rem 0.4rem;${borderStyle};cursor:pointer;text-align:center;" onclick="window.toggleRbac('${role}', '${module}')">
-                <div style="display:flex;align-items:center;justify-content:center;pointer-events:none;">
-                  ${checked
-                    ? `<div style="width:${CELL_SIZE};height:${CELL_SIZE};border-radius:9px;background:rgba(16,185,129,0.15);border:2px solid #10b981;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(16,185,129,0.2);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>`
-                    : `<div style="width:${CELL_SIZE};height:${CELL_SIZE};border-radius:9px;background:rgba(239,68,68,0.08);border:1.5px solid rgba(239,68,68,0.25);display:flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>`}
-                </div>
-              </td>`;
+          const cellToggle = (role, key, last) => {
+              const on = window.rbacMatrix[role][key] === true || window.rbacMatrix[role][key] === 'true';
+              return `<td style="padding:0.12rem 0.25rem;${tdBorder(last)};text-align:center;cursor:pointer;" onclick="window.toggleRbac('${role}', '${key}')">
+                <div style="width:${CELL};height:${CELL};margin:auto;border-radius:7px;display:flex;align-items:center;justify-content:center;pointer-events:none;${on ? 'background:rgba(16,185,129,0.15);border:2px solid #10b981;' : 'background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.2);'}">${on ? ICON_ON : ICON_OFF}</div></td>`;
           };
-
-          const renderRbacScopeCell = (role, module, badgeLabel, badgeColor, badgeBg, badgeBorder, badgeIcon, isLastInGroup) => {
-              const checked = !!(window.rbacMatrix[role][module]);
-              const hasReport = !!(window.rbacMatrix[role].manage_reports);
-              const borderStyle = isLastInGroup ? 'border-right:2px solid rgba(163,177,198,0.3)' : 'border-right:1px solid rgba(163,177,198,0.15)';
-              const canApply = hasReport;
-              return `<td style="padding:0.55rem 0.4rem;${borderStyle};cursor:${canApply?'pointer':'default'};text-align:center;${!canApply?'opacity:0.25;':''}" ${canApply?`onclick="window.toggleRbac('${role}', '${module}')"`:''}>
-                <div style="display:flex;flex-direction:column;align-items:center;gap:0.25rem;pointer-events:none;">
-                  ${checked
-                    ? `<div style="padding:0.25rem 0.6rem;border-radius:20px;background:${badgeBg};border:2px solid ${badgeBorder};display:flex;align-items:center;gap:0.35rem;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-                        ${badgeIcon}
-                        <span style="font-size:0.68rem;font-weight:800;color:${badgeColor};">${badgeLabel}</span>
-                      </div>`
-                    : `<div style="padding:0.25rem 0.6rem;border-radius:20px;background:rgba(163,177,198,0.08);border:1.5px solid rgba(163,177,198,0.2);display:flex;align-items:center;gap:0.3rem;">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                        <span style="font-size:0.68rem;font-weight:600;color:#94a3b8;">Tiada</span>
-                      </div>`}
-                </div>
-              </td>`;
+          // Skop laporan hanya bermakna jika lajur Laporan (manage_reports) dibenarkan.
+          const cellScope = (role, key, last, label, color) => {
+              const on = !!window.rbacMatrix[role][key];
+              const can = !!window.rbacMatrix[role].manage_reports;
+              return `<td style="padding:0.12rem 0.25rem;${tdBorder(last)};text-align:center;${can ? 'cursor:pointer;' : 'opacity:0.3;'}" ${can ? `onclick="window.toggleRbac('${role}', '${key}')"` : 'title="Aktif hanya jika Laporan dibenarkan (tab Pengurusan)"'}>
+                <span style="display:inline-block;min-width:58px;padding:0.15rem 0.45rem;border-radius:20px;font-size:0.6rem;font-weight:800;${on ? `background:${color}22;border:1.5px solid ${color};color:${color};` : 'background:rgba(163,177,198,0.08);border:1px solid rgba(163,177,198,0.25);color:#94a3b8;'}">${on ? label : 'Tiada'}</span></td>`;
           };
 
           const roles = [
@@ -10235,43 +10211,102 @@ function renderView() {
             { key: 'pemandu',     label: 'Pemandu',      color: '#a16207', bg: 'rgba(161,98,7,0.04)',   bottomBorder: 'none',                             desc: 'Pemandu Kenderaan' },
           ];
 
-          const grpTh = (emoji, label, span, color, isLast) => `<th colspan="${span}" style="padding:0.7rem 0.75rem;font-weight:800;font-size:0.72rem;letter-spacing:0.8px;text-transform:uppercase;color:${color};border-right:${isLast ? '1px solid rgba(163,177,198,0.15)' : '3px solid rgba(163,177,198,0.3)'};border-bottom:2px solid ${color}44;background:${color}0f;text-align:center;white-space:nowrap;">${emoji} ${label}</th>`;
-          const colTh = (label, color, isLast) => `<th style="padding:0.55rem 0.5rem;font-weight:700;font-size:0.68rem;color:${color || 'var(--text-muted)'};border-right:${isLast ? '3px solid rgba(163,177,198,0.3)' : '1px solid rgba(163,177,198,0.15)'};text-align:center;white-space:nowrap;line-height:1.4;min-width:64px;">${label}</th>`;
+
+          // Lajur ikut sub-tab. claims:true = juga kuasa simpan Firestore (src/rolePermissions.js).
+          const RBAC_SECTIONS = {
+            akses: { label: '🖥️ Navigasi & Tetapan', groups: [
+              { title: 'Navigasi', color: '#3b82f6', cols: [
+                { key: 'dashboard', label: 'Dashboard', kind: 'dashboard' },
+                { key: 'branch_analisa', label: 'Analisa<br>Cawangan' },
+                { key: 'leave_request', label: 'Permohonan<br>Cuti' } ] },
+              { title: 'Tetapan', color: '#2dd4bf', cols: [
+                { key: 'policy', label: 'Polisi' },
+                { key: 'settings', label: 'Tetapan<br>Sistem' },
+                { key: 'wa_setting', label: 'WhatsApp' } ] } ] },
+            pengurusan: { label: '📋 Pengurusan', groups: [
+              { title: 'Kelulusan & Staf', color: '#a855f7', cols: [
+                { key: 'manage_pending', label: 'Luluskan<br>Permohonan', claims: true },
+                { key: 'manage_staff', label: 'Kakitangan', claims: true },
+                { key: 'manage_branches', label: 'Cawangan' },
+                { key: 'manage_roles_categories', label: 'Peranan &amp;<br>Kategori' } ] },
+              { title: 'Rekod', color: '#ec4899', cols: [
+                { key: 'manage_audit', label: 'Audit<br>Rekod' },
+                { key: 'manage_login_audit', label: 'Log<br>Masuk' },
+                { key: 'manage_reports', label: 'Laporan' } ] },
+              { title: 'Konfigurasi', color: '#6366f1', cols: [
+                { key: 'manage_routing', label: 'Laluan<br>Kelulusan' },
+                { key: 'manage_access', label: 'Kawalan<br>Akses' },
+                { key: 'manage_holidays', label: 'Cuti<br>Umum' },
+                { key: 'manage_policy', label: 'Editor<br>Polisi' } ] } ] },
+            laporan: { label: '📊 Skop Laporan & Operasi', groups: [
+              { title: 'Skop Laporan', color: '#ca8a04', cols: [
+                { key: 'report_kuantan_only', label: 'Daerah<br>Kuantan', kind: 'scope', badge: 'Kuantan', color: '#ca8a04' },
+                { key: 'report_own_branch_only', label: 'Cawangan<br>Sendiri', kind: 'scope', badge: 'Cawangan', color: '#0284c7' },
+                { key: 'report_attendance', label: 'Rekod<br>Kedatangan', kind: 'scope', badge: 'Kedatangan', color: '#334155' } ] },
+              { title: 'Operasi', color: '#f59e0b', cols: [
+                { key: 'can_cancel', label: 'Batal<br>Cuti' },
+                { key: 'locum_records', label: 'Rekod<br>Locum' } ] } ] },
+            lain: { label: '⚙️ Tetapan Baki' },
+          };
+          const sec = RBAC_SECTIONS[rbacSection] ? rbacSection : 'akses';
+          const pending = (claimsSyncInfo && claimsSyncInfo.pendingRoles) || [];
+
+          const renderCell = (role, col, last) =>
+              col.kind === 'dashboard' ? cellDashboard(role, last)
+            : col.kind === 'scope' ? cellScope(role, col.key, last, col.badge, col.color)
+            : cellToggle(role, col.key, last);
+
+          const renderMatrix = (groups) => `
+            <section class="glass-card fade-in" style="padding:0;overflow:hidden;border:1.5px solid rgba(163,177,198,0.35);">
+              <div style="overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:0.74rem;">
+                <thead>
+                  <tr style="border-bottom:1px solid rgba(163,177,198,0.2);">
+                    <th rowspan="2" style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;font-weight:800;border-right:2px solid rgba(163,177,198,0.3);min-width:120px;">Peranan</th>
+                    ${groups.map((g, gi) => `<th colspan="${g.cols.length}" style="padding:0.25rem;font-size:0.62rem;font-weight:800;letter-spacing:0.7px;text-transform:uppercase;color:${g.color};${tdBorder(gi < groups.length - 1)};text-align:center;">${g.title}</th>`).join('')}
+                  </tr>
+                  <tr style="background:rgba(163,177,198,0.06);border-bottom:2px solid rgba(163,177,198,0.25);">
+                    ${groups.map((g, gi) => g.cols.map((c, ci) => `<th style="padding:0.2rem 0.25rem;font-size:0.58rem;font-weight:700;line-height:1.25;color:var(--text-muted);${tdBorder(ci === g.cols.length - 1 && gi < groups.length - 1)};text-align:center;" ${c.claims ? 'title="Juga kuasa simpan Firestore — selepas Simpan, jalankan node sync-claims.js"' : ''}>${c.label}${c.claims ? ' 🔒' : ''}</th>`).join('')).join('')}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${roles.map(r => `
+                  <tr style="border-bottom:${r.bottomBorder};background:${r.bg};">
+                    <td style="padding:0.12rem 0.6rem;border-right:2px solid rgba(163,177,198,0.3);white-space:nowrap;" title="${r.desc}">
+                      <span style="display:inline-block;background:${r.color}22;color:${r.color};border:1.5px solid ${r.color}55;border-radius:6px;padding:0.05rem 0.45rem;font-weight:800;font-size:0.66rem;">${r.label}</span>
+                      ${pending.includes(r.key) ? `<span title="Perlu node sync-claims.js" style="font-size:0.7rem;margin-left:0.25rem;">⚠️</span>` : ''}
+                    </td>
+                    ${groups.map((g, gi) => g.cols.map((c, ci) => renderCell(r.key, c, ci === g.cols.length - 1 && gi < groups.length - 1)).join('')).join('')}
+                  </tr>`).join('')}
+                </tbody>
+              </table>
+              </div>
+            </section>`;
+
+          const legend = {
+            akses: `<b>Dashboard</b> (klik untuk tukar): <span style="color:#10b981;font-weight:700;">ANALISA</span> carta semua cawangan · <span style="color:#f97316;font-weight:700;">CAWANGAN</span> carta cawangan sendiri · <span style="color:#64748b;font-weight:700;">STAFF</span> paparan peribadi sahaja`,
+            pengurusan: `Setiap lajur membuka satu tab dalam Management. 🔒 = juga kuasa simpan Firestore — selepas Simpan, jalankan <code>node sync-claims.js</code>.`,
+            laporan: `Skop laporan hanya aktif jika <b>Laporan</b> dibenarkan (tab Pengurusan). <span style="color:#ca8a04;font-weight:700;">Kuantan</span> = daerah Kuantan sahaja · <span style="color:#0284c7;font-weight:700;">Cawangan</span> = cawangan sendiri sahaja · tiada sekatan = semua rekod dalam zon.`,
+          };
 
           return `
-          <!-- Header -->
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;margin-top:0.5rem;flex-wrap:wrap;gap:1rem;">
-            <div style="display:flex;align-items:center;gap:0.85rem;">
-              <div style="width:42px;height:42px;border-radius:11px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              </div>
-              <div>
-                <h2 style="font-size:1.05rem;font-weight:700;margin:0;letter-spacing:-0.2px;">Kawalan Akses Berdasarkan Peranan (RBAC)</h2>
-                <p style="font-size:0.72rem;color:var(--text-muted);margin:0.2rem 0 0;">Klik pada sel untuk togol kebenaran &bull; Simpan selepas membuat perubahan</p>
-              </div>
+          <!-- Toolbar: tajuk · sub-tab · Reset/Simpan (satu baris) -->
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;flex-wrap:wrap;margin:0.25rem 0 0.5rem;">
+            <div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">
+              <span style="font-size:0.9rem;font-weight:800;margin-right:0.35rem;">🔐 RBAC</span>
+              ${Object.entries(RBAC_SECTIONS).map(([k, v]) => `<button onclick="window.setRbacSection('${k}')" style="width:auto;padding:0.32rem 0.75rem;border-radius:7px;font-size:0.72rem;font-weight:700;cursor:pointer;${sec === k ? 'background:var(--primary);color:#fff;border:1px solid var(--primary);' : 'background:transparent;color:var(--text-muted);border:1px solid rgba(163,177,198,0.4);'}">${v.label}</button>`).join('')}
             </div>
-            <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
-              <button onclick="window.resetRbac()" style="width:auto;padding:0.6rem 1.1rem;display:flex;align-items:center;gap:0.45rem;font-weight:600;font-size:0.79rem;border-radius:9px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.08);color:#f87171;cursor:pointer;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg>
-                Reset Lalai
-              </button>
-              <button onclick="window.saveRbac()" class="btn-primary" style="width:auto;padding:0.65rem 1.4rem;display:flex;align-items:center;gap:0.5rem;font-weight:600;font-size:0.82rem;background:linear-gradient(135deg,var(--primary) 0%,var(--secondary) 100%);">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                Simpan Matrix
-              </button>
+            <div style="display:flex;gap:0.4rem;">
+              <button onclick="window.resetRbac()" style="width:auto;padding:0.38rem 0.8rem;font-weight:600;font-size:0.72rem;border-radius:7px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.08);color:#f87171;cursor:pointer;">↺ Reset Lalai</button>
+              <button onclick="window.saveRbac()" class="btn-primary" style="width:auto;padding:0.4rem 1rem;font-weight:700;font-size:0.74rem;">💾 Simpan Matrix</button>
             </div>
           </div>
 
-          ${(() => {
-            const pending = (claimsSyncInfo && claimsSyncInfo.pendingRoles) || [];
-            if (!pending.length) return '';
-            return `<div style="margin-bottom:1.25rem;padding:0.9rem 1.15rem;border-radius:12px;border:1px solid rgba(245,158,11,0.45);background:rgba(245,158,11,0.08);font-size:0.8rem;line-height:1.5;">
-              <b>⚠️ Kuasa simpan belum dikemas kini untuk: ${pending.map(r => window.staffConfig.roleLabels[r] || r).join(', ')}</b><br>
-              Paparan sudah berubah, tetapi Firestore masih guna kuasa lama — butang Simpan/Lulus peranan ini mungkin gagal.
-              Jalankan <code>node sync-claims.js</code> di komputer pentadbir, kemudian staf berkenaan log masuk semula (atau tunggu sehingga 1 jam).
-            </div>`;
-          })()}
+          ${pending.length ? `<div style="margin-bottom:0.5rem;padding:0.4rem 0.75rem;border-radius:8px;border:1px solid rgba(245,158,11,0.45);background:rgba(245,158,11,0.08);font-size:0.7rem;line-height:1.45;" title="Paparan sudah berubah, tetapi Firestore masih guna kuasa lama sehingga sync dijalankan.">
+            ⚠️ <b>Kuasa simpan belum dikemas kini: ${pending.map(r => window.staffConfig.roleLabels[r] || r).join(', ')}</b> — jalankan <code>node sync-claims.js</code>, kemudian staf berkenaan log masuk semula (atau tunggu ≤1 jam).
+          </div>` : ''}
 
+          ${sec === 'lain' ? `
           <!-- Toggle: Auto "Guna Dalam Sistem" -->
           <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem;padding:0.95rem 1.15rem;border-radius:12px;border:1px solid ${autoSystemUsage ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'};background:${autoSystemUsage ? 'rgba(16,185,129,0.06)' : 'rgba(245,158,11,0.06)'};">
             <div style="display:flex;align-items:flex-start;gap:0.7rem;">
@@ -10289,132 +10324,10 @@ function renderView() {
             </button>
           </div>
 
-          <!-- Legend: access types -->
-          <div style="display:flex;flex-wrap:wrap;gap:0.45rem;margin-bottom:0.55rem;align-items:center;">
-            <span style="font-size:0.65rem;font-weight:700;color:var(--text-muted);letter-spacing:0.6px;text-transform:uppercase;margin-right:0.2rem;">Akses:</span>
-            <div style="display:flex;align-items:center;gap:0.35rem;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:6px;padding:0.22rem 0.6rem;">
-              <div style="width:16px;height:16px;border-radius:4px;background:rgba(16,185,129,0.18);display:flex;align-items:center;justify-content:center;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
-              <span style="font-size:0.68rem;color:#34d399;font-weight:600;">Ada Akses</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:0.35rem;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.18);border-radius:6px;padding:0.22rem 0.6rem;">
-              <div style="width:16px;height:16px;border-radius:4px;background:rgba(239,68,68,0.1);display:flex;align-items:center;justify-content:center;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
-              <span style="font-size:0.68rem;color:#ef4444;font-weight:600;">Tiada Akses</span>
-            </div>
-            <div style="width:1px;height:18px;background:rgba(163,177,198,0.2);margin:0 0.1rem;"></div>
-            <span style="font-size:0.65rem;font-weight:700;color:var(--text-muted);letter-spacing:0.6px;text-transform:uppercase;margin-right:0.2rem;">Dashboard:</span>
-            <div style="display:flex;align-items:center;gap:0.3rem;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:6px;padding:0.22rem 0.6rem;">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-              <span style="font-size:0.68rem;color:#34d399;font-weight:700;">ANALISA</span>
-              <span style="font-size:0.62rem;color:var(--text-muted);">— carta semua cawangan</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:0.3rem;background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.25);border-radius:6px;padding:0.22rem 0.6rem;">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-              <span style="font-size:0.68rem;color:#fb923c;font-weight:700;">CAWANGAN</span>
-              <span style="font-size:0.62rem;color:var(--text-muted);">— carta cawangan sendiri</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:0.3rem;background:rgba(163,177,198,0.07);border:1px solid rgba(163,177,198,0.2);border-radius:6px;padding:0.22rem 0.6rem;">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-              <span style="font-size:0.68rem;color:#94a3b8;font-weight:700;">STAFF</span>
-              <span style="font-size:0.62rem;color:var(--text-muted);">— senarai sahaja</span>
-            </div>
-          </div>
-
-          <!-- Legend: scope badges -->
-          <div style="display:flex;flex-wrap:wrap;gap:0.45rem;margin-bottom:1rem;align-items:center;">
-            <span style="font-size:0.65rem;font-weight:700;color:var(--text-muted);letter-spacing:0.6px;text-transform:uppercase;margin-right:0.2rem;">Skop Laporan:</span>
-            <div style="display:flex;align-items:center;gap:0.35rem;background:rgba(163,177,198,0.06);border:1px solid rgba(163,177,198,0.18);border-radius:6px;padding:0.22rem 0.7rem;">
-              <span style="font-size:0.68rem;color:var(--text-muted);">Tiada sekatan — lihat semua rekod dalam skop negeri</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:0.35rem;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.35);border-radius:20px;padding:0.22rem 0.65rem;">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              <span style="font-size:0.68rem;color:#ca8a04;font-weight:800;">Kuantan</span>
-              <span style="font-size:0.62rem;color:var(--text-muted);">— laporan terhad daerah Kuantan sahaja</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:0.35rem;background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.35);border-radius:20px;padding:0.22rem 0.65rem;">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-              <span style="font-size:0.68rem;color:#0284c7;font-weight:800;">Cawangan</span>
-              <span style="font-size:0.62rem;color:var(--text-muted);">— laporan terhad cawangan sendiri sahaja</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:0.35rem;padding:0.22rem 0.5rem;">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              <span style="font-size:0.65rem;color:var(--text-muted);">Skop hanya aktif jika kolum Laporan dibenarkan</span>
-            </div>
-          </div>
-
-          <section class="glass-card fade-in" style="padding:0;overflow:hidden;border:1.5px solid rgba(163,177,198,0.35);">
-            <div style="overflow-x:auto;">
-              <table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
-                <thead>
-                  <tr style="border-bottom:1px solid rgba(163,177,198,0.2);">
-                    <th rowspan="2" style="padding:0.9rem 1.1rem;font-weight:800;font-size:0.82rem;border-right:3px solid rgba(163,177,198,0.35);border-bottom:2px solid rgba(163,177,198,0.25);background:rgba(163,177,198,0.08);text-align:left;vertical-align:middle;min-width:148px;">Peranan</th>
-                    ${grpTh('🖥️', 'Navigasi', 3, '#3b82f6', false)}
-                    ${grpTh('⚙️', 'Tetapan', 3, '#2dd4bf', false)}
-                    ${grpTh('📋', 'Pengurusan', 11, '#a855f7', false)}
-                    ${grpTh('📊', 'Skop Laporan', 3, '#ca8a04', false)}
-                    ${grpTh('🏥', 'Operasi', 2, '#f59e0b', true)}
-                  </tr>
-                  <tr style="background:rgba(163,177,198,0.06);border-bottom:2px solid rgba(163,177,198,0.25);">
-                    ${colTh('Dashboard', '#94a3b8', false)}
-                    ${colTh('Analisa<br>Cawangan', '#fb923c', false)}
-                    ${colTh('Permohonan<br>Cuti', '#818cf8', true)}
-                    ${colTh('Polisi', '#2dd4bf', false)}
-                    ${colTh('Tetapan<br>Sistem', '#a1a1aa', false)}
-                    ${colTh('WhatsApp', '#10b981', true)}
-                    ${colTh('Luluskan<br>Permohonan', '#f59e0b', false)}
-                    ${colTh('Kakitangan', '#38bdf8', false)}
-                    ${colTh('Cawangan', '#a855f7', false)}
-                    ${colTh('Audit<br>Rekod', '#ec4899', false)}
-                    ${colTh('Log<br>Masuk', '#10b981', false)}
-                    ${colTh('Laporan', '#f97316', false)}
-                    ${colTh('Laluan<br>Kelulusan', '#6d28d9', false)}
-                    ${colTh('Kawalan<br>Akses', '#ef4444', false)}
-                    ${colTh('Peranan &amp;<br>Kategori', '#10b981', false)}
-                    ${colTh('Cuti<br>Umum', '#f59e0b', false)}
-                    ${colTh('Editor<br>Polisi', '#6366f1', true)}
-                    ${colTh('Daerah<br>Kuantan', '#ca8a04', false)}
-                    ${colTh('Cawangan<br>Sendiri', '#0284c7', false)}
-                    ${colTh('Rekod<br>Kedatangan', '#1e293b', true)}
-                    ${colTh('Batal<br>Cuti', '#f43f5e', false)}
-                    ${colTh('Rekod<br>Locum', '#0d9488', false)}
-                  </tr>
-                </thead>
-                <tbody>
-                  ${roles.map(r => `
-                  <tr style="border-bottom:${r.bottomBorder};background:${r.bg};transition:background 0.15s;" onmouseover="this.style.background='rgba(59,130,246,0.06)'" onmouseout="this.style.background='${r.bg}'">
-                    <td style="padding:0.8rem 1.1rem;border-right:3px solid rgba(163,177,198,0.35);">
-                      <div style="display:flex;flex-direction:column;gap:0.3rem;">
-                        <span style="display:inline-block;background:${r.color}22;color:${r.color};border:1.5px solid ${r.color}55;border-radius:7px;padding:0.22rem 0.7rem;font-weight:800;font-size:0.8rem;width:fit-content;letter-spacing:0.2px;">${r.label}</span>
-                        <span style="font-size:0.68rem;color:var(--text-muted);padding-left:0.15rem;">${r.desc}</span>
-                        ${((claimsSyncInfo && claimsSyncInfo.pendingRoles) || []).includes(r.key) ? `<span style="font-size:0.62rem;font-weight:700;color:#b45309;padding-left:0.15rem;">⚠️ Perlu sync-claims</span>` : ''}
-                      </div>
-                    </td>
-                    ${renderRbacDashboardCell(r.key)}
-                    ${renderRbacCell(r.key, 'branch_analisa', false)}
-                    ${renderRbacCell(r.key, 'leave_request', true)}
-                    ${renderRbacCell(r.key, 'policy', false)}
-                    ${renderRbacCell(r.key, 'settings', false)}
-                    ${renderRbacCell(r.key, 'wa_setting', true)}
-                    ${renderRbacCell(r.key, 'manage_pending', false)}
-                    ${renderRbacCell(r.key, 'manage_staff', false)}
-                    ${renderRbacCell(r.key, 'manage_branches', false)}
-                    ${renderRbacCell(r.key, 'manage_audit', false)}
-                    ${renderRbacCell(r.key, 'manage_login_audit', false)}
-                    ${renderRbacCell(r.key, 'manage_reports', false)}
-                    ${renderRbacCell(r.key, 'manage_routing', false)}
-                    ${renderRbacCell(r.key, 'manage_access', false)}
-                    ${renderRbacCell(r.key, 'manage_roles_categories', false)}
-                    ${renderRbacCell(r.key, 'manage_holidays', false)}
-                    ${renderRbacCell(r.key, 'manage_policy', true)}
-                    ${renderRbacScopeCell(r.key, 'report_kuantan_only', 'Kuantan', '#ca8a04', 'rgba(234,179,8,0.15)', 'rgba(234,179,8,0.4)', '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>', false)}
-                    ${renderRbacScopeCell(r.key, 'report_own_branch_only', 'Cawangan', '#0284c7', 'rgba(56,189,248,0.15)', 'rgba(56,189,248,0.4)', '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>', false)}
-                    ${renderRbacScopeCell(r.key, 'report_attendance', 'Kedatangan', '#1e293b', 'rgba(30,41,59,0.15)', 'rgba(30,41,59,0.5)', '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>', true)}
-                    ${renderRbacCell(r.key, 'can_cancel', false)}
-                    ${renderRbacCell(r.key, 'locum_records', false)}
-                  </tr>`).join('')}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          ` : `
+          <div style="font-size:0.64rem;color:var(--text-muted);margin-bottom:0.35rem;line-height:1.4;">${legend[sec]} · <span style="color:#10b981;">✔ ada akses</span> · <span style="color:#ef4444;">✕ tiada</span> · klik sel untuk togol, kemudian <b>Simpan Matrix</b>.</div>
+          ${renderMatrix(RBAC_SECTIONS[sec].groups)}
+          `}
           `;
         })() : ''}
 
@@ -12173,4 +12086,3 @@ if ('serviceWorker' in navigator && !window.__reloadGuardTripped) {
     try { return await orig.call(this, id, ...rest); } finally { testCtx = prev; }
   };
 });
-
