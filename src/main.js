@@ -1012,7 +1012,7 @@ window.rbacMatrix = {
     hr: {
         dashboard: 'staff', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: true, manage_holidays: true, manage_policy: true,
-        report_kuantan_only: true, report_own_branch_only: false, report_attendance: true,
+        report_kuantan_only: false, report_own_branch_only: false, report_attendance: true,
         can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
     },
     hod_cawangan: {
@@ -4395,7 +4395,7 @@ async function initData() {
             }
         }
         // Migrate: add report_kuantan_only + enable manage_reports for hr
-        const _reportKuantanDefaults = { super_admin: false, admin: false, hr: true, hod: false, pic_hod: false, supervisor: false, staff: false };
+        const _reportKuantanDefaults = { super_admin: false, admin: false, hr: false, hod: false, pic_hod: false, supervisor: false, staff: false };
         for (const _role of Object.keys(_reportKuantanDefaults)) {
             if (data[_role] && data[_role].report_kuantan_only === undefined) {
                 data[_role].report_kuantan_only = _reportKuantanDefaults[_role];
