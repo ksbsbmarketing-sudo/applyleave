@@ -66,7 +66,11 @@ export const OWN_LEAVES_ROLES = ['staff', 'juru_xray', 'sonographer', 'juru_audi
 // Permissions that only touch the user's own data. Any OTHER permission switched
 // on (manage_pending, reports, locum_records, a flag added later…) may open a
 // screen that lists colleagues' leave, so it widens the listener.
-const OWN_ONLY_PERMS = ['leave_request', 'policy', 'settings', 'inbox', 'wa_setting'];
+// Retired flags (removed from the matrix in v2.5.16). Ignored rather than treated
+// as "extra": old cached clients re-add os_* from their code defaults, and none of
+// them grants anything anywhere.
+const RETIRED_PERMS = ['os_balok', 'os_pahang', 'messenger', 'management'];
+const OWN_ONLY_PERMS = ['leave_request', 'policy', 'settings', 'inbox', 'wa_setting', ...RETIRED_PERMS];
 
 export function needsAllLeaves(role, perms) {
   if (!role || typeof role !== 'string') return true;
@@ -107,7 +111,7 @@ export const needsAllStaff = needsAllLeaves;
 // `operation_balok` staff, and getStaffGroup() puts only Balok-branch staff in
 // that group — so the TL's own (Balok) branch covers their whole queue.
 export const BRANCH_SCOPED_ROLES = ['doctor_pic', 'team_leader'];
-const BRANCH_ONLY_PERMS = [...OWN_ONLY_PERMS, 'manage_pending', 'branch_analisa', 'can_cancel', 'os_balok', 'os_pahang'];
+const BRANCH_ONLY_PERMS = [...OWN_ONLY_PERMS, 'manage_pending', 'branch_analisa', 'can_cancel'];
 const granted = v => v !== false && v !== 'false' && v != null;
 
 export function listenerScope(role, perms) {

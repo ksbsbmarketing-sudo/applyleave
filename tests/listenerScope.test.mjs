@@ -137,8 +137,8 @@ test('scope: plain staff â†’ own, default doctor_pic â†’ branch, everyone else â
     assert.strictEqual(listenerScope(r, DOCTOR_PERMS), 'all', r);
 });
 
-test('scope: doctor_pic granted reports/locum/management/analisa widens to all', () => {
-  for (const k of ['manage_reports', 'report_attendance', 'locum_records', 'management', 'manage_staff'])
+test('scope: doctor_pic granted reports/locum/staff/analisa widens to all', () => {
+  for (const k of ['manage_reports', 'report_attendance', 'locum_records', 'manage_staff'])
     assert.strictEqual(listenerScope('doctor_pic', { ...DOCTOR_PERMS, [k]: true }), 'all', k);
   assert.strictEqual(listenerScope('doctor_pic', { ...DOCTOR_PERMS, dashboard: 'analisa' }), 'all');
   assert.strictEqual(listenerScope('doctor_pic', undefined), 'all');
@@ -157,4 +157,10 @@ test('scope: team_leader with default perms (staff dashboard, manage_pending) â†
   const TL = { ...STAFF_PERMS, manage_pending: true, os_balok: true };
   assert.strictEqual(listenerScope('team_leader', TL), 'branch');
   assert.strictEqual(listenerScope('team_leader', { ...TL, manage_reports: true }), 'all');
+});
+
+test('scope: retired flags (os_*, messenger, management) never widen the scope', () => {
+  const retired = { os_balok: true, os_pahang: true, messenger: true, management: true };
+  assert.strictEqual(listenerScope('staff', { ...STAFF_PERMS, ...retired }), 'own');
+  assert.strictEqual(listenerScope('doctor_pic', { ...DOCTOR_PERMS, ...retired }), 'branch');
 });

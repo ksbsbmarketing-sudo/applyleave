@@ -998,86 +998,86 @@ window.renderHelpWidget = renderHelpWidget;
 
 window.rbacMatrix = {
     super_admin: {
-        dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: true, inbox: true,
+        dashboard: 'analisa', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: true, inbox: true,
         manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: true, manage_reports: true, manage_routing: true, manage_access: true, manage_roles_categories: true, manage_holidays: true, manage_policy: true,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: true,
-        can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
+        can_cancel: true, locum_records: true
     },
     admin: {
-        dashboard: 'analisa', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: false, inbox: true,
+        dashboard: 'analisa', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: true, manage_reports: true, manage_routing: true, manage_access: true, manage_roles_categories: true, manage_holidays: true, manage_policy: true,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: true,
-        can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
+        can_cancel: true, locum_records: true
     },
     hr: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: true, policy: true, settings: true, wa_setting: false, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: true, manage_branches: true, manage_audit: true, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: true, manage_holidays: true, manage_policy: true,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: true,
-        can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
+        can_cancel: true, locum_records: true
     },
     hod_cawangan: {
-        dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
+        dashboard: 'branch', branch_analisa: true, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         // manage_staff mesti sepadan dengan config/rolePermissions.hod_cawangan.manageStaff.
         // Butang di UI datang dari sini, tetapi Firestore rules percaya custom claim yang
         // dijana dari config/rolePermissions — jadi kalau dua-dua tak sama, HOD nampak
         // butang Simpan yang sentiasa gagal dengan "Missing or insufficient permissions".
         manage_pending: false, manage_staff: true, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: true, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: true, report_attendance: true,
-        can_cancel: true, os_balok: true, os_pahang: true, locum_records: false
+        can_cancel: true, locum_records: false
     },
     hod_balok: {
-        dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
+        dashboard: 'branch', branch_analisa: true, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: true, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: true, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: true, report_attendance: true,
-        can_cancel: true, os_balok: true, os_pahang: true, locum_records: false
+        can_cancel: true, locum_records: false
     },
     doctor_pic: {
-        dashboard: 'branch', branch_analisa: true, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
+        dashboard: 'branch', branch_analisa: true, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: true, os_balok: true, os_pahang: true, locum_records: false
+        can_cancel: true, locum_records: false
     },
     supervisor: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: true, os_balok: true, os_pahang: true, locum_records: true
+        can_cancel: true, locum_records: true
     },
     team_leader: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: true, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: false, os_balok: true, os_pahang: false, locum_records: false
+        can_cancel: false, locum_records: false
     },
     staff: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
+        can_cancel: false, locum_records: false
     },
     juru_xray: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
+        can_cancel: false, locum_records: false
     },
     sonographer: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
+        can_cancel: false, locum_records: false
     },
     juru_audio: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
+        can_cancel: false, locum_records: false
     },
     pemandu: {
-        dashboard: 'staff', branch_analisa: false, leave_request: true, management: false, policy: true, settings: true, wa_setting: false, inbox: true,
+        dashboard: 'staff', branch_analisa: false, leave_request: true, policy: true, settings: true, wa_setting: false, inbox: true,
         manage_pending: false, manage_staff: false, manage_branches: false, manage_audit: false, manage_login_audit: false, manage_reports: false, manage_routing: false, manage_access: false, manage_roles_categories: false, manage_holidays: false, manage_policy: false,
         report_kuantan_only: false, report_own_branch_only: false, report_attendance: false,
-        can_cancel: false, os_balok: false, os_pahang: false, locum_records: false
+        can_cancel: false, locum_records: false
     }
 };
 
@@ -1903,6 +1903,17 @@ const _tabPermMap = {
   balance_view:'manage_reports',
   routing:'manage_routing', access_control:'manage_access', public_holidays:'manage_holidays',
   whatsapp_settings:'wa_setting', policy_editor:'manage_policy'
+};
+// Satu sumber kebenaran untuk "boleh buka Management": mana-mana tab yang
+// dibenarkan. Dulu tiga senarai berbeza (nav desktop, menu telefon, gate dalam
+// renderView) — menu telefon hanya semak management/manage_pending, jadi HOD
+// Cawangan (Urus Staf tanpa Kelulusan) tidak nampak Management di telefon, dan
+// peranan dengan HANYA Locum/Laluan/Cuti Umum/Polisi/WhatsApp disekat terus.
+window.canOpenManagement = function(u) {
+  if (!u) return false;
+  const p = window.effectivePerms(u);
+  return Object.values(_tabPermMap).some(k => p[k] === true || p[k] === 'true')
+    || ['admin', 'hr', 'super_admin'].includes(u.role);           // tab Daftar Baharu
 };
 window.setManageGroup = function(group) {
   managementGroup = group;
@@ -4382,12 +4393,9 @@ async function initData() {
   onSnapshot(doc(db, "settings", "rbac"), (docSnap) => {
     if (docSnap.exists()) {
         const data = docSnap.data();
-        // Migrate: upgrade hod/pic_hod from old 'staff' default to 'branch'
         let needsMigration = false;
-        if (data.hod && data.hod.dashboard === 'staff') { data.hod.dashboard = 'branch'; needsMigration = true; }
-        if (data.pic_hod && data.pic_hod.dashboard === 'staff') { data.pic_hod.dashboard = 'branch'; needsMigration = true; }
         // Migrate: add branch_analisa flag for roles missing it
-        const _branchAnalisaDefaults = { super_admin: false, admin: false, hr: false, hod: true, pic_hod: true, supervisor: false, staff: false };
+        const _branchAnalisaDefaults = { super_admin: false, admin: false, hr: false, supervisor: false, staff: false };
         for (const _role of Object.keys(_branchAnalisaDefaults)) {
             if (data[_role] && data[_role].branch_analisa === undefined) {
                 data[_role].branch_analisa = _branchAnalisaDefaults[_role];
@@ -4395,7 +4403,7 @@ async function initData() {
             }
         }
         // Migrate: add report_kuantan_only + enable manage_reports for hr
-        const _reportKuantanDefaults = { super_admin: false, admin: false, hr: false, hod: false, pic_hod: false, supervisor: false, staff: false };
+        const _reportKuantanDefaults = { super_admin: false, admin: false, hr: false, supervisor: false, staff: false };
         for (const _role of Object.keys(_reportKuantanDefaults)) {
             if (data[_role] && data[_role].report_kuantan_only === undefined) {
                 data[_role].report_kuantan_only = _reportKuantanDefaults[_role];
@@ -4403,7 +4411,7 @@ async function initData() {
             }
         }
         // Migrate: add report_own_branch_only + enable manage_reports for hod
-        const _reportOwnBranchDefaults = { super_admin: false, admin: false, hr: false, hod: true, pic_hod: false, supervisor: false, staff: false };
+        const _reportOwnBranchDefaults = { super_admin: false, admin: false, hr: false, supervisor: false, staff: false };
         for (const _role of Object.keys(_reportOwnBranchDefaults)) {
             if (data[_role] && data[_role].report_own_branch_only === undefined) {
                 data[_role].report_own_branch_only = _reportOwnBranchDefaults[_role];
@@ -4411,7 +4419,7 @@ async function initData() {
             }
         }
         // Migrate: add report_attendance
-        const _reportAttendanceDefaults = { super_admin: true, admin: true, hr: true, hod: true, pic_hod: false, supervisor: false, staff: false };
+        const _reportAttendanceDefaults = { super_admin: true, admin: true, hr: true, supervisor: false, staff: false };
         for (const _role of Object.keys(_reportAttendanceDefaults)) {
             if (data[_role] && data[_role].report_attendance === undefined) {
                 data[_role].report_attendance = _reportAttendanceDefaults[_role];
@@ -4421,11 +4429,6 @@ async function initData() {
         // Enable manage_reports for hr if still false (old default)
         if (data.hr && data.hr.manage_reports === false) {
             data.hr.manage_reports = true;
-            needsMigration = true;
-        }
-        // Enable manage_reports for hod if still false (old default)
-        if (data.hod && data.hod.manage_reports === false) {
-            data.hod.manage_reports = true;
             needsMigration = true;
         }
         // Migrate: tambah peranan baru dari code defaults jika belum ada dalam Firestore
@@ -5589,7 +5592,7 @@ function renderDashboard() {
             ${rbac.dashboard ? `<div class="fab-item" onclick="window.setView('dashboard'); window.toggleMobileMenu(false)">Dashboard</div>` : ''}
             ${rbac.leave_request ? `<div class="fab-item" onclick="window.setView('leave-form'); window.toggleMobileMenu(false)">Borang Cuti</div>` : ''}
             ${window.canSeeLeaveCalendar(user) ? `<div class="fab-item" onclick="window.setView('calendar'); window.toggleMobileMenu(false)">Kalendar Cuti</div>` : ''}
-            ${rbac.management || rbac.manage_pending ? `<div class="fab-item" onclick="window.setView('management'); window.toggleMobileMenu(false)">Management</div>` : ''}
+            ${window.canOpenManagement(user) ? `<div class="fab-item" onclick="window.setView('management'); window.toggleMobileMenu(false)">Management</div>` : ''}
             ${rbac.inbox ? `<div class="fab-item" onclick="window.setView('inbox'); window.toggleMobileMenu(false)">Inbox${inboxNotifs.filter(n=>!n.read).length > 0 ? ' 🔴' : ''}</div>` : ''}
             <div class="fab-item" onclick="window.setView('settings'); window.toggleMobileMenu(false)">Settings</div>
             <div class="fab-item logout" onclick="window.logout()">Log Keluar</div>
@@ -5619,7 +5622,7 @@ function renderDashboard() {
               ${dashboardRbac.dashboard ? `<div class="nav-item ${view === 'dashboard' ? 'active' : ''}" onclick="window.setView('dashboard')"><i data-lucide="layout-dashboard" width="18" height="18"></i> Dashboard</div>` : ''}
               ${dashboardRbac.leave_request ? `<div class="nav-item ${view === 'leave-form' ? 'active' : ''}" onclick="window.setView('leave-form')"><i data-lucide="calendar-plus" width="18" height="18"></i> Borang Cuti</div>` : ''}
               ${window.canSeeLeaveCalendar(user) ? `<div class="nav-item ${view === 'calendar' ? 'active' : ''}" onclick="window.setView('calendar')"><i data-lucide="calendar-days" width="18" height="18"></i> Kalendar Cuti</div>` : ''}
-              ${(dashboardRbac.management || dashboardRbac.manage_pending || dashboardRbac.manage_staff || dashboardRbac.manage_branches || dashboardRbac.manage_audit || dashboardRbac.manage_login_audit || dashboardRbac.manage_reports || dashboardRbac.manage_access) ? `<div class="nav-item ${view === 'management' ? 'active' : ''}" onclick="window.setView('management')"><i data-lucide="shield-check" width="18" height="18"></i> Management</div>` : ''}
+              ${window.canOpenManagement(user) ? `<div class="nav-item ${view === 'management' ? 'active' : ''}" onclick="window.setView('management')"><i data-lucide="shield-check" width="18" height="18"></i> Management</div>` : ''}
               ${dashboardRbac.inbox ? (() => { const inboxUnread = inboxNotifs.filter(n => !n.read).length; return `<div class="nav-item ${view === 'inbox' ? 'active' : ''}" onclick="window.setView('inbox')" style="position:relative;"><i data-lucide="inbox" width="18" height="18"></i> Inbox${inboxUnread > 0 ? `<span style="position:absolute;top:4px;right:6px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:var(--danger);color:#fff;font-size:0.6rem;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1;">${inboxUnread}</span>` : ''}</div>`; })() : ''}
               ${dashboardRbac.policy ? `<div class="nav-item ${view === 'policy' ? 'active' : ''}" onclick="window.setView('policy')"><i data-lucide="book-open" width="18" height="18"></i> Polisi</div>` : ''}
               ${dashboardRbac.settings ? `<div class="nav-item ${view === 'settings' ? 'active' : ''}" onclick="window.setView('settings')"><i data-lucide="settings-2" width="18" height="18"></i> Tetapan</div>` : ''}
@@ -6773,7 +6776,7 @@ function renderBranchDashboard() {
                   ${window.canCorrectBranchLeave(user, r) ? `
                     ${!['APPROVED', 'REJECTED', 'CANCELLED'].includes(r.status)
                       ? `<button class="neu-btn sm is-edit" onclick="window.editLeave(${r.id})">Edit</button>` : ''}
-                    ${r.status !== 'CANCELLED'
+                    ${r.status !== 'CANCELLED' && window.effectivePerms(user).can_cancel
                       ? `<button class="neu-btn sm is-cancel" onclick="window.cancelLeave(${r.id})">Batal</button>` : ''}
                   ` : ''}
                 </td>
@@ -7832,16 +7835,7 @@ function renderView() {
     case 'management':
       const userPerms = window.effectivePerms(user);
       
-      const hasAnyManagementAccess = (
-        userPerms.management || 
-        userPerms.manage_pending || 
-        userPerms.manage_staff || 
-        userPerms.manage_branches || 
-        userPerms.manage_audit || 
-        userPerms.manage_login_audit || 
-        userPerms.manage_reports || 
-        userPerms.manage_access
-      );
+      const hasAnyManagementAccess = window.canOpenManagement(user);
 
       if (!hasAnyManagementAccess) {
           return `<div style="padding: 5rem; text-align: center; color: var(--danger); font-size: 1.25rem;">Akses Dihalang. Anda tidak mempunyai kebenaran pengurusan.</div>`;
@@ -8298,10 +8292,10 @@ function renderView() {
                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
                              Tolak
                           </button>
-                          <button class="neu-btn is-cancel" style="min-width: 100px;" onclick="window.cancelLeave(${req.id})">
+                          ${window.effectivePerms(user).can_cancel ? `<button class="neu-btn is-cancel" style="min-width: 100px;" onclick="window.cancelLeave(${req.id})">
                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
                              Batal
-                          </button>
+                          </button>` : ''}
                       </div>`;
                   })()}
 
@@ -8769,7 +8763,7 @@ function renderView() {
                                   <div style="display: flex; gap: 1.25rem; justify-content: flex-end;">
                                       ${r.proofUrl ? `<a href="${r.proofUrl}" target="_blank" rel="noopener" title="Lihat Bukti${r.proofName ? ' (' + r.proofName + ')' : ''}" class="icon-btn is-proof"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></a>` : ''}
                                       ${PROOF_REQUIRED_TYPES.includes(r.type) && ['admin','hr','super_admin'].includes(user.role) ? `<button class="icon-btn is-upload" onclick="window.reuploadProof(${r.id})" title="${r.proofUrl ? 'Ganti' : 'Muat Naik'} Bukti (JPG/PNG/PDF, maks 10MB)" aria-label="Bukti"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></button>` : ''}
-                                      ${window.canManageRequest(user, r) && r.status !== 'CANCELLED' ? `<button class="icon-btn is-cancel" onclick="window.cancelLeave(${r.id})" title="Batal Cuti" aria-label="Batal Cuti"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg></button>` : ''}
+                                      ${window.canManageRequest(user, r) && r.status !== 'CANCELLED' && window.effectivePerms(user).can_cancel ? `<button class="icon-btn is-cancel" onclick="window.cancelLeave(${r.id})" title="Batal Cuti" aria-label="Batal Cuti"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg></button>` : ''}
                                       <button class="icon-btn is-print" onclick="printLeave(${r.id})" title="Cetak" aria-label="Cetak"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg></button>
                                       ${['admin', 'hr', 'super_admin'].includes(user.role) ? `
                                       <button class="icon-btn is-edit" onclick="editLeave(${r.id})" title="Edit Cuti" aria-label="Edit Cuti"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
@@ -10302,17 +10296,16 @@ function renderView() {
                 <thead>
                   <tr style="border-bottom:1px solid rgba(163,177,198,0.2);">
                     <th rowspan="2" style="padding:0.9rem 1.1rem;font-weight:800;font-size:0.82rem;border-right:3px solid rgba(163,177,198,0.35);border-bottom:2px solid rgba(163,177,198,0.25);background:rgba(163,177,198,0.08);text-align:left;vertical-align:middle;min-width:148px;">Peranan</th>
-                    ${grpTh('🖥️', 'Navigasi', 4, '#3b82f6', false)}
+                    ${grpTh('🖥️', 'Navigasi', 3, '#3b82f6', false)}
                     ${grpTh('⚙️', 'Tetapan', 3, '#2dd4bf', false)}
                     ${grpTh('📋', 'Pengurusan', 11, '#a855f7', false)}
                     ${grpTh('📊', 'Skop Laporan', 3, '#ca8a04', false)}
-                    ${grpTh('🏥', 'Operasi', 4, '#f59e0b', true)}
+                    ${grpTh('🏥', 'Operasi', 2, '#f59e0b', true)}
                   </tr>
                   <tr style="background:rgba(163,177,198,0.06);border-bottom:2px solid rgba(163,177,198,0.25);">
                     ${colTh('Dashboard', '#94a3b8', false)}
                     ${colTh('Analisa<br>Cawangan', '#fb923c', false)}
-                    ${colTh('Permohonan<br>Cuti', '#818cf8', false)}
-                    ${colTh('Pengurusan', '#fbbf24', true)}
+                    ${colTh('Permohonan<br>Cuti', '#818cf8', true)}
                     ${colTh('Polisi', '#2dd4bf', false)}
                     ${colTh('Tetapan<br>Sistem', '#a1a1aa', false)}
                     ${colTh('WhatsApp', '#10b981', true)}
@@ -10331,8 +10324,6 @@ function renderView() {
                     ${colTh('Cawangan<br>Sendiri', '#0284c7', false)}
                     ${colTh('Rekod<br>Kedatangan', '#1e293b', true)}
                     ${colTh('Batal<br>Cuti', '#f43f5e', false)}
-                    ${colTh('O/S<br>Balok', '#38bdf8', false)}
-                    ${colTh('O/S<br>Pahang', '#fbbf24', false)}
                     ${colTh('Rekod<br>Locum', '#0d9488', false)}
                   </tr>
                 </thead>
@@ -10347,8 +10338,7 @@ function renderView() {
                     </td>
                     ${renderRbacDashboardCell(r.key)}
                     ${renderRbacCell(r.key, 'branch_analisa', false)}
-                    ${renderRbacCell(r.key, 'leave_request', false)}
-                    ${renderRbacCell(r.key, 'management', true)}
+                    ${renderRbacCell(r.key, 'leave_request', true)}
                     ${renderRbacCell(r.key, 'policy', false)}
                     ${renderRbacCell(r.key, 'settings', false)}
                     ${renderRbacCell(r.key, 'wa_setting', true)}
@@ -10367,8 +10357,6 @@ function renderView() {
                     ${renderRbacScopeCell(r.key, 'report_own_branch_only', 'Cawangan', '#0284c7', 'rgba(56,189,248,0.15)', 'rgba(56,189,248,0.4)', '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>', false)}
                     ${renderRbacScopeCell(r.key, 'report_attendance', 'Kedatangan', '#1e293b', 'rgba(30,41,59,0.15)', 'rgba(30,41,59,0.5)', '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>', true)}
                     ${renderRbacCell(r.key, 'can_cancel', false)}
-                    ${renderRbacCell(r.key, 'os_balok', false)}
-                    ${renderRbacCell(r.key, 'os_pahang', false)}
                     ${renderRbacCell(r.key, 'locum_records', false)}
                   </tr>`).join('')}
                 </tbody>
