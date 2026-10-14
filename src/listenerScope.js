@@ -79,3 +79,16 @@ export function needsAllLeaves(role, perms) {
     // false/"false" as granted, so a malformed flag widens rather than hides.
     && perms[k] !== false && perms[k] !== 'false' && perms[k] != null);
 }
+
+// ── staff: whole collection vs. approvers + self ─────────────────────────────
+//
+// A plain staff member needs exactly two kinds of staff record: their own, and
+// the people their application is routed to (TL dropdown, getRoutingP1Approvers,
+// hrRecipientsForBranch → WhatsApp + Inbox). Every one of those lookups filters
+// staffList by one of these roles, so `where('role', 'in', STAFF_APPROVER_ROLES)`
+// plus the user's own doc covers them for ~30 reads instead of ~120.
+//
+// Same audience as the leaves narrowing — anyone who can open a screen listing
+// colleagues gets the full list — so it shares needsAllLeaves' criteria.
+export const STAFF_APPROVER_ROLES = ['super_admin', 'admin', 'hr', 'hod_cawangan', 'hod_balok', 'doctor_pic', 'supervisor', 'team_leader'];
+export const needsAllStaff = needsAllLeaves;

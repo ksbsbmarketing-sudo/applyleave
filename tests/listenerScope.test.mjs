@@ -109,3 +109,14 @@ test('leaves: unknown role or missing perms fails open (reads everything)', () =
   assert.strictEqual(needsAllLeaves('staff', undefined), true);
   assert.strictEqual(needsAllLeaves(undefined, STAFF_PERMS), true);
 });
+
+import { STAFF_APPROVER_ROLES, needsAllStaff } from '../src/listenerScope.js';
+
+test('staff: approver set and plain set do not overlap — a plain role is never fetched as an approver', () => {
+  for (const r of OWN_LEAVES_ROLES) assert.ok(!STAFF_APPROVER_ROLES.includes(r), r);
+});
+
+test('staff: every approver role loads the full staff list itself', () => {
+  for (const r of STAFF_APPROVER_ROLES) assert.strictEqual(needsAllStaff(r, STAFF_PERMS), true, r);
+  assert.strictEqual(needsAllStaff('staff', STAFF_PERMS), false);
+});

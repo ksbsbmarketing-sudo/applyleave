@@ -10,7 +10,7 @@ import { ALL as SCOPE_ALL, NO_BRANCH, visibleStates, branchOptions, filterByScop
 import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps,
          findApprovedOverlaps, findOverlapGroups } from './leaveOverlap.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
-import { canSeeAuditLogs, canSeeRegistrations, needsAllLeaves } from './listenerScope.js';
+import { canSeeAuditLogs, canSeeRegistrations, needsAllLeaves, needsAllStaff, STAFF_APPROVER_ROLES } from './listenerScope.js';
 import { getNoticeDays, isNoticeExempt } from './leaveNotice.js';
 import { validateLeaveReason } from './leaveReason.js';
 import { showToast, showConfirm, restorePendingToasts } from './notify.js';
@@ -3991,6 +3991,112 @@ function ensureLeavesListener() {
   });
 }
 
+// Pendengar `staff` — staf biasa klinik hanya muat PELULUS + rekod sendiri.
+//
+// Senarai staf penuh (~120 dokumen) dibaca oleh setiap pengguna pada setiap cold
+// load. Staf biasa hanya memerlukan rekod sendiri dan orang yang menerima
+// permohonannya (dropdown TL, getRoutingP1Approvers, hrRecipientsForBranch →
+// WhatsApp + Inbox) — semuanya ditapis ikut STAFF_APPROVER_ROLES. Jadi ~30
+// bacaan dan bukan ~120. Penapis `branch !=` diperlukan oleh rules (companyOK):
+// tanpanya HR KSB Pharma termasuk dan seluruh pertanyaan ditolak. `!=` hanya
+// boleh untuk SATU anak syarikat ('in' tidak boleh digabung dengan 'not-in') —
+// jika lebih, kembali ke senarai penuh.
+//
+// Gagal TERBUKA: sebarang ralat pada pertanyaan sempit (cth. indeks komposit
+// belum siap) → tukar ke senarai penuh, bukan senarai kosong.
+let staffUnsubs = [];
+let staffScopeAll = null;
+function ensureStaffListener(forceAll = false) {
+  const subs = Object.keys(OWN_HR_ZONE);
+  const wantAll = forceAll || !user || window.isSubsidiaryUser(user) || subs.length !== 1
+    || needsAllStaff(user.role, window.effectivePerms(user));
+  if (staffUnsubs.length && staffScopeAll === wantAll) return;
+  staffUnsubs.forEach(u => u());
+  staffUnsubs = [];
+  staffScopeAll = wantAll;
+  if (wantAll) {
+    staffUnsubs.push(onSnapshot(subsidiaryScoped('staff', 'branch'),
+      snap => applyStaffDocs(snap.docs),
+      err => console.error('staff listener failed:', err)));
+    return;
+  }
+  let apprDocs = [], selfDocs = [];
+  const merge = () => applyStaffDocs([...new Map([...apprDocs, ...selfDocs].map(d => [d.id, d])).values()]);
+  const fallback = (err) => {
+    console.warn('staff (approvers) listener failed — falling back to full list:', err);
+    staffScopeAll = null;
+    ensureStaffListener(true);
+  };
+  staffUnsubs.push(onSnapshot(
+    query(collection(db, 'staff'), where('role', 'in', STAFF_APPROVER_ROLES), where('branch', '!=', subs[0])),
+    snap => { apprDocs = snap.docs; merge(); }, fallback));
+  staffUnsubs.push(onSnapshot(doc(db, 'staff', user.ic),
+    snap => { selfDocs = snap.exists() ? [snap] : []; merge(); }, fallback));
+}
+
+function applyStaffDocs(docs) {
+    // Susun ikut docId — pertanyaan 'not-in' menyusun ikut cawangan, bukan id.
+    staffList = docs.map(doc => ({
+      ...doc.data(),
+      docId: doc.id
+    })).sort((a, b) => (a.docId < b.docId ? -1 : a.docId > b.docId ? 1 : 0));
+    
+    // Safety Seed: Ensure at least one Super Admin exists in the list for dropdowns
+    const hasSuper = staffList.some(s => s.role === 'super_admin' || s.ic === 'super-admin' || s.ic === 'Super Admin');
+    if (!hasSuper) {
+        staffList.push({
+            name: 'Super Admin',
+            ic: 'super-admin',
+            role: 'super_admin',
+            branch: 'Management / HQ',
+            category: 'Super Admin'
+        });
+    }
+
+    // Re-sync logged-in user so edits (e.g. ent_CME) are reflected immediately
+    if (user) {
+      const refreshed = staffList.find(s => s.ic === user.ic);
+      if (refreshed) user = refreshed;
+    }
+
+    // Staf mungkin dimuat SELEPAS rekod cuti — pulih semula tempoh PENDING supaya
+    // perubahan leaveAsAdmin (dsb.) diambil kira walaupun susunan muat berbeza.
+    selfHealPendingLeaveDays();
+
+    // Auto-restore session after page refresh (if user was logged in before)
+    if (!user) {
+      const savedIC  = localStorage.getItem('ksb_logged_in_ic');
+      const savedSID = localStorage.getItem('ksb_logged_in_sid');
+      if (savedIC && savedSID && auth.currentUser && !auth.currentUser.isAnonymous) {
+        const storedSID  = localStorage.getItem('ksb_session_' + savedIC);
+        const savedUser  = staffList.find(s => s.ic === savedIC && !s.inactive);
+        if (savedUser && storedSID === savedSID) {
+          user = savedUser;
+          currentSessionId = savedSID;
+          duplicateSessionDetected = false;
+          sessionKickHandled = false;
+          startSessionListener(savedIC, savedSID);
+          window.initInbox();
+          window.requestNotifPermission();
+          startReminderScheduler();
+          const defaultView = window.rbacMatrix[user.role]?.dashboard ? 'dashboard' : 'leave-form';
+          view = defaultView;
+          console.log(`[AUTH] Session restored for ${user.name} (${user.ic})`);
+        } else {
+          // Session tidak sah — buang dan kekal di login
+          localStorage.removeItem('ksb_logged_in_ic');
+          localStorage.removeItem('ksb_logged_in_sid');
+        }
+      } else if (savedIC || savedSID) {
+        localStorage.removeItem('ksb_logged_in_ic');
+        localStorage.removeItem('ksb_logged_in_sid');
+      }
+    }
+
+    console.log(`[SYSTEM] Staff list loaded: ${staffList.length} total.`);
+    render();
+}
+
 // Koleksi untuk pendengar — pengasingan DUA HALA (firestore.rules companyOK):
 //  • staf anak syarikat → dokumen syarikat sendiri sahaja;
 //  • staf/HR klinik     → semua KECUALI anak syarikat;
@@ -4143,68 +4249,7 @@ async function initData() {
   });
 
   // Real-time Staff List
-  onSnapshot(subsidiaryScoped('staff', 'branch'), (snapshot) => {
-    // Susun ikut docId — pertanyaan 'not-in' menyusun ikut cawangan, bukan id.
-    staffList = snapshot.docs.map(doc => ({
-      ...doc.data(),
-      docId: doc.id
-    })).sort((a, b) => (a.docId < b.docId ? -1 : a.docId > b.docId ? 1 : 0));
-    
-    // Safety Seed: Ensure at least one Super Admin exists in the list for dropdowns
-    const hasSuper = staffList.some(s => s.role === 'super_admin' || s.ic === 'super-admin' || s.ic === 'Super Admin');
-    if (!hasSuper) {
-        staffList.push({
-            name: 'Super Admin',
-            ic: 'super-admin',
-            role: 'super_admin',
-            branch: 'Management / HQ',
-            category: 'Super Admin'
-        });
-    }
-
-    // Re-sync logged-in user so edits (e.g. ent_CME) are reflected immediately
-    if (user) {
-      const refreshed = staffList.find(s => s.ic === user.ic);
-      if (refreshed) user = refreshed;
-    }
-
-    // Staf mungkin dimuat SELEPAS rekod cuti — pulih semula tempoh PENDING supaya
-    // perubahan leaveAsAdmin (dsb.) diambil kira walaupun susunan muat berbeza.
-    selfHealPendingLeaveDays();
-
-    // Auto-restore session after page refresh (if user was logged in before)
-    if (!user) {
-      const savedIC  = localStorage.getItem('ksb_logged_in_ic');
-      const savedSID = localStorage.getItem('ksb_logged_in_sid');
-      if (savedIC && savedSID && auth.currentUser && !auth.currentUser.isAnonymous) {
-        const storedSID  = localStorage.getItem('ksb_session_' + savedIC);
-        const savedUser  = staffList.find(s => s.ic === savedIC && !s.inactive);
-        if (savedUser && storedSID === savedSID) {
-          user = savedUser;
-          currentSessionId = savedSID;
-          duplicateSessionDetected = false;
-          sessionKickHandled = false;
-          startSessionListener(savedIC, savedSID);
-          window.initInbox();
-          window.requestNotifPermission();
-          startReminderScheduler();
-          const defaultView = window.rbacMatrix[user.role]?.dashboard ? 'dashboard' : 'leave-form';
-          view = defaultView;
-          console.log(`[AUTH] Session restored for ${user.name} (${user.ic})`);
-        } else {
-          // Session tidak sah — buang dan kekal di login
-          localStorage.removeItem('ksb_logged_in_ic');
-          localStorage.removeItem('ksb_logged_in_sid');
-        }
-      } else if (savedIC || savedSID) {
-        localStorage.removeItem('ksb_logged_in_ic');
-        localStorage.removeItem('ksb_logged_in_sid');
-      }
-    }
-
-    console.log(`[SYSTEM] Staff list loaded: ${staffList.length} total.`);
-    render();
-  });
+  ensureStaffListener();
 
   // Real-time Audit Logs — 200 rekod terbaru SAHAJA.
   //
@@ -4350,6 +4395,7 @@ async function initData() {
         // sebelum jadual audit terisi.
         ensureAuditLogListener();
         ensureLeavesListener();
+        ensureStaffListener();
         render();
     } else {
         console.warn('RBAC matrix not found in Firestore, using defaults');

@@ -423,3 +423,14 @@ test("pharma staff: own-ic query works, but cannot reach clinic leave by ic", as
   await assertSucceeds(getDocs(query(collection(db, "leaves"), where("ic", "==", "PS1"))));
   await assertFails(getDocs(query(collection(db, "leaves"), where("ic", "==", "S1"))));
 });
+
+// ── Staf biasa klinik: langgan pelulus sahaja (ensureStaffListener) ──────────
+const APPROVER_ROLES_Q = ['super_admin', 'admin', 'hr', 'hod_cawangan', 'hod_balok', 'doctor_pic', 'supervisor', 'team_leader'];
+test("clinic staff: approver-roles query excluding KSB Pharma is allowed", async () => {
+  await seedPharma();
+  const db = ctxDb(staffAuth("S1"));
+  await assertSucceeds(getDocs(query(collection(db, "staff"),
+    where("role", "in", APPROVER_ROLES_Q), where("branch", "!=", PHARMA))));
+  // Without the branch filter it would include Pharma HR and must be rejected.
+  await assertFails(getDocs(query(collection(db, "staff"), where("role", "in", APPROVER_ROLES_Q))));
+});
