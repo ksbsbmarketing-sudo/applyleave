@@ -1085,7 +1085,7 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
 
 /* ── Inbox (src/inboxView.js + main.js case 'inbox') ───────
    Gaya "putih bersih": kad putih rata atas latar kelabu, bukan neumorphic. */
-.inbox-wrap { max-width: 720px; margin: 0 auto; padding: 1.5rem 1rem; }
+.inbox-wrap { max-width: 720px; width: 100%; min-width: 0; box-sizing: border-box; margin: 0 auto; padding: 1.5rem 1rem; }
 .inbox-card {
   padding: 0 !important; overflow: hidden;
   background: #fff !important; border: 1px solid rgba(15,23,42,0.06); border-radius: 16px;
@@ -1139,44 +1139,89 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
 }
 /* garisan pemisah bermula selepas ikon */
 .inbox-row + .inbox-row::before {
-  content: ''; position: absolute; top: 0; right: 0; left: calc(1.1rem + 36px + 0.85rem); border-top: 1px solid #eef1f5;
+  content: ''; position: absolute; top: 0; right: 0; left: calc(1.1rem + 40px + 0.85rem); border-top: 1px solid #eef1f5;
 }
 .inbox-row:hover { background: #f8fafc; }
 .inbox-row.is-unread { background: #fdf7f7; box-shadow: inset 3px 0 0 var(--primary); }
 .inbox-row.is-unread:hover { background: #fbf0f0; }
 .inbox-row.is-selected { background: #f9eaea; }
-.inbox-row .inbox-check { margin-top: 0.6rem; }
-.inbox-icon {
-  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+.inbox-row .inbox-check { margin-top: 0.75rem; }
+/* Avatar pengirim — huruf awal; surat sistem guna ikon sampul */
+.inbox-avatar {
+  width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  color: var(--tc); background: color-mix(in srgb, var(--tc) 11%, #fff);
+  font-size: 0.8rem; font-weight: 800; letter-spacing: 0.02em;
+  color: var(--primary); background: #f6e6e6;
 }
-.inbox-icon svg { width: 17px; height: 17px; }
-.inbox-icon.tone-ok     { --tc: var(--accent); }
-.inbox-icon.tone-bad    { --tc: var(--danger); }
-.inbox-icon.tone-warn   { --tc: var(--warning); }
-.inbox-icon.tone-action { --tc: var(--primary); }
-.inbox-icon.tone-info   { --tc: var(--info); }
-.inbox-icon.tone-muted  { --tc: #64748b; }
+.inbox-avatar.is-system { color: #475569; background: #eef1f5; }
+.inbox-avatar svg { width: 18px; height: 18px; }
+.inbox-avatar.is-lg { width: 46px; height: 46px; font-size: 0.9rem; }
 .inbox-text { flex: 1; min-width: 0; }
 .inbox-head { display: flex; align-items: baseline; gap: 0.5rem; }
-.inbox-title {
-  flex: 1; min-width: 0; font-size: 0.9rem; font-weight: 500; color: #334155;
+.inbox-from {
+  flex: 1; min-width: 0; font-size: 0.88rem; font-weight: 600; color: #334155;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.inbox-row.is-unread .inbox-title { font-weight: 700; color: #0f172a; }
+.inbox-row.is-unread .inbox-from { font-weight: 800; color: #0f172a; }
 .inbox-time { font-size: 0.72rem; color: #94a3b8; white-space: nowrap; flex-shrink: 0; }
 .inbox-row.is-unread .inbox-time { color: var(--primary); font-weight: 700; }
-.inbox-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); flex-shrink: 0; align-self: center; }
-.inbox-body {
-  margin: 0.2rem 0 0; font-size: 0.8rem; line-height: 1.5; color: #64748b;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+.inbox-subject {
+  display: flex; align-items: center; gap: 0.4rem; margin-top: 0.1rem;
+  font-size: 0.86rem; font-weight: 500; color: #334155; min-width: 0;
 }
+.inbox-subject > span:not(.inbox-kind):not(.inbox-dot) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-row.is-unread .inbox-subject { font-weight: 700; color: #0f172a; }
+/* Ikon kecil jenis surat (lulus / tolak / perlu tindakan …) di depan subjek */
+.inbox-kind {
+  width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--tc); background: color-mix(in srgb, var(--tc) 13%, #fff);
+}
+.inbox-kind svg { width: 11px; height: 11px; }
+.inbox-kind.tone-ok     { --tc: var(--accent); }
+.inbox-kind.tone-bad    { --tc: var(--danger); }
+.inbox-kind.tone-warn   { --tc: var(--warning); }
+.inbox-kind.tone-action { --tc: var(--primary); }
+.inbox-kind.tone-info   { --tc: var(--info); }
+.inbox-kind.tone-muted  { --tc: #64748b; }
+.inbox-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); flex-shrink: 0; }
+.inbox-body {
+  margin: 0.15rem 0 0; font-size: 0.8rem; line-height: 1.5; color: #64748b;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.inbox-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+/* ── Surat penuh ── */
+.inbox-letter { padding: 0 0 1.5rem !important; }
+.inbox-letter-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.55rem 0.8rem; border-bottom: 1px solid #eef1f5;
+}
+.inbox-letter-bar .inbox-link { display: inline-flex; align-items: center; gap: 0.25rem; }
+.inbox-link.is-danger { color: var(--danger); }
+.inbox-link.is-danger:hover { background: #fdf0f0; }
+.inbox-letter-subject {
+  display: flex; align-items: center; gap: 0.55rem; margin: 0; padding: 1.3rem 1.5rem 0.9rem;
+  font-size: 1.2rem; font-weight: 700; line-height: 1.35; color: #0f172a;
+}
+.inbox-letter-subject .inbox-kind { width: 26px; height: 26px; }
+.inbox-letter-subject .inbox-kind svg { width: 14px; height: 14px; }
+.inbox-letter-meta { display: flex; align-items: center; gap: 0.8rem; padding: 0 1.5rem 1.1rem; border-bottom: 1px solid #eef1f5; }
+.inbox-letter-meta .inbox-from { white-space: normal; color: #0f172a; font-weight: 700; }
+.inbox-role {
+  display: inline-block; margin-left: 0.3rem; padding: 0.05rem 0.45rem; border-radius: 999px;
+  font-size: 0.68rem; font-weight: 700; color: #475569; background: #eef1f5; vertical-align: 1px;
+}
+.inbox-to { font-size: 0.76rem; color: #94a3b8; margin-top: 0.15rem; }
+.inbox-letter-body { padding: 1.25rem 1.5rem 0; font-size: 0.92rem; line-height: 1.7; color: #1e293b; white-space: pre-line; }
+.inbox-letter-actions { padding: 1.25rem 1.5rem 0; }
 .inbox-card .empty-state-icon { background: #fbf1f1; }
 @media (max-width: 720px) {
   .inbox-wrap { padding: 1rem 0; }
   .inbox-row, .inbox-toolbar, .inbox-selectbar, .inbox-group { padding-left: 0.9rem; padding-right: 0.9rem; }
-  .inbox-row + .inbox-row::before { left: calc(0.9rem + 36px + 0.85rem); }
+  .inbox-row + .inbox-row::before { left: calc(0.9rem + 40px + 0.85rem); }
+  .inbox-letter-subject, .inbox-letter-meta, .inbox-letter-body, .inbox-letter-actions { padding-left: 1rem; padding-right: 1rem; }
+  .inbox-letter-subject { font-size: 1.05rem; }
   .inbox-toolbar { flex-wrap: nowrap; gap: 0.25rem; }
   .inbox-tab { padding-left: 0.45rem; padding-right: 0.45rem; font-size: 0.82rem; }
   .inbox-link { padding: 0.4rem 0.45rem; }

@@ -75,3 +75,38 @@ export const notifKind = (type) => {
   const k = KINDS[type] || KINDS.system;
   return { tone: k.tone, svg: PATHS[k.icon] };
 };
+
+// ── Gaya emel ────────────────────────────────────────────────────────────────
+// Setiap notifikasi dipapar sebagai surat: pengirim, subjek, pratonton. Notifikasi
+// lama (sebelum v2.5.28) tiada senderName, jadi dipapar sebagai surat sistem.
+const SYSTEM_SENDER = 'Sistem Cuti KSB';
+
+export const notifSender = (n) => {
+  const name = String(n?.senderName ?? '').trim();
+  return name
+    ? { name, role: String(n.senderRole ?? '').trim(), system: false }
+    : { name: SYSTEM_SENDER, role: '', system: true };
+};
+
+// Penyambung nama Melayu/India — bukan nama orang, jadi tidak dijadikan huruf avatar.
+const NAME_LINKS = new Set(['BIN', 'BINTI', 'BT', 'BTE', 'A/L', 'A/P', 'B.', 'BT.']);
+
+export const senderInitials = (name) => {
+  const words = String(name ?? '').trim().split(/\s+/).filter(w => w && !NAME_LINKS.has(w.toUpperCase()));
+  return words.length ? words.slice(0, 2).map(w => w[0].toUpperCase()).join('') : '?';
+};
+
+// Tajuk lama bermula dengan emoji (✅, 📋, 🗂️ …). Subjek surat tanpa emoji supaya
+// rupa sama di semua telefon; label [TEST] dikekalkan.
+const LEADING_SYMBOLS = /^[\p{Extended_Pictographic}️‍\s]+/u;
+export const cleanSubject = (title) => {
+  let s = String(title ?? '').replace(LEADING_SYMBOLS, '');
+  const test = s.match(/^\[TEST\]\s*/);
+  if (test) s = '[TEST] ' + s.slice(test[0].length).replace(LEADING_SYMBOLS, '');
+  return s.trim();
+};
+
+export const fullTime = (ts) => {
+  const d = new Date(ts);
+  return `${HARI[d.getDay()]}, ${d.getDate()} ${BULAN[d.getMonth()]} ${d.getFullYear()} · ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};

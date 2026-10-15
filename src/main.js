@@ -19,7 +19,7 @@ import { showToast, showConfirm, restorePendingToasts } from './notify.js';
 import { statusBadge } from './statusBadge.js';
 import { emptyState, emptyRow, dashboardSkeleton } from './uiStates.js';
 import { monthGrid, leavesByDay, shiftMonth, monthLabel } from './leaveCalendar.js';
-import { relativeTime, groupNotifs, filterNotifs, notifKind } from './inboxView.js';
+import { relativeTime, groupNotifs, filterNotifs, notifKind, notifSender, senderInitials, cleanSubject, fullTime } from './inboxView.js';
 // Satu sumber versi: package.json (dulu ditulis tangan di topbar & log — mudah terlupa naikkan).
 import { version as APP_VERSION } from '../package.json';
 import { Chart, registerables } from 'chart.js';
@@ -615,6 +615,7 @@ window.setView = function(v) {
   }
   inboxSelected.clear(); // pilihan checkbox inbox tidak kekal antara navigasi
   inboxSelectMode = false;
+  inboxOpenId = null;
   view = v;
   render();
 };
@@ -778,6 +779,7 @@ let inboxUnsub = null;
 let inboxSelected = new Set(); // ID notifikasi yang ditanda (checkbox) — state UI dalam-memori
 let inboxSelectMode = false;   // checkbox hanya dipapar selepas tekan "Pilih"
 let inboxFilter = 'all';       // 'all' | 'unread'
+let inboxOpenId = null;        // surat yang sedang dibuka (null = senarai)
 let waSettingsSubTab = 'token_log'; // 'token_log' | 'rbac_notif'
 let waNotifRbac = {
   balok:      { p1_submit: ['team_leader','hod_balok'], tl_approved: ['supervisor'], p2_p1_approved: ['hr','admin','super_admin'], p3_final: [], overdue_reminder: ['team_leader','supervisor','hr'] },
@@ -2963,7 +2965,7 @@ window.staffEditOwnLeave = async function(id) {
     window.notifyApproversInbox(window.getRoutingP1Approvers(applicant, rec.type),
       '🔁 Cuti Dikemaskini — Perlu Sokongan Semula',
       `${applicant.name} mengubah permohonan cuti (kini ${newStart} → ${newEnd}); memerlukan sokongan semula.`,
-      id.toString(), rec.ic);
+      id.toString(), rec.ic, applicant);
     showToast('✅ Permohonan dikemaskini. Status ditetapkan semula ke PENDING untuk kelulusan semula.');
   } catch (err) {
     console.error('staffEditOwnLeave error:', err);
@@ -3050,7 +3052,7 @@ window.finalizeLeave = async function(id) {
                 staffList.filter(s => s.role === 'supervisor' && (s.branch || '').includes('Balok')),
                 '📥 Cuti Perlu Penilaian Supervisor (Peringkat 1)',
                 `${record.name} — ${leaveTypeName} (${record.startDate} → ${record.endDate}) telah disokong Team Leader; memerlukan penilaian anda.`,
-                id.toString(), record.ic);
+                id.toString(), record.ic, record);
             if (applicant && applicant.phone) {
                 const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *disokong oleh Team Leader*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini menunggu *penilaian Supervisor*. Anda akan dimaklumkan selepas kelulusan akhir.\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
                 window.sendWhatsApp(applicant.phone, staffMsg);
@@ -3124,7 +3126,7 @@ window.finalizeLeave = async function(id) {
                     window.hrRecipientsForBranch(record.branch),
                     '📥 Cuti Perlu Kelulusan Akhir (Peringkat 2)',
                     `${record.name} — ${leaveTypeName} (${record.startDate} → ${record.endDate}) telah disokong ${p1Label}; memerlukan kelulusan akhir HR/Admin.`,
-                    id.toString(), record.ic);
+                    id.toString(), record.ic, record);
                 if (applicant && applicant.phone) {
                     const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *dinilai dan disokong oleh ${user.name} (${p1Label})*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini sedang menunggu *kelulusan akhir HR/Admin*. Anda akan dimaklumkan selepas kelulusan akhir.\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
                     window.sendWhatsApp(applicant.phone, staffMsg);
@@ -3167,27 +3169,13 @@ window.finalizeLeave = async function(id) {
                 : `Supervisor Supported Leave (Peringkat 1) for ${record.name}`
             );
             if (isFinalApproval) {
-                window.addNotification(record.ic, 'leave_approved', '✅ Cuti Diluluskan!', `Permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}, ${record.days} hari) telah DILULUSKAN sepenuhnya oleh ${user.name}.`, id.toString());
+                window.addNotification(record.ic, 'leave_approved', '✅ Cuti Diluluskan!', `Permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}, ${record.days} hari) telah DILULUSKAN sepenuhnya oleh ${user.name}.`, id.toString(), user);
             } else if (isTLApproval) {
-                window.addNotification(record.ic, 'leave_tl_approved', '📋 Cuti Disokong Team Leader', `Permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}) telah disokong oleh Team Leader dan sedang menunggu penilaian Supervisor.`, id.toString());
+                window.addNotification(record.ic, 'leave_tl_approved', '📋 Cuti Disokong Team Leader', `Permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}) telah disokong oleh Team Leader dan sedang menunggu penilaian Supervisor.`, id.toString(), user);
             } else {
-                window.addNotification(record.ic, 'leave_p1_approved', '📋 Cuti Disokong Peringkat 1', `Permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}) telah disokong oleh ${user.name} dan sedang menunggu kelulusan akhir HR/Admin.`, id.toString());
+                window.addNotification(record.ic, 'leave_p1_approved', '📋 Cuti Disokong Peringkat 1', `Permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}) telah disokong oleh ${user.name} dan sedang menunggu kelulusan akhir HR/Admin.`, id.toString(), user);
             }
 
-            // ── Rekod setiap kelulusan yang sudah dibuat ──
-            const _actionLabel = isFinalApproval ? 'meluluskan (kelulusan akhir)'
-                : isTLApproval ? 'menyokong (Peringkat 0 — Team Leader)'
-                : 'menyokong (Peringkat 1)';
-            const _leaveInfo = `${leaveTypeName} oleh ${record.name} (${record.startDate} → ${record.endDate}, ${record.days} hari)`;
-            // (a) Approver yang buat tindakan — rekod dalam inboxnya sendiri
-            window.addNotification(user.ic, 'approval_made', '🗂️ Tindakan Kelulusan Direkod',
-                `Anda telah ${_actionLabel} permohonan ${_leaveInfo}.`, id.toString());
-            // (b) HR/Admin — pemantauan setiap kelulusan (kecuali approver sendiri & pemohon)
-            [...new Map(window.hrRecipientsForBranch(record.branch)
-                .filter(s => s.ic !== user.ic && s.ic !== record.ic)
-                .map(s => [s.ic, s])).values()]
-                .forEach(s => window.addNotification(s.ic, 'approval_made', '🗂️ Rekod Kelulusan',
-                    `${user.name} telah ${_actionLabel} permohonan ${_leaveInfo}.`, id.toString()));
 
             showToast(isFinalApproval
                 ? `✅ Cuti Diluluskan!${waFinalFeedback}`
@@ -3273,7 +3261,7 @@ window.rejectLeave = async function(id) {
     try {
         await updateDoc(doc(db, "leaves", id.toString()), { status: "REJECTED" });
         window.logSystemActivity(`Rejected Leave for ${record.name}`);
-        window.addNotification(record.ic, 'leave_rejected', '❌ Cuti Ditolak', `Maaf, permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}) telah DITOLAK. Sila hubungi HR/Admin untuk maklumat lanjut.`, id.toString());
+        window.addNotification(record.ic, 'leave_rejected', '❌ Cuti Ditolak', `Maaf, permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}) telah DITOLAK. Sila hubungi HR/Admin untuk maklumat lanjut.`, id.toString(), user);
 
         // Notify applicant of rejection
         const applicant = staffList.find(s => s.ic === record.ic);
@@ -5511,7 +5499,9 @@ window.requestNotifPermission = function() {
 };
 
 // ── Inbox: tambah notifikasi ke Firestore ──
-window.addNotification = async function(recipientIC, type, title, body, leaveId = null) {
+// from = staff (atau rekod cuti) yang "menghantar" surat ini — dipapar sebagai
+// pengirim dalam Inbox. Tanpa from, surat dipapar daripada Sistem Cuti KSB.
+window.addNotification = async function(recipientIC, type, title, body, leaveId = null, from = null) {
   if (!recipientIC) return;
   if (testCtx) {
     const _orig = recipientIC === testCtx.ic ? null : staffList.find(s => s.ic === recipientIC);
@@ -5522,6 +5512,12 @@ window.addNotification = async function(recipientIC, type, title, body, leaveId 
   try {
     const data = { recipientIC, type, title, body, read: false, createdAt: Date.now() };
     if (leaveId) data.leaveId = leaveId;
+    if (from && from.name) {
+      // Rekod cuti tiada role — cari staff sebenar ikut IC untuk label peranan
+      const role = from.role || (from.ic && staffList.find(s => s.ic === from.ic) || {}).role;
+      data.senderName = from.name;
+      if (role) data.senderRole = window.staffConfig.roleLabels[role] || role;
+    }
     await addDoc(collection(db, 'notifications'), data);
   } catch(e) { console.warn('addNotification failed:', e); }
 };
@@ -5529,13 +5525,13 @@ window.addNotification = async function(recipientIC, type, title, body, leaveId 
 // ── Inbox: notifikasi kepada senarai pelulus (selari dgn notifikasi WhatsApp) ──
 // staffArr = senarai objek staff pelulus; auto buang yang inactif, tiada IC,
 // dan pemohon sendiri (excludeIC), serta nyahduplikasi ikut IC.
-window.notifyApproversInbox = function(staffArr, title, body, leaveId, excludeIC) {
+window.notifyApproversInbox = function(staffArr, title, body, leaveId, excludeIC, from = null) {
   const uniq = [...new Map(
     (staffArr || [])
       .filter(s => s && s.ic && s.ic !== excludeIC && !s.inactive)
       .map(s => [s.ic, s])
   ).values()];
-  uniq.forEach(s => window.addNotification(s.ic, 'leave_to_approve', title, body, leaveId));
+  uniq.forEach(s => window.addNotification(s.ic, 'leave_to_approve', title, body, leaveId, from));
 };
 
 // ── Inbox: mark as read ──
@@ -5585,10 +5581,35 @@ window.setInboxFilter = function(f) {
   render();
 };
 
-// ── Inbox: klik baris — pilih (mod pilih) atau tanda dibaca ──
+// ── Inbox: klik baris — pilih (mod pilih) atau buka surat ──
 window.onInboxRowClick = function(notifId) {
-  if (inboxSelectMode) window.toggleNotifSelect(notifId);
-  else window.markNotifRead(notifId);
+  if (inboxSelectMode) { window.toggleNotifSelect(notifId); return; }
+  window.openInboxLetter(notifId);
+};
+
+// ── Inbox: buka / tutup surat penuh ──
+window.openInboxLetter = function(notifId) {
+  const n = inboxNotifs.find(x => x.id === notifId);
+  if (!n) return;
+  inboxOpenId = notifId;
+  if (!n.read) window.markNotifRead(notifId);
+  render();
+  window.scrollTo(0, 0);
+};
+window.closeInboxLetter = function() {
+  inboxOpenId = null;
+  render();
+};
+
+// ── Inbox: padam surat yang sedang dibuka ──
+window.deleteOpenLetter = async function() {
+  const id = inboxOpenId;
+  if (!id || !await showConfirm('Padam surat ini? Tindakan ini kekal dan tidak boleh dibatalkan.')) return;
+  try {
+    await deleteDoc(doc(db, 'notifications', id));
+    inboxOpenId = null;
+    render();
+  } catch(e) { console.warn('deleteOpenLetter failed:', e); showToast('Gagal memadam surat. Sila cuba lagi.'); }
 };
 
 // ── Inbox: padam notifikasi yang ditanda (dengan pengesahan) ──
@@ -6055,7 +6076,7 @@ function renderDashboard() {
         window.notifyApproversInbox(_apprStaff,
           '📥 Permohonan Cuti Perlu Tindakan',
           `${user.name} memohon ${leaveTypeName} (${startDate}${startDate !== endDate ? ' → ' + endDate : ''}, ${diffDays} hari). Memerlukan ${_sbmIsOpBalokTL ? 'sokongan Team Leader (Peringkat 0)' : _sbmDirectHR ? 'kelulusan HR/Admin' : 'kelulusan Peringkat 1'} anda.`,
-          newRecord.id.toString(), user.ic);
+          newRecord.id.toString(), user.ic, user);
   
         // WA pengesahan kepada pemohon sendiri
         if (user.phone) {
@@ -6301,7 +6322,7 @@ function renderDashboard() {
                       window.notifyApproversInbox(window.getRoutingP1Approvers(applicant, rec.type),
                           '🔁 Cuti Dikemaskini — Perlu Sokongan Semula',
                           `${applicant.name} mengubah permohonan cuti (kini ${elStart} → ${elEnd}, ${elDays} hari); memerlukan sokongan semula.`,
-                          editingLeaveId.toString(), rec.ic);
+                          editingLeaveId.toString(), rec.ic, applicant);
                   }
                   showToast('✅ Permohonan cuti dikemaskini.');
                   closeLeaveModal();
@@ -11045,22 +11066,53 @@ function renderView() {
       const selCount = inboxSelected.size;
       const allSelected = visible.length > 0 && visible.every(n => inboxSelected.has(n.id));
       const now = Date.now();
-      const row = (n) => {
+      const avatar = (snd, size = '') => snd.system
+        ? `<div class="inbox-avatar is-system${size}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>`
+        : `<div class="inbox-avatar${size}" aria-hidden="true">${escapeHtml(senderInitials(snd.name))}</div>`;
+      const kindIcon = (n) => {
         const k = notifKind(n.type);
+        return `<span class="inbox-kind tone-${k.tone}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${k.svg}</svg></span>`;
+      };
+      const row = (n) => {
+        const snd = notifSender(n);
         const isSel = inboxSelected.has(n.id);
         return `
-          <div class="inbox-row${n.read ? '' : ' is-unread'}${isSel ? ' is-selected' : ''}" onclick="window.onInboxRowClick('${n.id}')">
-            ${inboxSelectMode ? `<input type="checkbox" class="inbox-check" ${isSel ? 'checked' : ''} onclick="event.stopPropagation();window.toggleNotifSelect('${n.id}')" aria-label="Pilih notifikasi">` : ''}
-            <div class="inbox-icon tone-${k.tone}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${k.svg}</svg></div>
+          <div class="inbox-row${n.read ? '' : ' is-unread'}${isSel ? ' is-selected' : ''}" role="button" tabindex="0" onclick="window.onInboxRowClick('${n.id}')" onkeydown="if(event.key==='Enter')window.onInboxRowClick('${n.id}')">
+            ${inboxSelectMode ? `<input type="checkbox" class="inbox-check" ${isSel ? 'checked' : ''} onclick="event.stopPropagation();window.toggleNotifSelect('${n.id}')" aria-label="Pilih surat">` : ''}
+            ${avatar(snd)}
             <div class="inbox-text">
               <div class="inbox-head">
-                <span class="inbox-title">${n.title}</span>
-                <span class="inbox-time" title="${new Date(n.createdAt).toLocaleString('ms-MY')}">${relativeTime(n.createdAt, now)}</span>
-                ${n.read ? '' : '<span class="inbox-dot" aria-label="Belum baca"></span>'}
+                <span class="inbox-from">${escapeHtml(snd.name)}</span>
+                <span class="inbox-time" title="${fullTime(n.createdAt)}">${relativeTime(n.createdAt, now)}</span>
               </div>
-              <p class="inbox-body">${n.body}</p>
+              <div class="inbox-subject">${kindIcon(n)}<span>${escapeHtml(cleanSubject(n.title))}</span>${n.read ? '' : '<span class="inbox-dot" aria-label="Belum baca"></span>'}</div>
+              <p class="inbox-body">${escapeHtml(n.body)}</p>
             </div>
           </div>`;
+      };
+      const open = inboxOpenId && inboxNotifs.find(n => n.id === inboxOpenId);
+      const letter = (n) => {
+        const snd = notifSender(n);
+        return `
+          <article class="inbox-card glass-card inbox-letter">
+            <div class="inbox-letter-bar">
+              <button class="inbox-link" onclick="window.closeInboxLetter()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="15 18 9 12 15 6"/></svg>
+                Inbox
+              </button>
+              <button class="inbox-link is-danger" onclick="window.deleteOpenLetter()">Padam</button>
+            </div>
+            <h2 class="inbox-letter-subject">${kindIcon(n)}<span>${escapeHtml(cleanSubject(n.title))}</span></h2>
+            <div class="inbox-letter-meta">
+              ${avatar(snd, ' is-lg')}
+              <div>
+                <div class="inbox-from">${escapeHtml(snd.name)}${snd.role ? ` <span class="inbox-role">${escapeHtml(snd.role)}</span>` : ''}</div>
+                <div class="inbox-to">kepada saya · ${fullTime(n.createdAt)}</div>
+              </div>
+            </div>
+            <div class="inbox-letter-body">${escapeHtml(n.body)}</div>
+            ${n.leaveId ? `<div class="inbox-letter-actions"><button class="neu-btn primary-text" onclick="window.setView('dashboard')">${n.type === 'leave_to_approve' ? 'Buka Dashboard untuk tindakan' : 'Lihat di Dashboard'}</button></div>` : ''}
+          </article>`;
       };
       return `
         <header class="top-bar">
@@ -11075,7 +11127,7 @@ function renderView() {
           </button>
         </header>
         <div class="main-content inbox-wrap">
-          ${inboxNotifs.length === 0 ? `<div class="inbox-card glass-card">${emptyState({ icon: 'inbox', title: 'Inbox kosong', text: 'Notifikasi berkaitan cuti anda akan muncul di sini.' })}</div>` : `
+          ${open ? letter(open) : inboxNotifs.length === 0 ? `<div class="inbox-card glass-card">${emptyState({ icon: 'inbox', title: 'Inbox kosong', text: 'Surat berkaitan cuti anda akan muncul di sini.' })}</div>` : `
           <div class="inbox-card glass-card">
             <div class="inbox-toolbar">
               <div class="inbox-tabs" role="tablist">

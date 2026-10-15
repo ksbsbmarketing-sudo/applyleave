@@ -44,3 +44,37 @@ test('notifKind: jenis dipetakan ke ikon/tona, jenis tak dikenali → system', (
   assert.strictEqual(notifKind('leave_to_approve').tone, 'action');
   assert.strictEqual(notifKind('apa_ni').tone, 'muted');
 });
+
+// ── Gaya emel: pengirim, avatar, subjek, masa penuh ──
+import { notifSender, senderInitials, cleanSubject, fullTime } from '../src/inboxView.js';
+
+test('notifSender: guna medan pengirim jika ada', () => {
+  assert.deepStrictEqual(
+    notifSender({ senderName: 'SITI NORIDAH BINTI ZAKARIA', senderRole: 'HR' }),
+    { name: 'SITI NORIDAH BINTI ZAKARIA', role: 'HR', system: false });
+});
+
+test('notifSender: notifikasi lama tanpa pengirim → Sistem Cuti KSB', () => {
+  assert.deepStrictEqual(notifSender({ title: 'x' }), { name: 'Sistem Cuti KSB', role: '', system: true });
+  assert.deepStrictEqual(notifSender({ senderName: '   ' }), { name: 'Sistem Cuti KSB', role: '', system: true });
+});
+
+test('senderInitials: dua huruf awal, langkau BIN/BINTI/A/L/A/P', () => {
+  assert.strictEqual(senderInitials('MUHAMMAD LUKHMAN BIN ISMAIL'), 'ML');
+  assert.strictEqual(senderInitials('SITI NORIDAH BINTI ZAKARIA'), 'SN');
+  assert.strictEqual(senderInitials('RAVI A/L KUMAR'), 'RK');
+  assert.strictEqual(senderInitials('adilah'), 'A');
+  assert.strictEqual(senderInitials(''), '?');
+});
+
+test('cleanSubject: buang emoji di depan, kekalkan [TEST]', () => {
+  assert.strictEqual(cleanSubject('✅ Cuti Diluluskan!'), 'Cuti Diluluskan!');
+  assert.strictEqual(cleanSubject('🗂️ Rekod Kelulusan'), 'Rekod Kelulusan');
+  assert.strictEqual(cleanSubject('🧪 [TEST] 📋 Permohonan Cuti Dihantar'), '[TEST] Permohonan Cuti Dihantar');
+  assert.strictEqual(cleanSubject('Tanpa emoji'), 'Tanpa emoji');
+  assert.strictEqual(cleanSubject(undefined), '');
+});
+
+test('fullTime: hari, tarikh penuh dan masa', () => {
+  assert.strictEqual(fullTime(at(7, 9, 5)), 'Rab, 7 Okt 2026 · 09:05');
+});
