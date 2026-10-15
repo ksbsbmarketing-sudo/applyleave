@@ -41,3 +41,13 @@ export const dashboardSkeleton = () => `
       ${'<div class="sk-row"><div class="sk sk-dot"></div><div class="sk sk-line"></div><div class="sk sk-pill"></div></div>'.repeat(5)}
     </div>
   </div>`;
+
+// Avatar kad pengguna di atas butang Logout. Gambar profil (Tetapan) dipapar jika
+// ada; huruf awal kekal di bawahnya supaya masih nampak jika gambar gagal dimuat.
+export const userAvatar = (user = {}) => {
+  const initial = esc(String(user.name || '?').trim().charAt(0).toUpperCase() || '?');
+  const img = user.photoUrl
+    ? `<img src="${esc(user.photoUrl)}" alt="${esc(user.name || '')}" onerror="this.remove()">`
+    : '';
+  return `<div class="user-avatar">${initial}${img}</div>`;
+};

@@ -17,7 +17,7 @@ import { getNoticeDays, isNoticeExempt } from './leaveNotice.js';
 import { validateLeaveReason } from './leaveReason.js';
 import { showToast, showConfirm, restorePendingToasts } from './notify.js';
 import { statusBadge } from './statusBadge.js';
-import { emptyState, emptyRow, dashboardSkeleton } from './uiStates.js';
+import { emptyState, emptyRow, dashboardSkeleton, userAvatar } from './uiStates.js';
 import { monthGrid, leavesByDay, shiftMonth, monthLabel } from './leaveCalendar.js';
 import { relativeTime, groupNotifs, filterNotifs, notifKind, notifSender, senderInitials, cleanSubject, fullTime } from './inboxView.js';
 // Satu sumber versi: package.json (dulu ditulis tangan di topbar & log — mudah terlupa naikkan).
@@ -5773,7 +5773,7 @@ function renderDashboard() {
         </nav>
         <div class="sidebar-footer">
           <div class="user-pill glass-card">
-            <div class="user-avatar">${(user.name || '?')[0]}</div>
+            ${userAvatar(user)}
             <div class="user-info">
               <div class="user-name">${user.name}</div>
               <div class="user-role">${(user.role || '').toUpperCase()}</div>
