@@ -17,6 +17,7 @@ import { getNoticeDays, isNoticeExempt } from './leaveNotice.js';
 import { validateLeaveReason } from './leaveReason.js';
 import { showToast, showConfirm, restorePendingToasts } from './notify.js';
 import { statusBadge } from './statusBadge.js';
+import { sortMyRecords, statusTextMs, approvedDaysByType, shortReason } from './myLeaveReport.js';
 import { emptyState, emptyRow, dashboardSkeleton, userAvatar } from './uiStates.js';
 import { monthGrid, leavesByDay, shiftMonth, monthLabel } from './leaveCalendar.js';
 import { relativeTime, groupNotifs, filterNotifs, notifKind, notifSender, senderInitials, cleanSubject, fullTime } from './inboxView.js';
@@ -2821,6 +2822,55 @@ window.printLeave = function(id) {
         </table>
     </div>
     `;
+    document.body.insertAdjacentHTML('beforeend', printHTML);
+    window.printContainerWhenReady();
+};
+
+// Cetak senarai SEMUA permohonan cuti staf sendiri (dashboard peribadi →
+// Semua Rekod Permohonan). Cetakan dalam halaman seperti printLeave, bukan
+// tetingkap baharu — tetingkap timbul sering disekat pada telefon.
+window.printMyLeaveRecords = function() {
+    const recs = sortMyRecords(leaveRecords.filter(r => r.ic === user.ic));
+    if (!recs.length) { showToast('Tiada rekod permohonan untuk dicetak.'); return; }
+    const esc = escapeHtml;
+    const _acc = window.printBrandFor(user.branch).accent;
+    const th = 'padding:7px 8px;font-size:9.5px;letter-spacing:0.5px;text-transform:uppercase;color:#fff;text-align:left;background:' + _acc + ';';
+    const td = 'padding:6px 8px;font-size:10.5px;border-bottom:1px solid #e2e8f0;vertical-align:top;';
+    const rows = recs.map((r, i) => `
+        <tr style="page-break-inside:avoid;${i % 2 ? 'background:#f8fafc;' : ''}">
+            <td style="${td}text-align:center;color:#718096;">${i + 1}</td>
+            <td style="${td}font-weight:bold;white-space:nowrap;">${esc(leaveTypeName(r.type))}</td>
+            <td style="${td}white-space:nowrap;">${fmtLeaveRange(r)}</td>
+            <td style="${td}text-align:center;">${parseFloat(r.days || 0)}</td>
+            <td style="${td}">${esc(shortReason(r.reason))}</td>
+            <td style="${td}white-space:nowrap;">${r.id ? fmtLeaveDate(new Date(Number(r.id)).toISOString().slice(0, 10)) : '—'}</td>
+            <td style="${td}white-space:nowrap;font-weight:bold;">${statusTextMs(r.status)}</td>
+        </tr>`).join('');
+    const totals = approvedDaysByType(recs);
+    const totalDays = totals.reduce((a, [, d]) => a + d, 0);
+    const printHTML = `
+    <div id="print-container" style="font-family: Arial, Helvetica, sans-serif; padding: 40px 44px; color: #1a202c;">
+        ${window.printHeaderHTML({ branch: user.branch, title: 'REKOD PERMOHONAN CUTI', meta: [
+            { label: 'Nama', value: esc(user.name || '') },
+            { label: 'No. IC', value: esc(user.ic || '') },
+            { label: 'Dicetak', value: new Date().toLocaleString('ms-MY') },
+        ] })}
+        <table style="position:relative;z-index:1;width:100%;border-collapse:collapse;">
+            <thead><tr>
+                <th style="${th}text-align:center;width:28px;">Bil</th><th style="${th}">Jenis Cuti</th><th style="${th}">Tarikh Cuti</th>
+                <th style="${th}text-align:center;">Hari</th><th style="${th}">Sebab</th><th style="${th}">Tarikh Mohon</th><th style="${th}">Status</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+        <div style="position:relative;z-index:1;margin-top:16px;padding:10px 12px;border:1px solid #e2e8f0;border-left:3px solid ${_acc};border-radius:3px;font-size:10.5px;color:#2d3748;page-break-inside:avoid;">
+            <strong>Jumlah permohonan:</strong> ${recs.length}
+            &nbsp;·&nbsp; <strong>Hari cuti diluluskan:</strong> ${parseFloat(totalDays.toFixed(1))} hari
+            ${totals.length ? `<div style="margin-top:5px;color:#4a5568;">${totals.map(([t, d]) => `${esc(leaveTypeName(t))}: <strong>${parseFloat(d.toFixed(1))}</strong>`).join(' &nbsp;·&nbsp; ')}</div>` : ''}
+        </div>
+        <div style="position:relative;z-index:1;margin-top:12px;font-size:8.5px;color:#a0aec0;">
+            Dijana oleh KSB Leave Apply System. "Hari cuti diluluskan" hanya mengira permohonan berstatus Diluluskan.
+        </div>
+    </div>`;
     document.body.insertAdjacentHTML('beforeend', printHTML);
     window.printContainerWhenReady();
 };
@@ -7078,10 +7128,13 @@ function renderPersonalDashboard() {
 
       <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
         <div class="glass-card" style="padding: 1.5rem;">
-          <h3 style="font-size: 1rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+          <h3 style="font-size: 1rem; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
             ${showAllMyRecords ? `Semua Rekod Permohonan (${myRecords.length})` : 'Rekod Permohonan Terkini'}
           </h3>
+          ${myRecords.length ? `<button class="neu-btn sm is-print" onclick="window.printMyLeaveRecords()" title="Cetak senarai semua permohonan cuti anda"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>Cetak Semua (${myRecords.length})</button>` : ''}
+          </div>
           <div style="overflow-x: auto;${showAllMyRecords ? ' max-height: 520px; overflow-y: auto;' : ''}">
             <table class="data-table" style="font-size: 0.93rem;">
               <thead>
