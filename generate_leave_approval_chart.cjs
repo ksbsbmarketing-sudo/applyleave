@@ -98,6 +98,22 @@ const grand = stateTotal(rows);
 const maxTotal = Math.max(1, ...rows.map((r) => r.total));
 const rate = (a, n) => (n ? (a / n) * 100 : 0);
 
+const MONTHS = ["Jan", "Feb", "Mac", "Apr", "Mei", "Jun", "Jul", "Ogo", "Sep", "Okt", "Nov", "Dis"];
+const today = new Date();
+const curMonth = String(today.getFullYear()) === YEAR ? today.getMonth() : 11;
+const months = MONTHS.map((label, i) => ({ label, i, ...blank() }));
+for (const r of scoped) {
+  if (!byBranch.has(r.branch)) continue;
+  const m = months[Number(String(r.startDate).slice(5, 7)) - 1];
+  if (!m) continue;
+  m.total++;
+  m[bucket(r.status)]++;
+}
+const firstMonth = months.findIndex((m) => m.total > 0);
+const lastMonth = Math.max(curMonth, ...months.filter((m) => m.total).map((m) => m.i));
+const monthRows = firstMonth < 0 ? [] : months.slice(firstMonth, lastMonth + 1);
+const maxMonth = Math.max(1, ...monthRows.map((m) => m.total));
+
 const typeCounts = {};
 for (const r of scoped) {
   if (bucket(r.status) !== "approved") continue;
@@ -140,6 +156,28 @@ function statusBar(r) {
     </div>`;
 }
 
+/* Monthly columns share the status colours of the branch bars. The current
+   month is still filling up and later months only hold advance bookings, so
+   both are marked rather than read as a drop. */
+function monthChart() {
+  const H = 120;
+  const col = (m) => {
+    const h = (v) => (v / maxMonth) * H;
+    const seg = (v, cls) => (v > 0 ? `<span class="cseg ${cls}" style="height:${h(v)}px"></span>` : "");
+    const tag = m.i === curMonth ? "setakat " + today.getDate() + " hb" : m.i > curMonth ? "tempahan awal" : "";
+    return `
+      <div class="col${m.i > curMonth ? " col-future" : ""}">
+        <div class="cstack" style="height:${H + 14}px">
+          <div class="cval">${m.total || ""}</div>
+          ${seg(m.cancelled + m.rejected, "s-void")}${seg(m.pending, "s-wait")}${seg(m.approved, "s-ok")}
+        </div>
+        <div class="clab">${m.label}</div>
+        <div class="ctag">${tag}</div>
+      </div>`;
+  };
+  return `<div class="cols">${monthRows.map(col).join("")}</div>`;
+}
+
 function statePanel(title, list, tot, note) {
   return `
     <section class="panel">
@@ -164,7 +202,7 @@ const tableRow = (r) => `
     <td class="tl">${esc(shortName(r.name))}</td>
     <td>${r.staff}</td><td>${r.total}</td><td class="ok">${r.approved}</td>
     <td>${r.pending}</td><td>${r.cancelled + r.rejected}</td>
-    <td>${r.total ? n1(rate(r.approved, r.total)) + "%" : "—"}</td>
+    <td>${r.total ? rate(r.approved, r.total).toFixed(1) + "%" : "—"}</td>
     <td>${n1(r.days)}</td>
   </tr>`;
 
@@ -172,7 +210,7 @@ const totalRow = (label, t) => `
   <tr class="tr-total">
     <td class="tl">${label}</td><td>${t.staff}</td><td>${t.total}</td>
     <td class="ok">${t.approved}</td><td>${t.pending}</td><td>${t.cancelled + t.rejected}</td>
-    <td>${t.total ? n1(rate(t.approved, t.total)) + "%" : "—"}</td><td>${n1(t.days)}</td>
+    <td>${t.total ? rate(t.approved, t.total).toFixed(1) + "%" : "—"}</td><td>${n1(t.days)}</td>
   </tr>`;
 
 const idle = rows.filter((r) => r.total === 0 && r.staff > 0);
@@ -229,7 +267,8 @@ const html = `
   .tile .lab { font-size:8.5px; letter-spacing:.7px; text-transform:uppercase; color:#898781; margin-bottom:3px; }
   .tile .val { font-size:24px; font-weight:700; line-height:1.05; }
   .tile .foot { font-size:8.5px; color:#52514e; margin-top:2px; }
-  .tile.hero .val { color:#0ca30c; }
+  .meter { height:4px; border-radius:2px; background:#ecebe6; margin:5px 0 3px; overflow:hidden; }
+  .meter span { display:block; height:100%; background:#0ca30c; border-radius:2px; }
 
   h2.sect { font-size:12.5px; margin:0 0 2px; color:#0b0b0b; }
   p.dek { font-size:9px; color:#52514e; margin:0 0 10px; line-height:1.45; }
@@ -260,8 +299,21 @@ const html = `
                 vertical-align:-1px; }
   .scale { padding-left:126px; font-size:8px; color:#898781; margin:0 0 10px; }
 
+  /* ── Monthly columns ── */
+  .cols { display:flex; gap:10px; align-items:flex-end; padding:0 4px 0 126px; margin-bottom:6px;
+          background:linear-gradient(#e1e0d9,#e1e0d9) 126px calc(100% - 27px)/calc(100% - 130px) 1px no-repeat; }
+  .col { flex:1; text-align:center; max-width:64px; }
+  .cval { font-size:9px; font-weight:700; height:13px; font-variant-numeric:tabular-nums; }
+  .cstack { display:flex; flex-direction:column; justify-content:flex-end; gap:2px; }
+  .cseg { display:block; width:100%; border-radius:4px 4px 0 0; }
+  .cseg + .cseg { border-radius:0; }
+  .cval + .cseg { border-radius:4px 4px 0 0; }
+  .clab { font-size:8.5px; color:#52514e; margin-top:4px; }
+  .ctag { font-size:7px; color:#898781; height:9px; white-space:nowrap; }
+  .col-future .cseg { opacity:.45; }
+
   /* ── Secondary charts ── */
-  .row2 { display:grid; grid-template-columns:118px 1fr 40px; align-items:center; gap:8px; height:16px; }
+  .row2 { display:grid; grid-template-columns:118px 1fr 40px; align-items:center; gap:8px; height:14px; }
   .bar2 { height:10px; background:#2a78d6; border-radius:3px; min-width:1px; }
   .bar2.zero { background:#e1e0d9; }
 
@@ -269,7 +321,7 @@ const html = `
   table { width:100%; border-collapse:collapse; font-size:8.5px; font-variant-numeric:tabular-nums; }
   th { text-align:right; font-size:7.5px; letter-spacing:.5px; text-transform:uppercase; color:#898781;
        border-bottom:1px solid #c3c2b7; padding:4px 5px; font-weight:600; }
-  td { text-align:right; padding:3.5px 5px; border-bottom:1px solid #f0efec; }
+  td { text-align:right; padding:2.5px 5px; border-bottom:1px solid #f0efec; }
   th.tl, td.tl { text-align:left; }
   td.ok { color:#006300; font-weight:600; }
   .tr-zero td { color:#a5a49e; }
@@ -291,7 +343,8 @@ ${meta}
 <div class="tiles">
   <div class="tile"><div class="lab">Jumlah Permohonan</div><div class="val">${grand.total}</div>
     <div class="foot">${grand.staff} staf aktif</div></div>
-  <div class="tile hero"><div class="lab">Kadar Kelulusan</div><div class="val">${n1(rate(grand.approved, grand.total))}%</div>
+  <div class="tile"><div class="lab">Kadar Kelulusan</div><div class="val">${rate(grand.approved, grand.total).toFixed(1)}%</div>
+    <div class="meter"><span style="width:${rate(grand.approved, grand.total)}%"></span></div>
     <div class="foot">${grand.approved} diluluskan</div></div>
   <div class="tile"><div class="lab">Dalam Proses</div><div class="val">${grand.pending}</div>
     <div class="foot">belum kelulusan akhir</div></div>
@@ -316,6 +369,10 @@ ${statePanel("Terengganu", terengganu, tTrg,
     : "")}
 
 <p class="scale">Skala penuh = ${maxTotal} permohonan (cawangan tertinggi).</p>
+
+<h2 class="sect" style="margin-top:4px">Trend bulanan</h2>
+<p class="dek">Permohonan mengikut bulan tarikh mula cuti, dengan warna status yang sama seperti di atas.</p>
+${monthChart()}
 
 <div class="callout">
   <strong>Perkara utama:</strong> kadar kelulusan keseluruhan
@@ -342,7 +399,7 @@ dengan bilangan staf aktif. Cawangan tanpa staf aktif tidak disenaraikan.</p>
 </div>
 <p class="scale">Nilai = permohonan setiap staf aktif (${YEAR}).</p>
 
-<h2 class="sect" style="margin-top:18px">Jenis cuti yang diluluskan</h2>
+<h2 class="sect" style="margin-top:12px">Jenis cuti yang diluluskan</h2>
 <p class="dek">Pecahan ${grand.approved} permohonan yang telah diluluskan sepenuhnya.</p>
 <div>
   ${typeRows.map(([label, v]) => `
@@ -353,7 +410,7 @@ dengan bilangan staf aktif. Cawangan tanpa staf aktif tidak disenaraikan.</p>
     </div>`).join("")}
 </div>
 
-<h2 class="sect" style="margin-top:18px">Jadual penuh</h2>
+<h2 class="sect" style="margin-top:12px">Jadual penuh</h2>
 <p class="dek">Nilai penuh bagi setiap carta di atas.</p>
 <table>
   <thead>
