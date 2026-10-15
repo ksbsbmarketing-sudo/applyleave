@@ -9211,7 +9211,7 @@ function renderView() {
                     ${rows.map(({ s, stats }, ri) => {
                       const rc = roleColor[s.role] || '#64748b';
                       return `<tr style="border-bottom:1px solid rgba(163,177,198,0.08);${ri%2===1?'background:rgba(163,177,198,0.025);':''}">
-                        <td style="padding:0.6rem 1rem;font-weight:600;color:var(--text);">${s.name}</td>
+                        <td style="padding:0.6rem 1rem;font-weight:600;color:var(--text);"><div style="display:flex;align-items:center;gap:0.6rem;">${userAvatar(s, { small: true })}<span>${s.name}</span></div></td>
                         <td style="padding:0.6rem 0.75rem;">
                           <span style="font-size:0.65rem;font-weight:700;background:${rc}18;color:${rc};border:1px solid ${rc}33;border-radius:5px;padding:0.15rem 0.45rem;">${window.staffConfig.roleLabels[s.role]||s.role}</span>
                         </td>

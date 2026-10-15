@@ -44,10 +44,11 @@ export const dashboardSkeleton = () => `
 
 // Avatar kad pengguna di atas butang Logout. Gambar profil (Tetapan) dipapar jika
 // ada; huruf awal kekal di bawahnya supaya masih nampak jika gambar gagal dimuat.
-export const userAvatar = (user = {}, { large = false } = {}) => {
+export const userAvatar = (user = {}, { large = false, small = false } = {}) => {
   const initial = esc(String(user.name || '?').trim().charAt(0).toUpperCase() || '?');
   const img = user.photoUrl
     ? `<img src="${esc(user.photoUrl)}" alt="${esc(user.name || '')}" onerror="this.remove()">`
     : '';
-  return `<div class="user-avatar${large ? ' is-lg' : ''}">${initial}${img}</div>`;
+  const size = large ? ' is-lg' : small ? ' is-sm' : '';
+  return `<div class="user-avatar${size}">${initial}${img}</div>`;
 };

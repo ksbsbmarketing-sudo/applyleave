@@ -57,3 +57,7 @@ test('userAvatar: saiz besar menambah kelas is-lg', () => {
   assert.match(userAvatar({ name: 'ADILAH' }, { large: true }), /class="user-avatar is-lg"/);
   assert.match(userAvatar({ name: 'ADILAH' }), /class="user-avatar"/);
 });
+
+test('userAvatar: saiz kecil menambah kelas is-sm', () => {
+  assert.match(userAvatar({ name: 'ADILAH' }, { small: true }), /class="user-avatar is-sm"/);
+});
