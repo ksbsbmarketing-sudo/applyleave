@@ -1232,6 +1232,15 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
   .inbox-hide-sm { display: none; }
 }
 
+/* Pil bulan di atas carta Trend Permohonan Bulanan (Analisa Cuti). Kelas, bukan
+   style inline — peraturan mudah alih [style*="repeat(12"] akan pecahkannya kepada
+   6 lajur dan pil tidak lagi selari dengan bar. Padding kiri/kanan diset oleh
+   initCharts() ikut chartArea. */
+.month-pills { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); justify-items: center; margin-bottom: 0.6rem; }
+@media (max-width: 720px) {
+  .month-pills > span { padding: 0.15rem 0.2rem !important; font-size: 0.55rem !important; }
+}
+
 /* ── Skeleton loading (src/uiStates.js dashboardSkeleton) ─── */
 .sk {
   border-radius: 10px;

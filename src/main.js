@@ -4710,8 +4710,20 @@ function initCharts() {
   const mc = document.getElementById('chart-monthly');
   if (mc) {
     if (_chartMonthly) { _chartMonthly.destroy(); _chartMonthly = null; }
+    // Selaraskan pil bulan (#month-pills) dengan kawasan bar — dijalankan setiap
+    // kali Chart.js susun semula (mula-mula dan bila saiz skrin berubah).
+    const alignMonthPills = {
+      id: 'alignMonthPills',
+      afterLayout(chart) {
+        const pills = document.getElementById('month-pills');
+        if (!pills || !chart.chartArea) return;
+        pills.style.paddingLeft = chart.chartArea.left + 'px';
+        pills.style.paddingRight = (chart.width - chart.chartArea.right) + 'px';
+      }
+    };
     _chartMonthly = new Chart(mc, {
       type: 'bar',
+      plugins: [alignMonthPills],
       data: {
         labels: data.monthsList,
         datasets: [{
@@ -6498,10 +6510,11 @@ function renderAnalyticsDashboard(lockedBranch = null) {
               <div style="font-size:0.65rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Paling Tinggi</div>
             </div>
           </div>
-          <!-- Month color legend pills -->
-          <div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:1rem;">
+          <!-- Pil bulan — 12 lajur sama lebar; initCharts() laraskan padding kiri/kanan
+               ikut chartArea supaya setiap pil tepat di atas barnya -->
+          <div id="month-pills" class="month-pills">
             ${monthsList.map((m, i) => `
-              <span onclick="window.setAnalyticsMonth(${analyticsFilterMonth === i+1 ? 0 : i+1})" style="cursor:pointer;padding:0.2rem 0.55rem;border-radius:20px;font-size:0.62rem;font-weight:700;background:${analyticsFilterMonth === 0 || analyticsFilterMonth === i+1 ? _barColors[i]+'22' : 'rgba(163,177,198,0.08)'};color:${analyticsFilterMonth === 0 || analyticsFilterMonth === i+1 ? _barColors[i] : '#94a3b8'};border:1px solid ${analyticsFilterMonth === 0 || analyticsFilterMonth === i+1 ? _barColors[i]+'44' : 'rgba(163,177,198,0.15)'};">${m}</span>
+              <span onclick="window.setAnalyticsMonth(${analyticsFilterMonth === i+1 ? 0 : i+1})" style="cursor:pointer;padding:0.2rem 0.45rem;border-radius:20px;font-size:0.62rem;font-weight:700;white-space:nowrap;background:${analyticsFilterMonth === 0 || analyticsFilterMonth === i+1 ? _barColors[i]+'22' : 'rgba(163,177,198,0.08)'};color:${analyticsFilterMonth === 0 || analyticsFilterMonth === i+1 ? _barColors[i] : '#94a3b8'};border:1px solid ${analyticsFilterMonth === 0 || analyticsFilterMonth === i+1 ? _barColors[i]+'44' : 'rgba(163,177,198,0.15)'};">${m}</span>
             `).join('')}
           </div>
           <div style="position:relative;height:200px;">
