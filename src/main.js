@@ -18,7 +18,6 @@ import { validateLeaveReason } from './leaveReason.js';
 import { showToast, showConfirm, restorePendingToasts } from './notify.js';
 import { statusBadge } from './statusBadge.js';
 import { emptyState, emptyRow, dashboardSkeleton, userAvatar } from './uiStates.js';
-import { trendWindow } from './monthTrend.js';
 import { monthGrid, leavesByDay, shiftMonth, monthLabel } from './leaveCalendar.js';
 import { relativeTime, groupNotifs, filterNotifs, notifKind, notifSender, senderInitials, cleanSubject, fullTime } from './inboxView.js';
 // Satu sumber versi: package.json (dulu ditulis tangan di topbar & log — mudah terlupa naikkan).
@@ -4688,95 +4687,83 @@ function initCharts() {
   const data = window._analyticsData;
   if (!data) return;
 
-  // Trend bulanan — satu warna (warna utama sistem). Warna tidak membawa makna
-  // bagi setiap bulan, jadi pelangi per-bulan dibuang (v2.5.32). Bulan semasa
-  // yang belum habis dipudarkan; bila satu bulan ditapis, bulan lain dipudarkan.
-  const { start, end, partial } = data.trend;
-  const idx = data.monthsList.map((_, i) => i).slice(start, end + 1);
-  const activeMonth = analyticsFilterMonth;
-  const ink = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#9b2c2c';
-  const barColor = (i) => {
-    if (activeMonth && activeMonth !== i + 1) return ink + '26';
-    return i === partial ? ink + '80' : ink;
-  };
-  const valueLabels = {
-    id: 'trendValueLabels',
-    afterDatasetsDraw(chart) {
-      const { ctx } = chart;
-      const meta = chart.getDatasetMeta(0);
-      ctx.save();
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.font = '700 11px Outfit, sans-serif';
-      meta.data.forEach((bar, k) => {
-        const v = chart.data.datasets[0].data[k];
-        if (!v) return;
-        const i = idx[k];
-        ctx.fillStyle = activeMonth && activeMonth !== i + 1 ? '#94a3b8' : '#1e293b';
-        ctx.fillText(v, bar.x, bar.y - 4);
-      });
-      ctx.restore();
-    }
-  };
+  // Vibrant per-month color palette (Jan→Dec)
+  const barPalette = [
+    { bg: 'rgba(59,130,246,0.9)',   hl: '#3b82f6'  },
+    { bg: 'rgba(99,102,241,0.9)',   hl: '#6366f1'  },
+    { bg: 'rgba(139,92,246,0.9)',   hl: '#8b5cf6'  },
+    { bg: 'rgba(168,85,247,0.9)',   hl: '#a855f7'  },
+    { bg: 'rgba(236,72,153,0.9)',   hl: '#ec4899'  },
+    { bg: 'rgba(239,68,68,0.9)',    hl: '#ef4444'  },
+    { bg: 'rgba(249,115,22,0.9)',   hl: '#f97316'  },
+    { bg: 'rgba(245,158,11,0.9)',   hl: '#f59e0b'  },
+    { bg: 'rgba(234,179,8,0.9)',    hl: '#eab308'  },
+    { bg: 'rgba(132,204,22,0.9)',   hl: '#84cc16'  },
+    { bg: 'rgba(34,197,94,0.9)',    hl: '#22c55e'  },
+    { bg: 'rgba(20,184,166,0.9)',   hl: '#14b8a6'  },
+  ];
 
+  const activeMonth = analyticsFilterMonth;
+  const dimmed = (i) => barPalette[i].bg.replace('0.9)', '0.18)');
+
+  // Monthly Bar Chart
   const mc = document.getElementById('chart-monthly');
   if (mc) {
     if (_chartMonthly) { _chartMonthly.destroy(); _chartMonthly = null; }
     _chartMonthly = new Chart(mc, {
       type: 'bar',
-      plugins: [valueLabels],
       data: {
-        labels: idx.map(i => i === partial ? [data.monthsList[i], 'setakat kini'] : data.monthsList[i]),
+        labels: data.monthsList,
         datasets: [{
           label: 'Permohonan',
-          data: idx.map(i => data.monthCounts[i]),
-          backgroundColor: idx.map(barColor),
-          hoverBackgroundColor: idx.map(i => (activeMonth && activeMonth !== i + 1) ? ink + '55' : ink),
-          borderWidth: 0,
-          borderRadius: { topLeft: 4, topRight: 4 },
-          borderSkipped: 'bottom',
-          maxBarThickness: 36,
-          categoryPercentage: 0.7,
-          barPercentage: 0.9,
+          data: data.monthCounts,
+          backgroundColor: data.monthCounts.map((_, i) =>
+            activeMonth === 0 || activeMonth === i + 1 ? barPalette[i].bg : dimmed(i)
+          ),
+          borderColor: data.monthCounts.map((_, i) =>
+            activeMonth === 0 || activeMonth === i + 1 ? barPalette[i].hl : 'transparent'
+          ),
+          borderWidth: 2,
+          borderRadius: 10,
+          borderSkipped: false,
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        layout: { padding: { top: 18 } },
         plugins: {
           legend: { display: false },
           tooltip: {
             backgroundColor: 'rgba(15,23,42,0.92)',
             titleColor: '#f1f5f9',
-            bodyColor: '#cbd5e1',
-            padding: 10,
-            cornerRadius: 8,
-            displayColors: false,
+            bodyColor: '#94a3b8',
+            borderColor: 'rgba(148,163,184,0.15)',
+            borderWidth: 1,
+            padding: 12,
+            cornerRadius: 10,
             callbacks: {
-              title: (items) => data.monthsList[idx[items[0].dataIndex]] + (data.yearLabel ? ' ' + data.yearLabel : ''),
-              label: (item) => item.raw + ' permohonan' + (idx[item.dataIndex] === partial ? ' (bulan belum habis)' : ''),
+              title: (items) => data.monthsList[items[0].dataIndex] + (data.yearLabel ? ' ' + data.yearLabel : ''),
+              label: (item) => '  ' + item.raw + ' Permohonan',
             }
           }
         },
         scales: {
           x: {
             grid: { display: false },
-            border: { color: 'rgba(163,177,198,0.35)' },
-            ticks: { color: '#5a6678', font: { size: 11, weight: '600' } },
+            border: { display: false },
+            ticks: { color: '#64748b', font: { size: 10, weight: '600' } },
           },
           y: {
-            grid: { color: 'rgba(163,177,198,0.14)' },
+            grid: { color: 'rgba(163,177,198,0.12)', drawBorder: false },
             border: { display: false },
-            ticks: { color: '#94a3b8', font: { size: 10 }, maxTicksLimit: 5, precision: 0 },
+            ticks: { color: '#64748b', font: { size: 10 }, stepSize: 1 },
             beginAtZero: true,
           }
         },
-        onHover: (e, elements) => { e.native.target.style.cursor = elements.length ? 'pointer' : 'default'; },
         onClick: (e, elements) => {
           if (elements.length > 0) {
-            const m = idx[elements[0].index] + 1;
-            window.setAnalyticsMonth(analyticsFilterMonth === m ? 0 : m);
+            const idx = elements[0].index;
+            window.setAnalyticsMonth(analyticsFilterMonth === idx + 1 ? 0 : idx + 1);
           }
         }
       }
@@ -6406,13 +6393,10 @@ function renderAnalyticsDashboard(lockedBranch = null) {
   const yearLabel = analyticsFilterYear === 'SEMUA' ? 'Semua Tahun' : analyticsFilterYear;
 
   // Store for Chart.js
-  const trend = trendWindow(monthCounts, { year: analyticsFilterYear, selected: analyticsFilterMonth });
-  const trendCounts = monthCounts.slice(trend.start, trend.end + 1);
-  const trendTotal = trendCounts.reduce((a, b) => a + b, 0);
-  const trendPeak = Math.max(...trendCounts, 0);
-  const trendPeakMonth = trendPeak > 0 ? monthsList[trend.start + trendCounts.indexOf(trendPeak)] : '';
-  window._analyticsData = { monthCounts, monthsList, types, totalReqs, sortedBranches, filteredRecords, yearLabel, trend };
+  window._analyticsData = { monthCounts, monthsList, types, totalReqs, sortedBranches, filteredRecords, yearLabel };
 
+  // Color palettes reused in HTML (must match initCharts barPalette)
+  const _barColors = ['#3b82f6','#6366f1','#8b5cf6','#a855f7','#ec4899','#ef4444','#f97316','#f59e0b','#eab308','#84cc16','#22c55e','#14b8a6'];
   const _donutColors = ['#3b82f6','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#84cc16','#a855f7'];
   const _branchColors = ['#3b82f6','#a855f7','#10b981','#f59e0b','#ef4444','#ec4899','#14b8a6','#6366f1','#f97316','#84cc16','#22c55e','#38bdf8'];
 
@@ -6500,24 +6484,26 @@ function renderAnalyticsDashboard(lockedBranch = null) {
         </div>
       </section>
 
-      <!-- Charts Row -->
-      <section style="display:grid;grid-template-columns:2fr 1fr;gap:1.25rem;margin-bottom:1.75rem;">
+      <!-- Charts: Trend Bulanan, Jenis Cuti di bawahnya (v2.5.33) -->
+      <section style="display:grid;grid-template-columns:1fr;gap:1.25rem;margin-bottom:1.75rem;">
         <!-- Bar Chart -->
         <div class="glass-card" style="padding:1.5rem;">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem;">
             <div>
               <h3 style="font-size:0.95rem;font-weight:700;margin:0;letter-spacing:-0.2px;">Trend Permohonan Bulanan</h3>
-              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.2rem;">Ikut tarikh permohonan dihantar · klik bar untuk tapis bulan</div>
+              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.2rem;">Klik pada bar untuk tapis mengikut bulan</div>
             </div>
-            <div style="text-align:right;font-size:0.75rem;color:var(--text-muted);line-height:1.5;">
-              <div><strong style="color:var(--text);font-size:0.95rem;">${trendTotal}</strong> permohonan</div>
-              ${trendPeak > 0 ? `<div>Tertinggi <strong style="color:var(--text);">${trendPeak}</strong> (${trendPeakMonth})</div>` : ''}
+            <div style="text-align:right;">
+              <div style="font-size:1.5rem;font-weight:800;background:linear-gradient(135deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">${Math.max(...monthCounts)}</div>
+              <div style="font-size:0.65rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Paling Tinggi</div>
             </div>
           </div>
-          ${analyticsFilterMonth ? `
-          <div style="margin:-0.5rem 0 0.75rem;">
-            <button onclick="window.setAnalyticsMonth(0)" style="border:1px solid rgba(155,44,44,0.25);background:rgba(155,44,44,0.06);color:var(--primary);border-radius:999px;padding:0.2rem 0.65rem;font-size:0.7rem;font-weight:700;cursor:pointer;">${monthsList[analyticsFilterMonth-1]} &nbsp;✕ Semua bulan</button>
-          </div>` : ''}
+          <!-- Month color legend pills -->
+          <div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:1rem;">
+            ${monthsList.map((m, i) => `
+              <span onclick="window.setAnalyticsMonth(${analyticsFilterMonth === i+1 ? 0 : i+1})" style="cursor:pointer;padding:0.2rem 0.55rem;border-radius:20px;font-size:0.62rem;font-weight:700;background:${analyticsFilterMonth === 0 || analyticsFilterMonth === i+1 ? _barColors[i]+'22' : 'rgba(163,177,198,0.08)'};color:${analyticsFilterMonth === 0 || analyticsFilterMonth === i+1 ? _barColors[i] : '#94a3b8'};border:1px solid ${analyticsFilterMonth === 0 || analyticsFilterMonth === i+1 ? _barColors[i]+'44' : 'rgba(163,177,198,0.15)'};">${m}</span>
+            `).join('')}
+          </div>
           <div style="position:relative;height:200px;">
             <canvas id="chart-monthly"></canvas>
           </div>
@@ -6527,7 +6513,8 @@ function renderAnalyticsDashboard(lockedBranch = null) {
         <div class="glass-card" style="padding:1.5rem;">
           <h3 style="font-size:0.95rem;font-weight:700;margin:0 0 0.2rem;">Jenis Cuti</h3>
           <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:1rem;">Pecahan ${analyticsFilterMonth === 0 ? yearLabel : monthsList[analyticsFilterMonth-1] + (analyticsFilterYear !== 'SEMUA' ? ' ' + analyticsFilterYear : '')}</div>
-          <div style="position:relative;height:160px;margin-bottom:1.1rem;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem;align-items:center;">
+          <div style="position:relative;height:200px;">
             <canvas id="chart-types"></canvas>
           </div>
           <div style="display:flex;flex-direction:column;gap:0.55rem;">
@@ -6551,6 +6538,7 @@ function renderAnalyticsDashboard(lockedBranch = null) {
                 </div>
               </div>`;
             }).join('')}
+          </div>
           </div>
         </div>
       </section>
