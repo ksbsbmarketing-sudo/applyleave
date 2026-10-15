@@ -52,3 +52,8 @@ test('userAvatar: URL dan nama di-escape', () => {
   assert.doesNotMatch(html, /"onerror="alert/);
   assert.doesNotMatch(html, /<b>/);
 });
+
+test('userAvatar: saiz besar menambah kelas is-lg', () => {
+  assert.match(userAvatar({ name: 'ADILAH' }, { large: true }), /class="user-avatar is-lg"/);
+  assert.match(userAvatar({ name: 'ADILAH' }), /class="user-avatar"/);
+});

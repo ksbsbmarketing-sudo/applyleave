@@ -11371,9 +11371,12 @@ function renderModal() {
             <button id="close-modal" style="background: transparent; color: var(--text-muted); border: none; cursor: pointer; font-size: 2rem; line-height: 1;">&times;</button>
         </div>
         
-        <div style="margin-bottom: 2.5rem; padding: 1rem 1.5rem; border-radius: 12px; background: rgba(59, 130, 246, 0.1); border-left: 4px solid var(--primary);">
-            <strong style="font-size: 1.1rem;">${staff.name}</strong><br>
-            <span style="font-size: 0.85rem; color: var(--text-muted);">IC: ${staff.ic}</span>
+        <div style="margin-bottom: 2.5rem; padding: 1rem 1.5rem; border-radius: 12px; background: rgba(59, 130, 246, 0.1); border-left: 4px solid var(--primary); display: flex; align-items: center; gap: 1rem;">
+            ${userAvatar(staff, { large: true })}
+            <div>
+              <strong style="font-size: 1.1rem;">${staff.name}</strong><br>
+              <span style="font-size: 0.85rem; color: var(--text-muted);">IC: ${staff.ic}</span>
+            </div>
         </div>
         
         <form id="edit-entitlement-form">
