@@ -2,9 +2,14 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // A provisioned staff member: not anonymous AND carries the `ic` claim set by
+    // provision-one.js / sync-claims.js / otp-backend approve-registration. Without
+    // the ic check any self-created Firebase user (Google sign-in, or Email/Password
+    // sign-up through the public API key) would pass. 2026-10-17.
     function signedIn() {
       return request.auth != null
-        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+        && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && request.auth.token.get('ic', null) is string;
     }
     function myIC() { return request.auth.token.ic; }
     function canApprove() { return signedIn() && request.auth.token.canApprove == true; }
@@ -72,7 +77,15 @@ service cloud.firestore {
     // Account signup is created by not-yet-staff (anonymous allowed); managed by HR/Admin.
     match /registration_requests/{id} {
       allow read, update, delete: if manageStaff() && companyOK(resource.data.branch);
-      allow create: if request.auth != null;
+      // A Google registrant (no ic claim yet) checks whether their own request is
+      // still pending — used by the login screen. Only their own googleUid.
+      allow list: if request.auth != null
+        && resource.data.get('googleUid', null) == request.auth.uid;
+      // Created pre-login (anonymous or Google). A Google request may only carry
+      // the caller's own uid, so nobody can attach someone else's Google identity.
+      allow create: if request.auth != null
+        && ( !('googleUid' in request.resource.data)
+             || request.resource.data.googleUid == request.auth.uid );
     }
 
     // Bacaan staf (v2.5.22): dulu SEMUA staf klinik boleh membaca SETIAP dokumen
@@ -103,7 +116,7 @@ service cloud.firestore {
              && companyOK(request.resource.data.get('branch', '')) )
         || ( myIC() == ic
              && request.resource.data.diff(resource.data).affectedKeys()
-                  .hasOnly(['name', 'phone', 'email', 'address', 'photoUrl'])
+                  .hasOnly(['name', 'phone', 'email', 'address', 'photoUrl', 'googleEmail'])
              && request.resource.data.name is string
              && request.resource.data.name.size() >= 3
              && request.resource.data.name.size() <= 80 )

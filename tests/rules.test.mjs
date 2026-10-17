@@ -553,3 +553,57 @@ test("staff reads: KSB Pharma plain staff reads own-company approvers only", asy
     where("role", "in", APPROVER_ROLES_R), where("branch", "==", PHARMA))));
   await assertFails(getDocs(query(collection(db, "staff"), where("branch", "==", PHARMA))));
 });
+
+// ── Google sign-in (2026-10-17) ──────────────────────────────────────────────
+const googleNoIcAuth = () => ({ firebase: { sign_in_provider: "google.com" } });
+const googleDb = (uid) => testEnv.authenticatedContext(uid, googleNoIcAuth()).firestore();
+
+test("google user without ic claim cannot read data", async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "config", "approvalRouting"), { x: 1 });
+    await setDoc(doc(ctx.firestore(), "audit_logs", "A1"), { action: "x" });
+    await setDoc(doc(ctx.firestore(), "wa_logs", "W1"), { msg: "x" });
+  });
+  const db = googleDb("G1");
+  await assertFails(getDoc(doc(db, "config", "approvalRouting")));
+  await assertFails(getDoc(doc(db, "audit_logs", "A1")));
+  await assertFails(getDoc(doc(db, "wa_logs", "W1")));
+  await assertFails(getDoc(doc(db, "staff", "S1")));
+  await assertFails(getDoc(doc(db, "leaves", "L1")));
+  await assertFails(setDoc(doc(db, "audit_logs", "A2"), { action: "spam" }));
+});
+
+test("google user without ic can still read the login directory", async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "directory", "S1"), { ic: "S1", name: "ALI", branch: "Klinik A" });
+  });
+  await assertSucceeds(getDoc(doc(googleDb("G1"), "directory", "S1")));
+});
+
+test("registration with googleUid must match the caller", async () => {
+  const db = googleDb("G1");
+  const base = { name: "BARU", ic: "N1", branch: "Klinik A", category: "Operation Staff", phone: "60100000001", status: "pending", submittedAt: 1 };
+  await assertSucceeds(setDoc(doc(db, "registration_requests", "r1"), { ...base, googleUid: "G1", googleSub: "111", googleEmail: "a@gmail.com" }));
+  await assertFails(setDoc(doc(db, "registration_requests", "r2"), { ...base, googleUid: "G2", googleSub: "222", googleEmail: "b@gmail.com" }));
+  // plain (non-Google) registration from the anonymous bootstrap still works
+  const anonDb = testEnv.authenticatedContext("anon1", anonAuth()).firestore();
+  await assertSucceeds(setDoc(doc(anonDb, "registration_requests", "r3"), base));
+});
+
+test("google registrant can list only own requests", async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "registration_requests", "mine"), { ic: "N1", branch: "Klinik A", status: "pending", googleUid: "G1" });
+    await setDoc(doc(ctx.firestore(), "registration_requests", "theirs"), { ic: "N2", branch: "Klinik A", status: "pending", googleUid: "G2" });
+  });
+  const db = googleDb("G1");
+  const own = await assertSucceeds(getDocs(query(collection(db, "registration_requests"), where("googleUid", "==", "G1"))));
+  assert.strictEqual(own.size, 1);
+  await assertFails(getDocs(query(collection(db, "registration_requests"), where("googleUid", "==", "G2"))));
+  await assertFails(getDocs(collection(db, "registration_requests")));
+});
+
+test("staff can set and clear own googleEmail, not someone else's", async () => {
+  await assertSucceeds(updateDoc(doc(ctxDb(staffAuth("S1")), "staff", "S1"), { googleEmail: "ali@gmail.com" }));
+  await assertSucceeds(updateDoc(doc(ctxDb(staffAuth("S1")), "staff", "S1"), { googleEmail: null }));
+  await assertFails(updateDoc(doc(ctxDb(staffAuth("S2")), "staff", "S1"), { googleEmail: "x@gmail.com" }));
+});
