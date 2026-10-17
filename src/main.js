@@ -2163,7 +2163,8 @@ window.submitRegister = async function(event) {
   event.preventDefault();
   const form = event.target;
   const name     = form.querySelector('#reg-name').value.trim().toUpperCase();
-  const ic       = form.querySelector('#reg-ic').value.trim();
+  // 901231-04-5678 → 901231045678: the server accepts letters and digits only.
+  const ic       = form.querySelector('#reg-ic').value.replace(/[^A-Za-z0-9]/g, '');
   const branch   = form.querySelector('#reg-branch').value;
   const category = form.querySelector('#reg-category').value;
   const phone = normalizePhone(form.querySelector('#reg-phone').value);

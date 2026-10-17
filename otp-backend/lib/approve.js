@@ -32,7 +32,9 @@ export async function approveRegistration({ db, auth, docId, name, now = Date.no
   const r = reqSnap.data();
   if (!["pending", "approving"].includes(r.status)) return { ok: false, status: 409, error: "not_pending" };
 
-  const ic = String(r.ic || "").trim();
+  // Staff often type an IC as 901231-04-5678; keep only letters and digits so the
+  // staff doc id, the claim and the login email all use the same value.
+  const ic = String(r.ic || "").replace(/[^A-Za-z0-9]/g, "");
   if (!IC_RE.test(ic) || !nonEmptyString(r.branch) || !nonEmptyString(r.category)) {
     return { ok: false, status: 400, error: "invalid_request" };
   }

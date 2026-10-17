@@ -127,13 +127,23 @@ test("delete step re-checks: a googleUid that is now a provisioned user is never
 });
 
 test("invalid ic in the request → 400 invalid_request before any write", async () => {
-  for (const ic of ["A12", "90-0101-01-5555", "", "x".repeat(21)]) {
+  for (const ic of ["A12", "90-01", "", "x".repeat(21)]) {
     const db = fakeDb({ ...PERMS, "registration_requests/r1": { ...REQ, ic } });
     const res = await approveRegistration({ db, auth: fakeAuth(), docId: "r1", name: "x", now: NOW });
     assert.deepEqual(res, { ok: false, status: 400, error: "invalid_request" });
     assert.equal(Object.keys(db.docs).some((k) => k.startsWith("staff/") || k.startsWith("directory/")), false);
     assert.equal(db.docs["registration_requests/r1"].status, "pending");
   }
+});
+
+test("IC typed with dashes or spaces is normalised to digits", async () => {
+  const db = fakeDb({ ...PERMS, "registration_requests/r1": { ...REQ, ic: "900101-01-5555 " } });
+  const auth = fakeAuth();
+  const res = await approveRegistration({ db, auth, docId: "r1", name: "Ali", now: NOW });
+  assert.deepEqual(res, { ok: true, ic: "900101015555", googleEmail: null });
+  assert.equal(db.docs["staff/900101015555"].ic, "900101015555");
+  assert.equal(db.docs["directory/900101015555"].ic, "900101015555");
+  assert.deepEqual((await auth.getUserByEmail(emailForIC("900101015555"))).customClaims.ic, "900101015555");
 });
 
 test("missing branch or category → 400 invalid_request", async () => {
