@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeApproveHandler } from "../api/approve-registration.js";
 import { makeUnlinkHandler } from "../api/unlink-google.js";
+import { makeDeleteStaffHandler } from "../api/delete-staff.js";
 
 const PHARMA = "KSB Pharma Sdn. Bhd.";
 function res() {
@@ -71,6 +72,23 @@ test("unlink: unknown staff → 404", async () => {
   const r = res();
   await h(post({ ic: "NOPE" }), r);
   assert.equal(r.statusCode, 404);
+});
+
+test("delete-staff: cannot delete yourself; clinic HR cannot delete pharma staff; unknown → 404", async () => {
+  const docs = { "staff/H1": { role: "hr", branch: "Klinik A" }, "staff/P1": { role: "staff", branch: PHARMA } };
+  const h = makeDeleteStaffHandler(() => ({ db: db(docs), auth: auth({ ic: "H1", manageStaff: true }) }));
+  const r1 = res(); await h(post({ ic: "H1" }), r1);
+  assert.equal(r1.statusCode, 400); assert.deepEqual(r1.body, { error: "self_delete" });
+  const r2 = res(); await h(post({ ic: "P1" }), r2);
+  assert.equal(r2.statusCode, 403);
+  const r3 = res(); await h(post({ ic: "NOPE" }), r3);
+  assert.equal(r3.statusCode, 404);
+});
+
+test("delete-staff: staff without manageStaff → 403", async () => {
+  const h = makeDeleteStaffHandler(() => ({ db: db({ "staff/S1": { role: "staff", branch: "Klinik A" } }), auth: auth({ ic: "S1", manageStaff: false }) }));
+  const r = res(); await h(post({ ic: "S2" }), r);
+  assert.equal(r.statusCode, 403);
 });
 
 test("OPTIONS preflight allows the Authorization header", async () => {

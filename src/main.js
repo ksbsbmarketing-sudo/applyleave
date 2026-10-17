@@ -484,6 +484,7 @@ const ADMIN_ERR_MS = {
   missing_fields: 'Maklumat tidak lengkap.',
   server_error: 'Ralat pelayan. Sila cuba lagi — tindakan ini selamat diulang.',
   invalid_request: 'Maklumat permohonan tidak sah. Sila tolak dan minta staf mendaftar semula.',
+  self_delete: 'Anda tidak boleh membuang akaun anda sendiri.',
 };
 const adminErrMsg = (data) => ADMIN_ERR_MS[data && data.error] || 'Ralat tidak dijangka. Sila cuba lagi.';
 
@@ -2590,16 +2591,14 @@ window.setEditingStaff = function(ic) {
 window.deleteStaff = async function(ic) {
     const staff = staffList.find(s => s.ic === ic);
     if (!staff) return;
-    const confirmed = await showConfirm(`Adakah anda pasti untuk BUANG "${staff.name}" daripada sistem?\n\nTindakan ini tidak boleh dibatalkan.`);
+    const confirmed = await showConfirm(`Adakah anda pasti untuk BUANG "${staff.name}" daripada sistem?\n\nAkaun log masuk (termasuk pautan Google) dan nama di skrin log masuk juga akan dipadam. Tindakan ini tidak boleh dibatalkan.`);
     if (!confirmed) return;
-    try {
-        await deleteDoc(doc(db, 'staff', ic));
-        window.logSystemActivity(`Deleted staff record: ${staff.name} (${ic})`);
-        showToast(`"${staff.name}" berjaya dibuang dari sistem.`);
-    } catch (err) {
-        console.error('deleteStaff error:', err);
-        showToast('Ralat semasa membuang rekod. Sila cuba lagi.');
-    }
+    // Melalui otp-backend supaya akaun log masuk dan entri directory turut dipadam —
+    // dulu hanya staff/{ic} dipadam dan akaun log masuk tertinggal.
+    const r = await authedPost('/api/delete-staff', { ic });
+    if (!r.ok) { showToast('⚠️ ' + adminErrMsg(r.data)); return; }
+    window.logSystemActivity(`Deleted staff record: ${staff.name} (${ic})`);
+    showToast(`"${staff.name}" berjaya dibuang dari sistem.`);
 };
 
 window.getServiceDurationText = function(dateStr) {
