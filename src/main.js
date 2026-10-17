@@ -4675,10 +4675,20 @@ async function resolveGoogleSession() {
     const qs = await getDocs(query(collection(db, 'registration_requests'),
       where('googleUid', '==', u.uid), where('status', 'in', ['pending', 'approving'])));
     pending = !qs.empty;
-  } catch (e) { console.warn('[AUTH] pending-registration check failed:', e.code || e.message); }
+  } catch (e) {
+    // A failed check is not "no pending request": never delete the user over it.
+    console.warn('[AUTH] pending-registration check failed:', e.code || e.message);
+    await signOut(auth).catch(() => {});
+    return { error: true };
+  }
   if (pending) { await signOut(auth); return { pending: true }; }
   try { await u.delete(); } catch (e) { await signOut(auth).catch(() => {}); }
   return { unlinked: true };
+}
+
+const GOOGLE_CHECK_FAILED_MSG = '⚠️ Tidak dapat menyemak status akaun. Sila semak sambungan internet dan cuba lagi.';
+function googleSessionMessage(r) {
+  return r.error ? GOOGLE_CHECK_FAILED_MSG : r.pending ? GOOGLE_PENDING_MSG : GOOGLE_UNLINKED_MSG;
 }
 
 async function backToAnonymousLogin(message) {
@@ -4696,6 +4706,7 @@ async function completeGoogleLogin(ic) {
   catch (e) {
     console.warn('[AUTH] Google completeLogin failed:', e.code || e.message);
     showToast('⚠️ Ralat memuatkan profil. Sila cuba lagi.');
+    user = null;
     await signOut(auth).catch(() => {});
   }
   if (!ok) await backToAnonymousLogin();
@@ -4716,7 +4727,7 @@ window.loginWithGoogle = async function() {
     return;
   }
   if (r.ic) { await completeGoogleLogin(r.ic); return; }
-  await backToAnonymousLogin(r.pending ? GOOGLE_PENDING_MSG : GOOGLE_UNLINKED_MSG);
+  await backToAnonymousLogin(googleSessionMessage(r));
 };
 
 // Pulihkan sesi selepas refresh menggunakan SATU getDoc.
@@ -4791,7 +4802,7 @@ console.log(`[SYSTEM] Version ${APP_VERSION}`);
       try { gs = await resolveGoogleSession(); }
       catch (e) { console.warn('[AUTH] resolveGoogleSession failed, using normal restore:', e.code || e.message); }
       if (gs && !gs.ic) {
-        await backToAnonymousLogin(gs.pending ? GOOGLE_PENDING_MSG : GOOGLE_UNLINKED_MSG);
+        await backToAnonymousLogin(googleSessionMessage(gs));
         return;
       }
       if (gs && redirect && redirect.intent === 'login') {
