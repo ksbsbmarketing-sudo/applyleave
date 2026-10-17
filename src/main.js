@@ -43,7 +43,7 @@ import {
   reauthenticateWithCredential,
 } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { signInWithGoogle, takeRedirectResult, googleErrorMessage } from './googleAuth.js';
+import { signInWithGoogle, takeRedirectResult, googleErrorMessage, googleIdentityOf } from './googleAuth.js';
 import { getAnalytics } from "firebase/analytics";
 import {
   getFirestore,
@@ -692,6 +692,7 @@ let branchDashboardMonth = 0; // 0 = all months, 1-12 = specific month for HOD/P
 let selectedLoginBranch = '';
 let selectedLoginStaffIC = '';
 let showRegisterModal = false;
+let googleRegistrant = null; // { uid, sub, email, displayName }
 let showFirstLoginWarning = false;
 const MUST_CHANGE_PWD_KEY = 'ksb_must_change_pwd';
 let firstLoginPwd = '';            // kata laluan lalai yang baru ditaip — memori sahaja, tidak pernah disimpan
@@ -2025,7 +2026,53 @@ window.openAddStaff = function() { showAddStaffModal = true; render(); };
 window.closeAddStaff = function() { showAddStaffModal = false; render(); };
 
 window.openRegisterModal = function() { showRegisterModal = true; render(); };
-window.closeRegisterModal = function() { showRegisterModal = false; render(); };
+async function openGoogleRegistration(gUser) {
+  const id = googleIdentityOf(gUser);
+  googleRegistrant = { uid: gUser.uid, sub: id ? id.sub : null, email: id ? id.email : gUser.email, displayName: (id && id.displayName) || gUser.displayName || '' };
+  showRegisterModal = true;
+  render();
+}
+
+// Like resolveGoogleSession but never deletes - the registrant is about to use this user.
+// Returns 'pending' | 'none' | 'error'. A query failure must NOT open the form: closing
+// it deletes the Firebase user, and a pending registrant must not be deleted on a network error.
+async function resolvePendingOnly(u) {
+  try {
+    const qs = await getDocs(query(collection(db, 'registration_requests'),
+      where('googleUid', '==', u.uid), where('status', 'in', ['pending', 'approving'])));
+    return qs.empty ? 'none' : 'pending';
+  } catch (e) { console.warn('[AUTH] resolvePendingOnly failed:', e.code || e.message); return 'error'; }
+}
+
+window.registerWithGoogle = async function() {
+  let gUser;
+  try { gUser = await signInWithGoogle(auth, 'register'); }
+  catch (e) { const m = googleErrorMessage(e.code); if (m) showToast('⚠️ ' + m); return; }
+  if (!gUser) return; // redirect in progress
+  const tok = await gUser.getIdTokenResult(true);
+  if (typeof tok.claims.ic === 'string') {
+    showToast('Akaun Google ini sudah dipautkan. Anda telah log masuk.');
+    await completeGoogleLogin(tok.claims.ic);
+    return;
+  }
+  const gs = await resolvePendingOnly(gUser);
+  if (gs === 'pending') { await signOut(auth); await backToAnonymousLogin(GOOGLE_PENDING_MSG); return; }
+  if (gs === 'error') { await signOut(auth); await backToAnonymousLogin(GOOGLE_CHECK_FAILED_MSG); return; }
+  await openGoogleRegistration(gUser);
+};
+
+window.closeRegisterModal = async function() {
+  showRegisterModal = false;
+  if (googleRegistrant) {
+    // Closed without submitting: delete the temporary Google user so this Gmail
+    // can still be linked or used to register later.
+    googleRegistrant = null;
+    try { await auth.currentUser?.delete(); } catch { await signOut(auth).catch(() => {}); }
+    await backToAnonymousLogin();
+    return;
+  }
+  render();
+};
 
 window.submitRegister = async function(event) {
   event.preventDefault();
@@ -2051,7 +2098,8 @@ window.submitRegister = async function(event) {
   }
 
   const reqId = `reg_${ic}_${Date.now()}`;
-  const reqData = { name, ic, branch, category, phone, status: 'pending', submittedAt: Date.now() };
+  const reqData = { name, ic, branch, category, phone, status: 'pending', submittedAt: Date.now(),
+    ...(googleRegistrant ? { googleUid: googleRegistrant.uid, googleSub: googleRegistrant.sub, googleEmail: googleRegistrant.email } : {}) };
 
   try {
     await setDoc(doc(db, 'registration_requests', reqId), reqData);
@@ -2064,7 +2112,10 @@ window.submitRegister = async function(event) {
     }
 
     showToast('✅ Permohonan anda telah dihantar!\n\nHR/Admin akan menyemak dan meluluskan akaun anda tidak lama lagi. Anda akan dihubungi melalui WhatsApp.');
-    window.closeRegisterModal();
+    const wasGoogle = !!googleRegistrant;
+    googleRegistrant = null;
+    showRegisterModal = false;
+    if (wasGoogle) { await signOut(auth); await backToAnonymousLogin(); } else { render(); }
   } catch (err) {
     console.error('submitRegister error:', err);
     showToast('Ralat menghantar permohonan. Sila cuba lagi.');
@@ -4798,6 +4849,16 @@ console.log(`[SYSTEM] Version ${APP_VERSION}`);
     if (auth.currentUser && !auth.currentUser.isAnonymous) {
       // Cached-token check only. On error (e.g. offline) fall through to the normal
       // restore path - never sign out or delete a user over a token/network error.
+      if (redirect && redirect.intent === 'register') {
+        const tok = await auth.currentUser.getIdTokenResult(true);
+        if (typeof tok.claims.ic === 'string') { await completeGoogleLogin(tok.claims.ic); return; }
+        const ps = await resolvePendingOnly(auth.currentUser);
+        if (ps === 'pending') { await signOut(auth); await backToAnonymousLogin(GOOGLE_PENDING_MSG); return; }
+        if (ps === 'error') { await signOut(auth); await backToAnonymousLogin(GOOGLE_CHECK_FAILED_MSG); return; }
+        await loadDirectory();
+        await openGoogleRegistration(auth.currentUser);
+        return;
+      }
       let gs = null;
       try { gs = await resolveGoogleSession(); }
       catch (e) { console.warn('[AUTH] resolveGoogleSession failed, using normal restore:', e.code || e.message); }
@@ -5242,10 +5303,16 @@ function renderLogin() {
             <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Permohonan akan disemak oleh HR/Admin</p>
           </div>
         </div>
+        ${googleRegistrant ? `
+          <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 0.75rem; padding: 0.7rem 0.9rem; margin-bottom: 1rem; font-size: 0.82rem;">
+            ✅ Akaun Google: <strong>${escapeHtml(googleRegistrant.email || '')}</strong><br>
+            <span style="color: var(--text-muted);">Selepas diluluskan, anda boleh log masuk dengan Google.</span>
+          </div>` : `
+          <button type="button" onclick="window.registerWithGoogle()" class="neu-btn" style="width:100%; margin-bottom:1rem; padding:0.75rem; font-weight:600;">Daftar dengan Google</button>`}
         <form onsubmit="window.submitRegister(event)">
           <div class="form-group">
             <label>Nama Penuh <span style="color:#ef4444;">*</span></label>
-            <input type="text" id="reg-name" class="neu-inset" placeholder="NAMA SEPERTI DALAM IC" required style="width: 100%; text-transform: uppercase;" oninput="this.value=this.value.toUpperCase()">
+            <input type="text" id="reg-name" class="neu-inset" placeholder="NAMA SEPERTI DALAM IC" value="${googleRegistrant ? escapeHtml((googleRegistrant.displayName || '').toUpperCase()) : ''}" required style="width: 100%; text-transform: uppercase;" oninput="this.value=this.value.toUpperCase()">
           </div>
           <div class="form-group">
             <label>No. Kad Pengenalan (IC) <span style="color:#ef4444;">*</span></label>
