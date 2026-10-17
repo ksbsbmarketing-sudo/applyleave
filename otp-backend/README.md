@@ -3,9 +3,11 @@
 A tiny, free (no-Blaze) backend for self-service password reset. It runs on
 **Vercel** and uses the Firebase **Admin SDK** + **Fonnte** WhatsApp.
 
-Two endpoints:
+Four endpoints:
 - `POST /api/request-otp` `{ ic }` → WhatsApps a 6-digit code to the staff's registered number.
 - `POST /api/confirm-otp` `{ ic, otp, newPassword }` → verifies the code and sets the new Firebase Auth password.
+- `POST /api/approve-registration` `{ docId, name }` — HR/Admin (Bearer ID token with `manageStaff`). Creates staff + login account, links Google if the registrant used "Daftar dengan Google".
+- `POST /api/unlink-google` `{ ic }` — HR/Admin. Removes Google sign-in from a staff account.
 
 Pure OTP logic lives in `lib/otp.js` and is covered by `lib/otp.test.js`
 (`npm test`). Everything else is thin I/O glue.
