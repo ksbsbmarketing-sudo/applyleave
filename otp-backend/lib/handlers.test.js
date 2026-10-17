@@ -53,6 +53,19 @@ test("unlink: pharma HR cannot unlink clinic staff", async () => {
   assert.equal(r.statusCode, 403);
 });
 
+test("unlink: only hr, admin and super_admin may unlink, even with manageStaff", async () => {
+  for (const role of ["hod_cawangan", "supervisor", "staff"]) {
+    const h = makeUnlinkHandler(() => ({
+      db: db({ "staff/X1": { role, branch: "Klinik A" }, "staff/S1": { role: "staff", branch: "Klinik A" } }),
+      auth: auth({ ic: "X1", manageStaff: true }),
+    }));
+    const r = res();
+    await h(post({ ic: "S1" }), r);
+    assert.equal(r.statusCode, 403, role);
+    assert.deepEqual(r.body, { error: "forbidden" });
+  }
+});
+
 test("unlink: unknown staff → 404", async () => {
   const h = makeUnlinkHandler(() => ({ db: db({ "staff/H1": { role: "hr", branch: "Klinik A" } }), auth: auth({ ic: "H1", manageStaff: true }) }));
   const r = res();

@@ -43,7 +43,7 @@ import {
   reauthenticateWithCredential,
 } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { signInWithGoogle, takeRedirectResult, googleErrorMessage, googleIdentityOf, linkGoogle, unlinkGoogle } from './googleAuth.js';
+import { signInWithGoogle, takeRedirectResult, googleErrorMessage, googleIdentityOf, linkGoogle } from './googleAuth.js';
 import { getAnalytics } from "firebase/analytics";
 import {
   getFirestore,
@@ -962,7 +962,7 @@ const HELP_FAQ = [
     a:'Pilih nama anda dari senarai, kemudian tekan <strong>"Lupa Kata Laluan?"</strong> → satu <strong>kod OTP</strong> akan dihantar ke <strong>WhatsApp</strong> anda. Masukkan kod itu dan tetapkan kata laluan baharu terus di skrin. Pastikan nombor telefon anda telah didaftarkan oleh HR/Admin.' },
   { id:'google-login', cat:'Akaun', keywords:['google','gmail','log masuk google','pautkan','daftar google'],
     q:'Log masuk dengan Google',
-    a:'Boleh. Log masuk dengan IC dan kata laluan dahulu, kemudian pergi ke <strong>Tetapan → Akaun Google → Pautkan akaun Google</strong>. Selepas itu tekan <strong>"Log masuk dengan Google"</strong> di skrin log masuk. Staf baharu boleh tekan <strong>"Daftar dengan Google"</strong> dalam borang pendaftaran.' },
+    a:'Boleh. Log masuk dengan IC dan kata laluan dahulu, kemudian pergi ke <strong>Tetapan → Akaun Google → Pautkan akaun Google</strong>. Selepas itu tekan <strong>"Log masuk dengan Google"</strong> di skrin log masuk. Staf baharu boleh tekan <strong>"Daftar dengan Google"</strong> dalam borang pendaftaran. Untuk buang pautan akaun Google, hubungi HR/Admin.' },
   { id:'update-phone', cat:'Akaun', keywords:['tukar telefon','profil','kemaskini','nombor telefon','tukar nombor'],
     q:'Tukar nombor telefon / kemas kini profil',
     a:'Buka <strong>Tetapan</strong> → anda boleh kemas kini sendiri <strong>Nama Penuh</strong>, alamat, nombor telefon, e-mel dan gambar profil. Nama akan ditukar kepada HURUF BESAR automatik. Cawangan, jawatan dan kelayakan cuti hanya boleh diubah oleh <strong>HR/Admin</strong>.' },
@@ -1892,19 +1892,9 @@ window.linkMyGoogle = async function() {
   render();
 };
 
-window.unlinkMyGoogle = async function() {
-  if (!auth.currentUser || !user) return;
-  if (!await showConfirm('Buang pautan akaun Google? Anda perlu log masuk dengan IC dan kata laluan selepas ini.')) return;
-  try {
-    await unlinkGoogle(auth.currentUser);
-    await updateDoc(doc(db, 'staff', user.ic), { googleEmail: null });
-    window.logSystemActivity('Unlinked Google account');
-    showToast('Pautan akaun Google telah dibuang.');
-  } catch (e) {
-    const m = googleErrorMessage(e.code || e.message); if (m) showToast('⚠️ ' + m);
-  }
-  render();
-};
+// Buang pautan Google: HR, Admin dan Super Admin sahaja (2026-10-17), melalui
+// window.hrUnlinkGoogle → otp-backend /api/unlink-google. Staf tiada butang sendiri.
+const GOOGLE_UNLINK_ROLES = ['hr', 'admin', 'super_admin'];
 
 window.hrUnlinkGoogle = async function(ic) {
   const s = staffList.find(x => x.ic === ic);
@@ -11604,8 +11594,8 @@ function renderView() {
             <div class="glass-card fade-in" style="padding: 2.5rem;">
                 <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--primary); margin-bottom: 1rem;">Akaun Google</h2>
                 ${g ? `
-                  <p style="margin-bottom: 1.25rem;">✅ Dipautkan: <strong>${escapeHtml(g.email || '')}</strong></p>
-                  <button class="neu-btn" onclick="window.unlinkMyGoogle()" style="width: 100%; padding: 0.9rem; color: #ef4444; font-weight: 600;">Buang pautan</button>
+                  <p style="margin-bottom: 0.75rem;">✅ Dipautkan: <strong>${escapeHtml(g.email || '')}</strong></p>
+                  <p style="color: var(--text-muted); font-size: 0.85rem;">Untuk buang pautan, sila hubungi HR/Admin.</p>
                 ` : `
                   <p style="color: var(--text-muted); margin-bottom: 1.25rem;">Pautkan akaun Google untuk log masuk tanpa kata laluan. Log masuk dengan IC dan kata laluan masih boleh digunakan.</p>
                   <button class="neu-btn" onclick="window.linkMyGoogle()" style="width: 100%; padding: 0.9rem; color: var(--primary); font-weight: 600;">Pautkan akaun Google</button>
@@ -11800,7 +11790,7 @@ function renderModal() {
                  ${staff.googleEmail ? `
                    <div style="display:flex; align-items:center; gap:0.5rem;">
                      <span style="flex:1;">🔗 ${escapeHtml(staff.googleEmail)}</span>
-                     <button type="button" class="neu-btn" onclick="window.hrUnlinkGoogle('${staff.ic}')" style="padding:0.4rem 0.8rem; color:#ef4444; font-size:0.75rem; font-weight:600;">Buang pautan</button>
+                     ${GOOGLE_UNLINK_ROLES.includes(user && user.role) ? `<button type="button" class="neu-btn" onclick="window.hrUnlinkGoogle('${staff.ic}')" style="padding:0.4rem 0.8rem; color:#ef4444; font-size:0.75rem; font-weight:600;">Buang pautan</button>` : ''}
                    </div>` : `<span style="color: var(--text-muted);">Belum dipautkan</span>`}
               </div>
           </div>

@@ -1,10 +1,15 @@
 // POST /api/unlink-google  { ic }   (Authorization: Bearer <idToken>)
 // HR/Admin removes the Google sign-in from a staff member's account, e.g. after a
 // lost phone or a Gmail linked by mistake. Company-scoped like the Firestore rules.
+// Only HR, Admin and Super Admin may do this (2026-10-17) — checked by role as well
+// as the manageStaff claim, so granting manageStaff to another role in the RBAC
+// matrix does not also grant unlinking.
 import { db as getDb, auth as getAuth } from "../lib/firebase.js";
 import { applyCors, readBody } from "../lib/cors.js";
 import { requireManageStaff, companyOK } from "../lib/authz.js";
 import { unlinkGoogle } from "../lib/unlink.js";
+
+const UNLINK_ROLES = ["hr", "admin", "super_admin"];
 
 export function makeUnlinkHandler(deps) {
   return async function handler(req, res) {
@@ -14,8 +19,9 @@ export function makeUnlinkHandler(deps) {
       const { db, auth } = deps();
       const authz = await requireManageStaff(req, { db, auth });
       if (!authz.ok) return res.status(authz.status).json({ error: authz.error });
+      if (!UNLINK_ROLES.includes(authz.caller.role)) return res.status(403).json({ error: "forbidden" });
 
-      const ic = String(readBody(req).ic ?? "").replace(/[^a-zA-Z0-9]/g, "");
+      const ic =String(readBody(req).ic ?? "").replace(/[^a-zA-Z0-9]/g, "");
       if (!ic) return res.status(400).json({ error: "missing_fields" });
 
       const target = await db.doc(`staff/${ic}`).get();
