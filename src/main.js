@@ -483,6 +483,7 @@ const ADMIN_ERR_MS = {
   ic_exists: 'No. IC ini sudah wujud dalam sistem. Permohonan ditolak.',
   missing_fields: 'Maklumat tidak lengkap.',
   server_error: 'Ralat pelayan. Sila cuba lagi — tindakan ini selamat diulang.',
+  invalid_request: 'Maklumat permohonan tidak sah. Sila tolak dan minta staf mendaftar semula.',
 };
 const adminErrMsg = (data) => ADMIN_ERR_MS[data && data.error] || 'Ralat tidak dijangka. Sila cuba lagi.';
 
@@ -1886,7 +1887,7 @@ window.linkMyGoogle = async function() {
     window.logSystemActivity('Linked Google account');
     showToast('✅ Akaun Google berjaya dipautkan. Anda kini boleh log masuk dengan Google.');
   } catch (e) {
-    const m = googleErrorMessage(e.code); if (m) showToast('⚠️ ' + m);
+    const m = googleErrorMessage(e.code || e.message); if (m) showToast('⚠️ ' + m);
   }
   render();
 };
@@ -1900,7 +1901,7 @@ window.unlinkMyGoogle = async function() {
     window.logSystemActivity('Unlinked Google account');
     showToast('Pautan akaun Google telah dibuang.');
   } catch (e) {
-    const m = googleErrorMessage(e.code); if (m) showToast('⚠️ ' + m);
+    const m = googleErrorMessage(e.code || e.message); if (m) showToast('⚠️ ' + m);
   }
   render();
 };
@@ -2117,17 +2118,26 @@ async function resolvePendingOnly(u) {
 window.registerWithGoogle = async function() {
   let gUser;
   try { gUser = await signInWithGoogle(auth, 'register'); }
-  catch (e) { const m = googleErrorMessage(e.code); if (m) showToast('⚠️ ' + m); return; }
+  catch (e) { const m = googleErrorMessage(e.code || e.message); if (m) showToast('⚠️ ' + m); return; }
   if (!gUser) return; // redirect in progress
-  const tok = await gUser.getIdTokenResult(true);
+  let tok;
+  try { tok = await gUser.getIdTokenResult(); }
+  catch (e) {
+    console.warn('[AUTH] register token check failed:', e.code || e.message);
+    showRegisterModal = false; googleRegistrant = null;
+    await signOut(auth).catch(() => {});
+    await backToAnonymousLogin(GOOGLE_CHECK_FAILED_MSG);
+    return;
+  }
   if (typeof tok.claims.ic === 'string') {
+    showRegisterModal = false; googleRegistrant = null;
     showToast('Akaun Google ini sudah dipautkan. Anda telah log masuk.');
     await completeGoogleLogin(tok.claims.ic);
     return;
   }
   const gs = await resolvePendingOnly(gUser);
-  if (gs === 'pending') { await signOut(auth); await backToAnonymousLogin(GOOGLE_PENDING_MSG); return; }
-  if (gs === 'error') { await signOut(auth); await backToAnonymousLogin(GOOGLE_CHECK_FAILED_MSG); return; }
+  if (gs === 'pending') { showRegisterModal = false; googleRegistrant = null; await signOut(auth); await backToAnonymousLogin(GOOGLE_PENDING_MSG); return; }
+  if (gs === 'error') { showRegisterModal = false; googleRegistrant = null; await signOut(auth); await backToAnonymousLogin(GOOGLE_CHECK_FAILED_MSG); return; }
   await openGoogleRegistration(gUser);
 };
 
@@ -2135,9 +2145,14 @@ window.closeRegisterModal = async function() {
   showRegisterModal = false;
   if (googleRegistrant) {
     // Closed without submitting: delete the temporary Google user so this Gmail
-    // can still be linked or used to register later.
+    // can still be linked or used to register later. Never delete a real account.
     googleRegistrant = null;
-    try { await auth.currentUser?.delete(); } catch { await signOut(auth).catch(() => {}); }
+    const u = auth.currentUser;
+    if (isThrowawayGoogleUser(u)) {
+      try { await u.delete(); } catch { await signOut(auth).catch(() => {}); }
+    } else {
+      await signOut(auth).catch(() => {});
+    }
     await backToAnonymousLogin();
     return;
   }
@@ -2161,7 +2176,7 @@ window.submitRegister = async function(event) {
     showToast('No. IC ini sudah berdaftar dalam sistem. Sila log masuk atau hubungi HR/Admin.');
     return;
   }
-  const existing = registrationRequests.find(r => r.ic === ic && r.status === 'pending');
+  const existing = registrationRequests.find(r => r.ic === ic && ['pending', 'approving'].includes(r.status));
   if (existing) {
     showToast('Permohonan anda sedang dalam semakan. Sila tunggu kelulusan daripada HR/Admin.');
     return;
@@ -2192,11 +2207,16 @@ window.submitRegister = async function(event) {
   }
 };
 
+const approvingRegs = new Set(); // docIds with a Lulus request in flight
 window.approveRegistration = async function(docId) {
+  if (approvingRegs.has(docId)) return;
   const req = registrationRequests.find(r => r.docId === docId);
   if (!req) return;
   const name = window.formatPersonName(req.name);
-  const r = await authedPost('/api/approve-registration', { docId, name });
+  approvingRegs.add(docId);
+  let r;
+  try { r = await authedPost('/api/approve-registration', { docId, name }); }
+  finally { approvingRegs.delete(docId); }
   if (!r.ok) { showToast('⚠️ ' + adminErrMsg(r.data)); return; }
   window.logSystemActivity(`Approved registration: ${req.name} (${req.ic})`);
   const googleLine = r.data.googleEmail ? `\nAnda juga boleh log masuk dengan Google (${r.data.googleEmail}).` : '';
@@ -4790,8 +4810,23 @@ async function resolveGoogleSession() {
     return { error: true };
   }
   if (pending) { await signOut(auth); return { pending: true }; }
-  try { await u.delete(); } catch (e) { await signOut(auth).catch(() => {}); }
+  if (isThrowawayGoogleUser(u)) {
+    try { await u.delete(); } catch (e) { await signOut(auth).catch(() => {}); }
+  } else {
+    // e.g. a password account whose cached token has no ic claim: never delete it.
+    await signOut(auth).catch(() => {});
+  }
   return { unlinked: true };
+}
+
+// A Google-only temporary Firebase user (no password provider, not an
+// <ic>@ksb-leave.local account) - the only kind the client may delete.
+function isThrowawayGoogleUser(u) {
+  if (!u) return false;
+  const providers = (u.providerData || []).map(p => p.providerId);
+  return providers.includes('google.com')
+    && !providers.includes('password')
+    && !(u.email || '').endsWith('@ksb-leave.local');
 }
 
 const GOOGLE_CHECK_FAILED_MSG = '⚠️ Tidak dapat menyemak status akaun. Sila semak sambungan internet dan cuba lagi.';
@@ -4823,7 +4858,7 @@ async function completeGoogleLogin(ic) {
 window.loginWithGoogle = async function() {
   let gUser;
   try { gUser = await signInWithGoogle(auth, 'login'); }
-  catch (e) { const m = googleErrorMessage(e.code); if (m) showToast('⚠️ ' + m); return; }
+  catch (e) { const m = googleErrorMessage(e.code || e.message); if (m) showToast('⚠️ ' + m); return; }
   if (!gUser) return; // redirect in progress
   let r;
   try { r = await resolveGoogleSession(); }
@@ -4901,21 +4936,29 @@ console.log(`[SYSTEM] Version ${APP_VERSION}`);
     // Returning from a signInWithRedirect fallback (popup blocked). Call exactly once.
     let redirect = null;
     try { redirect = await takeRedirectResult(auth); }
-    catch (e) { const m = googleErrorMessage(e.code); if (m) showToast('⚠️ ' + m); }
+    catch (e) { const m = googleErrorMessage(e.code || e.message); if (m) showToast('⚠️ ' + m); }
 
     if (auth.currentUser && !auth.currentUser.isAnonymous) {
-      // Cached-token check only. On error (e.g. offline) fall through to the normal
-      // restore path - never sign out or delete a user over a token/network error.
       if (redirect && redirect.intent === 'register') {
-        const tok = await auth.currentUser.getIdTokenResult(true);
-        if (typeof tok.claims.ic === 'string') { await completeGoogleLogin(tok.claims.ic); return; }
+        let tok;
+        try { tok = await auth.currentUser.getIdTokenResult(); }
+        catch (e) {
+          console.warn('[AUTH] register token check failed:', e.code || e.message);
+          showRegisterModal = false; googleRegistrant = null;
+          await signOut(auth).catch(() => {});
+          await backToAnonymousLogin(GOOGLE_CHECK_FAILED_MSG);
+          return;
+        }
+        if (typeof tok.claims.ic === 'string') { showRegisterModal = false; googleRegistrant = null; await completeGoogleLogin(tok.claims.ic); return; }
         const ps = await resolvePendingOnly(auth.currentUser);
-        if (ps === 'pending') { await signOut(auth); await backToAnonymousLogin(GOOGLE_PENDING_MSG); return; }
-        if (ps === 'error') { await signOut(auth); await backToAnonymousLogin(GOOGLE_CHECK_FAILED_MSG); return; }
+        if (ps === 'pending') { showRegisterModal = false; googleRegistrant = null; await signOut(auth); await backToAnonymousLogin(GOOGLE_PENDING_MSG); return; }
+        if (ps === 'error') { showRegisterModal = false; googleRegistrant = null; await signOut(auth); await backToAnonymousLogin(GOOGLE_CHECK_FAILED_MSG); return; }
         await loadDirectory();
         await openGoogleRegistration(auth.currentUser);
         return;
       }
+      // Cached-token check only. On error (e.g. offline) fall through to the normal
+      // restore path - never sign out or delete a user over a token/network error.
       let gs = null;
       try { gs = await resolveGoogleSession(); }
       catch (e) { console.warn('[AUTH] resolveGoogleSession failed, using normal restore:', e.code || e.message); }
@@ -8535,7 +8578,7 @@ function renderView() {
           if (isHODRole) return leaveRecords.filter(r => window.canManageRequest(user, r) && ['PENDING','TL APPROVED'].includes(r.status)).length;
           return 0;
         })() : 0;
-        const pendingRegs = window.canSeeRegRequests(user) ? window.regRequestsInScope(registrationRequests).filter(r => r.status === 'pending').length : 0;
+        const pendingRegs = window.canSeeRegRequests(user) ? window.regRequestsInScope(registrationRequests).filter(r => ['pending', 'approving'].includes(r.status)).length : 0;
 
         // which main groups are visible for this role
         const showApprovals = userPerms.manage_pending;
@@ -8576,7 +8619,7 @@ function renderView() {
             ${userPerms.manage_staff ? `<button class="neu-tab ${managementTab==='staff'?'active':''}" onclick="window.setManageTab('staff')" style="border-radius:8px;">Staff</button>` : ''}
             ${userPerms.manage_branches ? `<button class="neu-tab ${managementTab==='branches'?'active':''}" onclick="window.setManageTab('branches')" style="border-radius:8px;">Cawangan</button>` : ''}
             ${userPerms.manage_roles_categories ? `<button class="neu-tab ${managementTab==='roles_categories'?'active':''}" onclick="window.setManageTab('roles_categories')" style="border-radius:8px;">Peranan & Kategori</button>` : ''}
-            ${window.canSeeRegRequests(user) ? (() => { const pr=window.regRequestsInScope(registrationRequests).filter(r=>r.status==='pending').length; return `<button class="neu-tab ${managementTab==='reg_requests'?'active':''}" onclick="window.setManageTab('reg_requests')" style="border-radius:8px;">Daftar Baharu${pr>0?` <span style="background:#ef4444;color:#fff;border-radius:999px;padding:0 5px;font-size:0.65rem;font-weight:800;">${pr}</span>`:''}</button>`; })() : ''}
+            ${window.canSeeRegRequests(user) ? (() => { const pr=window.regRequestsInScope(registrationRequests).filter(r=>['pending','approving'].includes(r.status)).length; return `<button class="neu-tab ${managementTab==='reg_requests'?'active':''}" onclick="window.setManageTab('reg_requests')" style="border-radius:8px;">Daftar Baharu${pr>0?` <span style="background:#ef4444;color:#fff;border-radius:999px;padding:0 5px;font-size:0.65rem;font-weight:800;">${pr}</span>`:''}</button>`; })() : ''}
           ` : ''}
           ${activeGroup === 'reports' ? `
             ${userPerms.manage_reports ? `<button class="neu-tab ${managementTab==='hr_reports'?'active':''}" onclick="window.setManageTab('hr_reports')" style="border-radius:8px;">HR Reports</button>` : ''}
@@ -9020,8 +9063,8 @@ function renderView() {
           </div>
 
           ${(() => {
-            const pending = window.regRequestsInScope(registrationRequests).filter(r => r.status === 'pending');
-            const done = window.regRequestsInScope(registrationRequests).filter(r => r.status !== 'pending');
+            const pending = window.regRequestsInScope(registrationRequests).filter(r => ['pending', 'approving'].includes(r.status));
+            const done = window.regRequestsInScope(registrationRequests).filter(r => !['pending', 'approving'].includes(r.status));
             return `
               ${pending.length === 0 ? emptyState({ icon: 'users', title: 'Tiada pendaftaran baharu', text: 'Tiada permohonan pendaftaran staf yang menunggu kelulusan.' }) : `
                 <div style="display: grid; gap: 1rem; margin-bottom: 2rem;">
@@ -9035,6 +9078,7 @@ function renderView() {
                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem;">IC: ${req.ic} &nbsp;|&nbsp; ${req.branch}</div>
                             <div style="font-size: 0.78rem; color: var(--text-muted);">${req.category} &nbsp;|&nbsp; 📱 ${req.phone}</div>
                             <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem;">Dihantar: ${req.submittedAt ? new Date(req.submittedAt).toLocaleString('ms-MY') : '-'}</div>
+                            ${req.status === 'approving' ? `<div style="font-size: 0.7rem; color: #f59e0b; font-weight: 600; margin-top: 0.25rem;">Sedang diproses — tekan Lulus untuk cuba semula</div>` : ''}
                           </div>
                         </div>
                         <div style="display: flex; gap: 0.5rem; flex-shrink: 0; margin-top: 0.25rem;">
