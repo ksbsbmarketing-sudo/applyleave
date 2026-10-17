@@ -34,6 +34,15 @@ test("approve: missing docId → 400; plain staff → 403", async () => {
   const r2 = res(); await staff(post({ docId: "r1" }), r2); assert.equal(r2.statusCode, 403);
 });
 
+test("approve: malformed docId → 400 missing_fields", async () => {
+  const hr = makeApproveHandler(() => ({ db: db({ "staff/H1": { role: "hr", branch: "Klinik A" } }), auth: auth({ ic: "H1", manageStaff: true }) }));
+  for (const docId of ["a/b", "../x", "r 1", "r1.json"]) {
+    const r = res(); await hr(post({ docId }), r);
+    assert.equal(r.statusCode, 400);
+    assert.deepEqual(r.body, { error: "missing_fields" });
+  }
+});
+
 test("unlink: pharma HR cannot unlink clinic staff", async () => {
   const h = makeUnlinkHandler(() => ({
     db: db({ "staff/H1": { role: "hr", branch: PHARMA }, "staff/S1": { role: "staff", branch: "Klinik A" } }),

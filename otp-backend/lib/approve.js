@@ -10,6 +10,20 @@ const AUTH_EMAIL_DOMAIN = "ksb-leave.local";
 export const emailForIC = (ic) => `${String(ic).replace(/[^a-zA-Z0-9]/g, "")}@${AUTH_EMAIL_DOMAIN}`;
 
 const isNotFound = (e) => e && e.code === "auth/user-not-found";
+const IC_RE = /^[A-Za-z0-9]{6,20}$/;
+const nonEmptyString = (v) => typeof v === "string" && v.trim() !== "";
+
+// Only a Google-only temporary user (no IC claim, no password provider, not an
+// <ic>@ksb-leave.local account) may be treated as the registrant's identity or
+// deleted. Anything else is a real staff account and must never be touched.
+export function isThrowawayGoogleUser(u) {
+  if (!u) return false;
+  const providers = (u.providerData || []).map((p) => p.providerId);
+  return providers.includes("google.com")
+    && !providers.includes("password")
+    && !(u.customClaims && u.customClaims.ic)
+    && !String(u.email || "").endsWith(`@${AUTH_EMAIL_DOMAIN}`);
+}
 
 export async function approveRegistration({ db, auth, docId, name, now = Date.now() }) {
   const reqRef = db.doc(`registration_requests/${docId}`);
@@ -19,6 +33,9 @@ export async function approveRegistration({ db, auth, docId, name, now = Date.no
   if (!["pending", "approving"].includes(r.status)) return { ok: false, status: 409, error: "not_pending" };
 
   const ic = String(r.ic || "").trim();
+  if (!IC_RE.test(ic) || !nonEmptyString(r.branch) || !nonEmptyString(r.category)) {
+    return { ok: false, status: 400, error: "invalid_request" };
+  }
   const staffName = String(name || r.name || "").trim();
   const staffRef = db.doc(`staff/${ic}`);
   const staffSnap = await staffRef.get();
@@ -38,7 +55,8 @@ export async function approveRegistration({ db, auth, docId, name, now = Date.no
   } else if (r.googleUid) {
     try {
       const tu = await auth.getUser(r.googleUid);
-      const p = (tu.providerData || []).find((x) => x.providerId === "google.com");
+      // A provisioned account is not a registrant's temp user: no Google identity.
+      const p = isThrowawayGoogleUser(tu) ? tu.providerData.find((x) => x.providerId === "google.com") : null;
       if (p) {
         verified = { sub: p.uid, email: p.email || null };
         await reqRef.update({ verifiedGoogleSub: verified.sub, verifiedGoogleEmail: verified.email });
@@ -82,7 +100,10 @@ export async function approveRegistration({ db, auth, docId, name, now = Date.no
       // A Google identity can belong to one Firebase user only: remove the
       // registrant's temporary user before linking it to the IC account.
       if (r.googleUid && r.googleUid !== user.uid) {
-        try { await auth.deleteUser(r.googleUid); } catch (e) { if (!isNotFound(e)) throw e; }
+        try {
+          const tu = await auth.getUser(r.googleUid);
+          if (isThrowawayGoogleUser(tu)) await auth.deleteUser(r.googleUid);
+        } catch (e) { if (!isNotFound(e)) throw e; }
       }
       await auth.updateUser(user.uid, {
         providerToLink: { providerId: "google.com", uid: verified.sub, email: verified.email, displayName: staffName },

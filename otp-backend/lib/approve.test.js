@@ -95,11 +95,54 @@ test("googleUid set but temp user gone and nothing verified → plain registrati
   assert.equal(db.docs["staff/900101015555"].googleEmail, undefined);
 });
 
-test("short IC is padded to a 6-character initial password", async () => {
-  const db = fakeDb({ ...PERMS, "registration_requests/r1": { ...REQ, ic: "A12" } });
-  const auth = fakeAuth();
-  await approveRegistration({ db, auth, docId: "r1", name: "Ali", now: NOW });
-  assert.equal((await auth.getUserByEmail(emailForIC("A12"))).password, "A12000");
+test("googleUid pointing at a provisioned IC user → plain registration; that user is not deleted", async () => {
+  const db = fakeDb({ ...PERMS, "registration_requests/r1": { ...REQ, googleUid: "P1" } });
+  const auth = fakeAuth({ P1: { uid: "P1", email: "880202025555@ksb-leave.local", customClaims: { ic: "880202025555" },
+    providerData: [{ providerId: "password" }, { providerId: "google.com", uid: "777", email: "other@gmail.com" }] } });
+  const res = await approveRegistration({ db, auth, docId: "r1", name: "Ali Bin Abu", now: NOW });
+  assert.deepEqual(res, { ok: true, ic: "900101015555", googleEmail: null });
+  assert.ok(auth.byUid.P1, "provisioned user must not be deleted");
+  assert.equal(auth.byUid.P1.providerData.length, 2);
+  const u = await auth.getUserByEmail(emailForIC("900101015555"));
+  assert.equal(u.providerData.some((p) => p.providerId === "google.com"), false);
+  assert.equal(db.docs["staff/900101015555"].googleEmail, undefined);
+  assert.equal(db.docs["registration_requests/r1"].verifiedGoogleSub, undefined);
+  assert.equal(db.docs["registration_requests/r1"].status, "approved");
+});
+
+test("googleUid pointing at an ic@ksb-leave.local user without claims → not treated as a Google registrant", async () => {
+  const db = fakeDb({ ...PERMS, "registration_requests/r1": { ...REQ, googleUid: "P2" } });
+  const auth = fakeAuth({ P2: { uid: "P2", email: "880202025555@ksb-leave.local", providerData: [{ providerId: "google.com", uid: "777", email: "other@gmail.com" }] } });
+  const res = await approveRegistration({ db, auth, docId: "r1", name: "Ali", now: NOW });
+  assert.equal(res.googleEmail, null);
+  assert.ok(auth.byUid.P2);
+});
+
+test("delete step re-checks: a googleUid that is now a provisioned user is never deleted", async () => {
+  const db = fakeDb({ ...PERMS, "registration_requests/r1": { ...REQ, status: "approving", googleUid: "P1", verifiedGoogleSub: "1234567890", verifiedGoogleEmail: "ali@gmail.com" } });
+  const auth = fakeAuth({ P1: { uid: "P1", email: "880202025555@ksb-leave.local", customClaims: { ic: "880202025555" }, providerData: [{ providerId: "password" }] } });
+  const res = await approveRegistration({ db, auth, docId: "r1", name: "Ali", now: NOW });
+  assert.equal(res.ok, true);
+  assert.ok(auth.byUid.P1, "provisioned user must not be deleted");
+});
+
+test("invalid ic in the request → 400 invalid_request before any write", async () => {
+  for (const ic of ["A12", "90-0101-01-5555", "", "x".repeat(21)]) {
+    const db = fakeDb({ ...PERMS, "registration_requests/r1": { ...REQ, ic } });
+    const res = await approveRegistration({ db, auth: fakeAuth(), docId: "r1", name: "x", now: NOW });
+    assert.deepEqual(res, { ok: false, status: 400, error: "invalid_request" });
+    assert.equal(Object.keys(db.docs).some((k) => k.startsWith("staff/") || k.startsWith("directory/")), false);
+    assert.equal(db.docs["registration_requests/r1"].status, "pending");
+  }
+});
+
+test("missing branch or category → 400 invalid_request", async () => {
+  for (const patch of [{ branch: "" }, { category: 5 }, { branch: undefined }]) {
+    const db = fakeDb({ ...PERMS, "registration_requests/r1": { ...REQ, ...patch } });
+    const res = await approveRegistration({ db, auth: fakeAuth(), docId: "r1", name: "x", now: NOW });
+    assert.deepEqual(res, { ok: false, status: 400, error: "invalid_request" });
+    assert.equal(db.docs["staff/900101015555"], undefined);
+  }
 });
 
 test("missing request → 404; already approved → 409", async () => {

@@ -18,7 +18,7 @@ export function makeApproveHandler(deps) {
 
       const body = readBody(req);
       const docId = String(body.docId ?? "").trim();
-      if (!docId) return res.status(400).json({ error: "missing_fields" });
+      if (!/^[A-Za-z0-9_-]+$/.test(docId)) return res.status(400).json({ error: "missing_fields" });
 
       const reqSnap = await db.doc(`registration_requests/${docId}`).get();
       if (!reqSnap.exists) return res.status(404).json({ error: "not_found" });
