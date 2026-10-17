@@ -124,7 +124,7 @@ The bootstrap IIFE treats any non-anonymous user as a real session. It now first
 **Retry:** every step is idempotent (get-or-create user, `set` docs, delete-if-exists, link skipped if the IC user already has `google.com`). A request stuck in `approving` can be approved again; the "IC already exists" check is skipped when the existing `staff/{ic}` was created by this same request (`staff.registrationDocId == docId`).
 
 ### E. Unlink
-- **Self:** Tetapan → `unlink(auth.currentUser, 'google.com')` → `updateDoc(staff/{ic}, { googleEmail: deleteField() })`. Allowed only if the account still has the password provider (always true under Cara 1).
+- **Self:** Tetapan → `unlink(auth.currentUser, 'google.com')` → `updateDoc(staff/{ic}, { googleEmail: null })`. Allowed only if the account still has the password provider (always true under Cara 1).
 - **HR/Admin:** `POST /api/unlink-google { ic }` → `requireCaller` + `manageStaff` + `assertManageStaffFor(caller, target.branch)` → `updateUser(uid, { providersToUnlink: ['google.com'] })` → clear `staff/{ic}.googleEmail`.
 
 ## Error handling
