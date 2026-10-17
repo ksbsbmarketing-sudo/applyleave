@@ -1,7 +1,7 @@
 # Log masuk dengan Google — Google sign-in alongside IC + password
 
 **Date:** 2026-10-17
-**Status:** design approved, awaiting spec review
+**Status:** implemented (branch feat/google-sign-in), awaiting rollout
 
 ## Problem
 
