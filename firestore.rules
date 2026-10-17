@@ -83,9 +83,11 @@ service cloud.firestore {
         && resource.data.get('googleUid', null) == request.auth.uid;
       // Created pre-login (anonymous or Google). A Google request may only carry
       // the caller's own uid, so nobody can attach someone else's Google identity.
+      // verifiedGoogle* are written only by otp-backend approve-registration (Admin SDK).
       allow create: if request.auth != null
         && ( !('googleUid' in request.resource.data)
-             || request.resource.data.googleUid == request.auth.uid );
+             || request.resource.data.googleUid == request.auth.uid )
+        && !request.resource.data.keys().hasAny(['verifiedGoogleSub', 'verifiedGoogleEmail']);
     }
 
     // Bacaan staf (v2.5.22): dulu SEMUA staf klinik boleh membaca SETIAP dokumen

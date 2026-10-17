@@ -590,6 +590,14 @@ test("registration with googleUid must match the caller", async () => {
   await assertSucceeds(setDoc(doc(anonDb, "registration_requests", "r3"), base));
 });
 
+test("registrant cannot pre-write the server-only verified Google fields", async () => {
+  const db = googleDb("G1");
+  const base = { name: "BARU", ic: "N1", branch: "Klinik A", category: "Operation Staff", phone: "60100000001", status: "pending", submittedAt: 1, googleUid: "G1" };
+  await assertFails(setDoc(doc(db, "registration_requests", "v1"), { ...base, verifiedGoogleSub: "999" }));
+  await assertFails(setDoc(doc(db, "registration_requests", "v2"), { ...base, verifiedGoogleEmail: "victim@gmail.com" }));
+  await assertSucceeds(setDoc(doc(db, "registration_requests", "v3"), base));
+});
+
 test("google registrant can list only own requests", async () => {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(ctx.firestore(), "registration_requests", "mine"), { ic: "N1", branch: "Klinik A", status: "pending", googleUid: "G1" });
