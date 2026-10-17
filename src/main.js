@@ -43,7 +43,7 @@ import {
   reauthenticateWithCredential,
 } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { signInWithGoogle, takeRedirectResult, googleErrorMessage, googleIdentityOf } from './googleAuth.js';
+import { signInWithGoogle, takeRedirectResult, googleErrorMessage, googleIdentityOf, linkGoogle, unlinkGoogle } from './googleAuth.js';
 import { getAnalytics } from "firebase/analytics";
 import {
   getFirestore,
@@ -1842,6 +1842,34 @@ window.changePassword = async function(event) {
       showToast('Ralat menukar kata laluan. Sila cuba lagi.');
     }
   }
+};
+
+window.linkMyGoogle = async function() {
+  if (!auth.currentUser || auth.currentUser.isAnonymous || !user) { showToast('Sesi tidak sah. Sila log masuk semula.'); return; }
+  try {
+    const u = await linkGoogle(auth.currentUser);
+    const id = googleIdentityOf(u);
+    await updateDoc(doc(db, 'staff', user.ic), { googleEmail: id ? id.email : null });
+    window.logSystemActivity('Linked Google account');
+    showToast('✅ Akaun Google berjaya dipautkan. Anda kini boleh log masuk dengan Google.');
+  } catch (e) {
+    const m = googleErrorMessage(e.code); if (m) showToast('⚠️ ' + m);
+  }
+  render();
+};
+
+window.unlinkMyGoogle = async function() {
+  if (!auth.currentUser || !user) return;
+  if (!await showConfirm('Buang pautan akaun Google? Anda perlu log masuk dengan IC dan kata laluan selepas ini.')) return;
+  try {
+    await unlinkGoogle(auth.currentUser);
+    await updateDoc(doc(db, 'staff', user.ic), { googleEmail: null });
+    window.logSystemActivity('Unlinked Google account');
+    showToast('Pautan akaun Google telah dibuang.');
+  } catch (e) {
+    const m = googleErrorMessage(e.code); if (m) showToast('⚠️ ' + m);
+  }
+  render();
 };
 
 window.adminSetPassword = async function(ic, newPassword) {
@@ -11495,6 +11523,21 @@ function renderView() {
                     </button>
                 </form>
             </div>
+
+            ${(() => {
+              const g = googleIdentityOf(auth.currentUser);
+              return `
+            <div class="glass-card fade-in" style="padding: 2.5rem;">
+                <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--primary); margin-bottom: 1rem;">Akaun Google</h2>
+                ${g ? `
+                  <p style="margin-bottom: 1.25rem;">✅ Dipautkan: <strong>${escapeHtml(g.email || '')}</strong></p>
+                  <button class="neu-btn" onclick="window.unlinkMyGoogle()" style="width: 100%; padding: 0.9rem; color: #ef4444; font-weight: 600;">Buang pautan</button>
+                ` : `
+                  <p style="color: var(--text-muted); margin-bottom: 1.25rem;">Pautkan akaun Google untuk log masuk tanpa kata laluan. Log masuk dengan IC dan kata laluan masih boleh digunakan.</p>
+                  <button class="neu-btn" onclick="window.linkMyGoogle()" style="width: 100%; padding: 0.9rem; color: var(--primary); font-weight: 600;">Pautkan akaun Google</button>
+                `}
+            </div>`;
+            })()}
         </section>
       `;
 
