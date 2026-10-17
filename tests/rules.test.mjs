@@ -590,6 +590,17 @@ test("registration with googleUid must match the caller", async () => {
   await assertSucceeds(setDoc(doc(anonDb, "registration_requests", "r3"), base));
 });
 
+test("a new registration request must start as pending", async () => {
+  const base = { name: "BARU", ic: "N1", branch: "Klinik A", category: "Operation Staff", phone: "60100000001", submittedAt: 1 };
+  const anonDb = testEnv.authenticatedContext("anon1", anonAuth()).firestore();
+  await assertFails(setDoc(doc(anonDb, "registration_requests", "s1"), { ...base, status: "approved" }));
+  await assertFails(setDoc(doc(anonDb, "registration_requests", "s2"), base));
+  await assertSucceeds(setDoc(doc(anonDb, "registration_requests", "s3"), { ...base, status: "pending" }));
+  const db = googleDb("G1");
+  await assertFails(setDoc(doc(db, "registration_requests", "s4"), { ...base, googleUid: "G1", status: "approving" }));
+  await assertSucceeds(setDoc(doc(db, "registration_requests", "s5"), { ...base, googleUid: "G1", status: "pending" }));
+});
+
 test("registrant cannot pre-write the server-only verified Google fields", async () => {
   const db = googleDb("G1");
   const base = { name: "BARU", ic: "N1", branch: "Klinik A", category: "Operation Staff", phone: "60100000001", status: "pending", submittedAt: 1, googleUid: "G1" };

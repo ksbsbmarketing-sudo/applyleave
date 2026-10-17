@@ -87,7 +87,8 @@ service cloud.firestore {
       allow create: if request.auth != null
         && ( !('googleUid' in request.resource.data)
              || request.resource.data.googleUid == request.auth.uid )
-        && !request.resource.data.keys().hasAny(['verifiedGoogleSub', 'verifiedGoogleEmail']);
+        && !request.resource.data.keys().hasAny(['verifiedGoogleSub', 'verifiedGoogleEmail'])
+        && request.resource.data.status == 'pending';
     }
 
     // Bacaan staf (v2.5.22): dulu SEMUA staf klinik boleh membaca SETIAP dokumen
