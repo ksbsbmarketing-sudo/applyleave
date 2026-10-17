@@ -4614,6 +4614,48 @@ async function initData() {
   });
 }
 
+// Shared by the IC + password form and "Log masuk dengan Google": everything that
+// happens once Firebase Auth has a real session for staff `ic`.
+async function completeLogin(ic, { viaGoogle = false, pwd = '' } = {}) {
+  // Load the staff profile for the now-authenticated user.
+  const snap = await getDoc(doc(db, 'staff', ic));
+  if (!snap.exists()) { showToast('Profil staf tidak dijumpai. Sila hubungi HR/Admin.'); await signOut(auth); return false; }
+  // HR menyahaktif staf dengan `inactive` pada dokumen staf, tetapi akaun Auth
+  // hanya dimatikan bila provision-one.js dijalankan (Spark: tiada onStaffWrite).
+  // Tanpa semakan ini staf yang sudah dinyahaktif masih boleh log masuk.
+  if (snap.data().inactive) { showToast('⚠️ Akaun anda tidak aktif. Sila hubungi HR/Admin.'); await signOut(auth); return false; }
+  user = snap.data();
+  initData(); // subscribe to live data now that we have a real (non-anonymous) session
+
+  showFirstLoginWarning = !viaGoogle && (pwd === (user.ic || '').trim());
+  // Wajib tukar: bendera bertahan selepas reload (localStorage) sehingga berjaya
+  // ditukar — modal tiada butang "abaikan". Kata laluan semasa disimpan dalam
+  // memori sahaja supaya borang tidak perlu ditaip semula.
+  try {
+    if (showFirstLoginWarning) { firstLoginPwd = pwd; localStorage.setItem(MUST_CHANGE_PWD_KEY, user.ic); }
+    else localStorage.removeItem(MUST_CHANGE_PWD_KEY);
+  } catch (e) {}
+  const _ph = (user.phone || '').replace(/\D/g, '');
+  showPhoneReminderModal = !showFirstLoginWarning && (!_ph || !_ph.startsWith('6'));
+  currentSessionId = Date.now().toString() + '_' + Math.random().toString(36).substring(2);
+  duplicateSessionDetected = false;
+  sessionKickHandled = false;
+  localStorage.setItem('ksb_session_' + user.ic, currentSessionId);
+  localStorage.setItem('ksb_logged_in_ic', user.ic);
+  localStorage.setItem('ksb_logged_in_sid', currentSessionId);
+  setDoc(doc(db, 'sessions', user.ic), {
+    sessionId: currentSessionId, loginAt: serverTimestamp(), name: user.name,
+    device: navigator.userAgent.slice(0, 150)
+  }).then(() => startSessionListener(user.ic, currentSessionId));
+  window.logSystemActivity("Logged into system");
+  window.initInbox();
+  window.requestNotifPermission();
+  startReminderScheduler();
+  view = 'dashboard';
+  render();
+  return true;
+}
+
 // Pulihkan sesi selepas refresh menggunakan SATU getDoc.
 //
 // Dulu ini dibuat di dalam pendengar `staff` seluruh koleksi: `user` dicari dalam
@@ -5175,42 +5217,7 @@ function renderLogin() {
       return;
     }
 
-    // Load the staff profile for the now-authenticated user.
-    const snap = await getDoc(doc(db, 'staff', ic));
-    if (!snap.exists()) { showToast('Profil staf tidak dijumpai. Sila hubungi HR/Admin.'); await signOut(auth); return; }
-    // HR menyahaktif staf dengan `inactive` pada dokumen staf, tetapi akaun Auth
-    // hanya dimatikan bila provision-one.js dijalankan (Spark: tiada onStaffWrite).
-    // Tanpa semakan ini staf yang sudah dinyahaktif masih boleh log masuk.
-    if (snap.data().inactive) { showToast('⚠️ Akaun anda tidak aktif. Sila hubungi HR/Admin.'); await signOut(auth); return; }
-    user = snap.data();
-    initData(); // subscribe to live data now that we have a real (non-anonymous) session
-
-    showFirstLoginWarning = (pwd === (user.ic || '').trim());
-    // Wajib tukar: bendera bertahan selepas reload (localStorage) sehingga berjaya
-    // ditukar — modal tiada butang "abaikan". Kata laluan semasa disimpan dalam
-    // memori sahaja supaya borang tidak perlu ditaip semula.
-    try {
-      if (showFirstLoginWarning) { firstLoginPwd = pwd; localStorage.setItem(MUST_CHANGE_PWD_KEY, user.ic); }
-      else localStorage.removeItem(MUST_CHANGE_PWD_KEY);
-    } catch (e) {}
-    const _ph = (user.phone || '').replace(/\D/g, '');
-    showPhoneReminderModal = !showFirstLoginWarning && (!_ph || !_ph.startsWith('6'));
-    currentSessionId = Date.now().toString() + '_' + Math.random().toString(36).substring(2);
-    duplicateSessionDetected = false;
-    sessionKickHandled = false;
-    localStorage.setItem('ksb_session_' + user.ic, currentSessionId);
-    localStorage.setItem('ksb_logged_in_ic', user.ic);
-    localStorage.setItem('ksb_logged_in_sid', currentSessionId);
-    setDoc(doc(db, 'sessions', user.ic), {
-      sessionId: currentSessionId, loginAt: serverTimestamp(), name: user.name,
-      device: navigator.userAgent.slice(0, 150)
-    }).then(() => startSessionListener(user.ic, currentSessionId));
-    window.logSystemActivity("Logged into system");
-    window.initInbox();
-    window.requestNotifPermission();
-    startReminderScheduler();
-    view = 'dashboard';
-    render();
+    await completeLogin(ic, { pwd });
   });
 }
 
