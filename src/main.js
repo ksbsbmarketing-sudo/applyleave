@@ -456,6 +456,36 @@ async function otpPost(path, payload) {
   return { ok: res.ok, status: res.status, data };
 }
 
+// Same backend as OTP reset, but for HR/Admin actions: the server verifies our
+// Firebase ID token and the manageStaff claim.
+async function authedPost(path, payload) {
+  if (!auth.currentUser || auth.currentUser.isAnonymous) return { ok: false, status: 401, data: { error: 'unauthenticated' } };
+  const token = await auth.currentUser.getIdToken();
+  let res;
+  try {
+    res = await fetch(`${OTP_API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+  } catch { return { ok: false, status: 0, data: { error: 'network' } }; }
+  let data = {};
+  try { data = await res.json(); } catch { /* non-JSON */ }
+  return { ok: res.ok, status: res.status, data };
+}
+
+const ADMIN_ERR_MS = {
+  network: 'Tidak dapat menghubungi pelayan. Sila cuba lagi.',
+  unauthenticated: 'Sesi tidak sah. Sila log masuk semula.',
+  forbidden: 'Anda tiada kebenaran untuk tindakan ini.',
+  not_found: 'Rekod tidak dijumpai.',
+  not_pending: 'Permohonan ini sudah diproses.',
+  ic_exists: 'No. IC ini sudah wujud dalam sistem. Permohonan ditolak.',
+  missing_fields: 'Maklumat tidak lengkap.',
+  server_error: 'Ralat pelayan. Sila cuba lagi — tindakan ini selamat diulang.',
+};
+const adminErrMsg = (data) => ADMIN_ERR_MS[data && data.error] || 'Ralat tidak dijangka. Sila cuba lagi.';
+
 window.forgotPassword = async function() {
   const ic = (document.querySelector('#login-staff')?.value || selectedLoginStaffIC || '').trim();
   if (!ic) { showToast('Sila pilih nama anda dari senarai (dropdown) dahulu, kemudian tekan "Lupa Kata Laluan?".'); return; }
@@ -1872,6 +1902,15 @@ window.unlinkMyGoogle = async function() {
   render();
 };
 
+window.hrUnlinkGoogle = async function(ic) {
+  const s = staffList.find(x => x.ic === ic);
+  if (!await showConfirm(`Buang pautan akaun Google untuk ${s ? s.name : ic}? Staf perlu log masuk dengan IC dan kata laluan.`)) return;
+  const r = await authedPost('/api/unlink-google', { ic });
+  if (!r.ok) { showToast('⚠️ ' + adminErrMsg(r.data)); return; }
+  window.logSystemActivity(`Unlinked Google account: ${s ? s.name : ''} (${ic})`);
+  showToast('Pautan akaun Google telah dibuang.');
+};
+
 window.adminSetPassword = async function(ic, newPassword) {
   if (!newPassword || newPassword.length < 6) { showToast('Kata laluan mesti sekurang-kurangnya 6 aksara.'); return false; }
   // Setting another user's password needs the Admin SDK. If the Cloud Function is
@@ -2153,26 +2192,13 @@ window.submitRegister = async function(event) {
 window.approveRegistration = async function(docId) {
   const req = registrationRequests.find(r => r.docId === docId);
   if (!req) return;
-  if (staffList.find(s => s.ic === req.ic)) {
-    showToast('No. IC ini sudah wujud dalam sistem.');
-    await updateDoc(doc(db, 'registration_requests', docId), { status: 'rejected', rejectedAt: Date.now(), rejectedReason: 'IC sudah wujud' });
-    return;
-  }
-  try {
-    const newStaff = {
-      name: window.formatPersonName(req.name), ic: req.ic, branch: req.branch, category: req.category,
-      role: 'staff', phone: req.phone, inactive: false,
-      startDate: new Date().toISOString().split('T')[0]
-    };
-    await setDoc(doc(db, 'staff', req.ic), newStaff);
-    await updateDoc(doc(db, 'registration_requests', docId), { status: 'approved', approvedAt: Date.now() });
-    window.logSystemActivity(`Approved registration: ${req.name} (${req.ic})`);
-    await window.sendWhatsApp(req.phone, `✅ *Selamat datang ke KSB Leave System!*\n\nNama: ${req.name}\nKata Laluan: ${req.ic}\n\nAkaun anda sedang diaktifkan. Sila log masuk sebentar lagi dan tukar kata laluan anda.`);
-    showToast(`✅ Permohonan ${req.name} telah diluluskan!\n\n⚠️ IT perlu jalankan "node provision-auth.js" untuk mengaktifkan akaun log masuk. Kata laluan awal ialah No. IC (${req.ic}).`);
-  } catch (err) {
-    console.error('approveRegistration error:', err);
-    showToast('Ralat meluluskan permohonan.');
-  }
+  const name = window.formatPersonName(req.name);
+  const r = await authedPost('/api/approve-registration', { docId, name });
+  if (!r.ok) { showToast('⚠️ ' + adminErrMsg(r.data)); return; }
+  window.logSystemActivity(`Approved registration: ${req.name} (${req.ic})`);
+  const googleLine = r.data.googleEmail ? `\nAnda juga boleh log masuk dengan Google (${r.data.googleEmail}).` : '';
+  await window.sendWhatsApp(req.phone, `✅ *Selamat datang ke KSB Leave System!*\n\nNama: ${req.name}\nKata Laluan: ${req.ic}${googleLine}\n\nSila log masuk dan tukar kata laluan anda.`);
+  showToast(`✅ Permohonan ${req.name} telah diluluskan. Akaun log masuk sudah aktif.\nKata laluan awal ialah No. IC (${req.ic}).`);
 };
 
 window.rejectRegistration = async function(docId) {
@@ -9002,7 +9028,7 @@ function renderView() {
                         <div style="display: flex; align-items: center; gap: 0.85rem;">
                           <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg,#8b5cf6,#6d28d9); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; font-weight: 700; flex-shrink: 0;">${req.name.charAt(0)}</div>
                           <div>
-                            <div style="font-weight: 700; font-size: 0.95rem;">${req.name}</div>
+                            <div style="font-weight: 700; font-size: 0.95rem;">${req.name}${req.googleEmail ? `<span style="font-size:0.7rem; background:rgba(59,130,246,0.12); color:#3b82f6; border-radius:999px; padding:1px 8px; margin-left:6px;">Google: ${escapeHtml(req.googleEmail)}</span>` : ''}</div>
                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem;">IC: ${req.ic} &nbsp;|&nbsp; ${req.branch}</div>
                             <div style="font-size: 0.78rem; color: var(--text-muted);">${req.category} &nbsp;|&nbsp; 📱 ${req.phone}</div>
                             <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem;">Dihantar: ${req.submittedAt ? new Date(req.submittedAt).toLocaleString('ms-MY') : '-'}</div>
@@ -11719,6 +11745,15 @@ function renderModal() {
               <div style="display: flex; flex-direction: column;">
                  <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">Account Password</label>
                  <input type="text" id="edit-password" class="neu-inset" value="" placeholder="Biarkan kosong jika tidak menukar kata laluan">
+              </div>
+
+              <div style="display: flex; flex-direction: column;">
+                 <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">Akaun Google</label>
+                 ${staff.googleEmail ? `
+                   <div style="display:flex; align-items:center; gap:0.5rem;">
+                     <span style="flex:1;">🔗 ${escapeHtml(staff.googleEmail)}</span>
+                     <button type="button" class="neu-btn" onclick="window.hrUnlinkGoogle('${staff.ic}')" style="padding:0.4rem 0.8rem; color:#ef4444; font-size:0.75rem; font-weight:600;">Buang pautan</button>
+                   </div>` : `<span style="color: var(--text-muted);">Belum dipautkan</span>`}
               </div>
           </div>
 
