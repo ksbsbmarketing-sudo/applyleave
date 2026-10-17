@@ -43,6 +43,7 @@ import {
   reauthenticateWithCredential,
 } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
+import { signInWithGoogle, takeRedirectResult, googleErrorMessage } from './googleAuth.js';
 import { getAnalytics } from "firebase/analytics";
 import {
   getFirestore,
@@ -4656,6 +4657,68 @@ async function completeLogin(ic, { viaGoogle = false, pwd = '' } = {}) {
   return true;
 }
 
+const GOOGLE_PENDING_MSG = 'Permohonan pendaftaran anda sedang disemak HR/Admin. Anda boleh log masuk dengan Google selepas diluluskan.';
+const GOOGLE_UNLINKED_MSG = 'Akaun Google ini belum dipautkan kepada mana-mana staf.\n\nLog masuk dengan IC dahulu dan pautkan di Tetapan Akaun, atau daftar sebagai staf baharu.';
+
+// A non-anonymous Firebase user that is not (yet) a provisioned staff member has
+// no `ic` claim. Either they registered with Google and are waiting for HR, or
+// they used an unlinked Gmail - in that case delete the throwaway user, otherwise
+// it would block linking that Gmail to their IC account later.
+// No forced token refresh: it fails offline. Callers must handle a throw by
+// keeping the session untouched.
+async function resolveGoogleSession() {
+  const u = auth.currentUser;
+  const tok = await u.getIdTokenResult();
+  if (typeof tok.claims.ic === 'string') return { ic: tok.claims.ic };
+  let pending = false;
+  try {
+    const qs = await getDocs(query(collection(db, 'registration_requests'),
+      where('googleUid', '==', u.uid), where('status', 'in', ['pending', 'approving'])));
+    pending = !qs.empty;
+  } catch (e) { console.warn('[AUTH] pending-registration check failed:', e.code || e.message); }
+  if (pending) { await signOut(auth); return { pending: true }; }
+  try { await u.delete(); } catch (e) { await signOut(auth).catch(() => {}); }
+  return { unlinked: true };
+}
+
+async function backToAnonymousLogin(message) {
+  if (message) showToast(message);
+  if (!auth.currentUser) await signInAnonymously(auth);
+  await loadDirectory();
+  view = 'login';
+  render();
+}
+
+// completeLogin for a Google session; on failure returns to the anonymous login screen.
+async function completeGoogleLogin(ic) {
+  let ok = false;
+  try { ok = await completeLogin(ic, { viaGoogle: true }); }
+  catch (e) {
+    console.warn('[AUTH] Google completeLogin failed:', e.code || e.message);
+    showToast('⚠️ Ralat memuatkan profil. Sila cuba lagi.');
+    await signOut(auth).catch(() => {});
+  }
+  if (!ok) await backToAnonymousLogin();
+}
+
+window.loginWithGoogle = async function() {
+  let gUser;
+  try { gUser = await signInWithGoogle(auth, 'login'); }
+  catch (e) { const m = googleErrorMessage(e.code); if (m) showToast('⚠️ ' + m); return; }
+  if (!gUser) return; // redirect in progress
+  let r;
+  try { r = await resolveGoogleSession(); }
+  catch (e) {
+    console.warn('[AUTH] resolveGoogleSession failed:', e.code || e.message);
+    showToast('⚠️ Ralat memuatkan profil. Sila cuba lagi.');
+    await signOut(auth).catch(() => {});
+    await backToAnonymousLogin();
+    return;
+  }
+  if (r.ic) { await completeGoogleLogin(r.ic); return; }
+  await backToAnonymousLogin(r.pending ? GOOGLE_PENDING_MSG : GOOGLE_UNLINKED_MSG);
+};
+
 // Pulihkan sesi selepas refresh menggunakan SATU getDoc.
 //
 // Dulu ini dibuat di dalam pendengar `staff` seluruh koleksi: `user` dicari dalam
@@ -4716,7 +4779,25 @@ console.log(`[SYSTEM] Version ${APP_VERSION}`);
 (async () => {
   try {
     await auth.authStateReady();
+    // Returning from a signInWithRedirect fallback (popup blocked). Call exactly once.
+    let redirect = null;
+    try { redirect = await takeRedirectResult(auth); }
+    catch (e) { const m = googleErrorMessage(e.code); if (m) showToast('⚠️ ' + m); }
+
     if (auth.currentUser && !auth.currentUser.isAnonymous) {
+      // Cached-token check only. On error (e.g. offline) fall through to the normal
+      // restore path - never sign out or delete a user over a token/network error.
+      let gs = null;
+      try { gs = await resolveGoogleSession(); }
+      catch (e) { console.warn('[AUTH] resolveGoogleSession failed, using normal restore:', e.code || e.message); }
+      if (gs && !gs.ic) {
+        await backToAnonymousLogin(gs.pending ? GOOGLE_PENDING_MSG : GOOGLE_UNLINKED_MSG);
+        return;
+      }
+      if (gs && redirect && redirect.intent === 'login') {
+        await completeGoogleLogin(gs.ic);
+        return;
+      }
       console.log('[AUTH] Restored real session:', auth.currentUser.uid);
       // Mesti SEBELUM initData(): ia yang menetapkan `user.role`, dan initData
       // menggunakan peranan itu untuk memutuskan pendengar mana patut dipasang.
@@ -5086,6 +5167,13 @@ function renderLogin() {
           </div>
           <button type="submit" class="btn-primary">Log Masuk</button>
         </form>
+        <div style="display:flex; align-items:center; gap:0.6rem; margin:1rem 0 0.75rem; color:var(--text-muted); font-size:0.8rem;">
+          <span style="flex:1; height:1px; background:var(--border);"></span>atau<span style="flex:1; height:1px; background:var(--border);"></span>
+        </div>
+        <button type="button" onclick="window.loginWithGoogle()" class="neu-btn" style="width:100%; display:flex; align-items:center; justify-content:center; gap:0.6rem; padding:0.8rem; font-weight:600;">
+          <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+          Log masuk dengan Google
+        </button>
 
         <div style="margin-top: 1.25rem; text-align: center;">
           <span style="font-size: 0.9rem; color: var(--text-muted);">Staf baharu?</span>
