@@ -29,7 +29,24 @@ export async function approveRegistration({ db, auth, docId, name, now = Date.no
 
   await reqRef.update({ status: "approving" });
 
-  const googleEmail = r.googleSub ? (r.googleEmail || null) : null;
+  // The Google identity comes from the registrant's Firebase user record, never
+  // from the request doc (which the registrant can write). Resolve it once and
+  // persist it before the temp user is deleted, so retries still have it.
+  let verified = null;
+  if (r.verifiedGoogleSub) {
+    verified = { sub: r.verifiedGoogleSub, email: r.verifiedGoogleEmail || null };
+  } else if (r.googleUid) {
+    try {
+      const tu = await auth.getUser(r.googleUid);
+      const p = (tu.providerData || []).find((x) => x.providerId === "google.com");
+      if (p) {
+        verified = { sub: p.uid, email: p.email || null };
+        await reqRef.update({ verifiedGoogleSub: verified.sub, verifiedGoogleEmail: verified.email });
+      }
+    } catch (e) { if (!isNotFound(e)) throw e; }
+  }
+
+  const googleEmail = verified ? verified.email : null;
   if (!staffSnap.exists) {
     await staffRef.set({
       name: staffName, ic, branch: r.branch, category: r.category,
@@ -58,7 +75,7 @@ export async function approveRegistration({ db, auth, docId, name, now = Date.no
   await auth.updateUser(user.uid, { disabled: false });
   await db.doc(`directory/${ic}`).set({ ic, name: staffName, branch: r.branch || "", inactive: false });
 
-  if (r.googleSub) {
+  if (verified) {
     const fresh = await auth.getUserByEmail(emailForIC(ic));
     const linked = (fresh.providerData || []).some((p) => p.providerId === "google.com");
     if (!linked) {
@@ -68,7 +85,7 @@ export async function approveRegistration({ db, auth, docId, name, now = Date.no
         try { await auth.deleteUser(r.googleUid); } catch (e) { if (!isNotFound(e)) throw e; }
       }
       await auth.updateUser(user.uid, {
-        providerToLink: { providerId: "google.com", uid: r.googleSub, email: r.googleEmail, displayName: staffName },
+        providerToLink: { providerId: "google.com", uid: verified.sub, email: verified.email, displayName: staffName },
       });
     }
   }

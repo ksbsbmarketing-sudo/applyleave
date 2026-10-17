@@ -21,6 +21,7 @@ function fakeAuth(users = {}) {
   const notFound = () => Object.assign(new Error("not found"), { code: "auth/user-not-found" });
   return {
     byUid,
+    getUser: async (uid) => { const u = byUid[uid]; if (!u) throw notFound(); return u; },
     getUserByEmail: async (email) => { const u = Object.values(byUid).find((x) => x.email === email); if (!u) throw notFound(); return u; },
     createUser: async ({ email, password, displayName }) => { const uid = `U${++n}`; byUid[uid] = { uid, email, password, displayName, providerData: [{ providerId: "password" }] }; return byUid[uid]; },
     setCustomUserClaims: async (uid, claims) => { byUid[uid].customClaims = claims; },
@@ -38,6 +39,7 @@ function fakeAuth(users = {}) {
 const PERMS = { "config/rolePermissions": { staff: { canApprove: false, manageStaff: false } } };
 const REQ = { name: "ALI BIN ABU", ic: "900101015555", branch: "Klinik A", category: "Operation Staff", phone: "60123456789", status: "pending" };
 const NOW = Date.UTC(2026, 9, 17);
+const ALI_GOOGLE = [{ providerId: "google.com", uid: "1234567890", email: "ali@gmail.com" }];
 
 test("plain registration: creates staff, auth user, claims, directory; marks approved", async () => {
   const db = fakeDb({ ...PERMS, "registration_requests/r1": REQ });
@@ -59,8 +61,8 @@ test("plain registration: creates staff, auth user, claims, directory; marks app
 });
 
 test("google registration: deletes temp user and links google to the IC account", async () => {
-  const db = fakeDb({ ...PERMS, "registration_requests/r1": { ...REQ, googleUid: "G1", googleSub: "1234567890", googleEmail: "ali@gmail.com" } });
-  const auth = fakeAuth({ G1: { uid: "G1", email: "ali@gmail.com", providerData: [{ providerId: "google.com", uid: "1234567890" }] } });
+  const db = fakeDb({ ...PERMS, "registration_requests/r1": { ...REQ, googleUid: "G1" } });
+  const auth = fakeAuth({ G1: { uid: "G1", email: "ali@gmail.com", providerData: ALI_GOOGLE } });
   const res = await approveRegistration({ db, auth, docId: "r1", name: "Ali Bin Abu", now: NOW });
   assert.deepEqual(res, { ok: true, ic: "900101015555", googleEmail: "ali@gmail.com" });
   assert.equal(auth.byUid.G1, undefined);
@@ -68,6 +70,29 @@ test("google registration: deletes temp user and links google to the IC account"
   assert.deepEqual(u.providerData.find((p) => p.providerId === "google.com"),
     { providerId: "google.com", uid: "1234567890", email: "ali@gmail.com", displayName: "Ali Bin Abu" });
   assert.equal(db.docs["staff/900101015555"].googleEmail, "ali@gmail.com");
+  assert.equal(db.docs["registration_requests/r1"].verifiedGoogleSub, "1234567890");
+});
+
+test("request-supplied googleSub/googleEmail are ignored; the verified Firebase identity is linked", async () => {
+  const db = fakeDb({ ...PERMS, "registration_requests/r1": { ...REQ, googleUid: "G1", googleSub: "999", googleEmail: "victim@gmail.com" } });
+  const auth = fakeAuth({ G1: { uid: "G1", email: "ali@gmail.com", providerData: ALI_GOOGLE } });
+  const res = await approveRegistration({ db, auth, docId: "r1", name: "Ali Bin Abu", now: NOW });
+  assert.deepEqual(res, { ok: true, ic: "900101015555", googleEmail: "ali@gmail.com" });
+  const u = await auth.getUserByEmail(emailForIC("900101015555"));
+  const linked = u.providerData.filter((p) => p.providerId === "google.com");
+  assert.equal(linked.length, 1);
+  assert.equal(linked[0].uid, "1234567890");
+  assert.equal(db.docs["staff/900101015555"].googleEmail, "ali@gmail.com");
+});
+
+test("googleUid set but temp user gone and nothing verified → plain registration", async () => {
+  const db = fakeDb({ ...PERMS, "registration_requests/r1": { ...REQ, googleUid: "G9" } });
+  const auth = fakeAuth();
+  const res = await approveRegistration({ db, auth, docId: "r1", name: "Ali Bin Abu", now: NOW });
+  assert.deepEqual(res, { ok: true, ic: "900101015555", googleEmail: null });
+  const u = await auth.getUserByEmail(emailForIC("900101015555"));
+  assert.equal(u.providerData.some((p) => p.providerId === "google.com"), false);
+  assert.equal(db.docs["staff/900101015555"].googleEmail, undefined);
 });
 
 test("short IC is padded to a 6-character initial password", async () => {
@@ -95,10 +120,10 @@ test("IC already belongs to another staff → rejected with reason", async () =>
 test("retry after partial failure (status approving, staff written by this request) succeeds", async () => {
   const db = fakeDb({
     ...PERMS,
-    "registration_requests/r1": { ...REQ, status: "approving", googleUid: "G1", googleSub: "1234567890", googleEmail: "ali@gmail.com" },
+    "registration_requests/r1": { ...REQ, status: "approving", googleUid: "G1", verifiedGoogleSub: "1234567890", verifiedGoogleEmail: "ali@gmail.com" },
     "staff/900101015555": { ic: "900101015555", name: "Ali Bin Abu", registrationDocId: "r1", branch: "Klinik A" },
   });
-  // temp Google user already deleted in the failed run
+  // temp Google user already deleted in the failed run; the verified identity was stored by that run
   const auth = fakeAuth();
   const res = await approveRegistration({ db, auth, docId: "r1", name: "Ali Bin Abu", now: NOW });
   assert.equal(res.ok, true);
@@ -108,8 +133,8 @@ test("retry after partial failure (status approving, staff written by this reque
 });
 
 test("running approve twice does not link google twice", async () => {
-  const db = fakeDb({ ...PERMS, "registration_requests/r1": { ...REQ, googleUid: "G1", googleSub: "1234567890", googleEmail: "ali@gmail.com" } });
-  const auth = fakeAuth({ G1: { uid: "G1", email: "ali@gmail.com", providerData: [] } });
+  const db = fakeDb({ ...PERMS, "registration_requests/r1": { ...REQ, googleUid: "G1" } });
+  const auth = fakeAuth({ G1: { uid: "G1", email: "ali@gmail.com", providerData: ALI_GOOGLE } });
   await approveRegistration({ db, auth, docId: "r1", name: "Ali", now: NOW });
   db.docs["registration_requests/r1"].status = "approving"; // simulate a second click racing the first
   await approveRegistration({ db, auth, docId: "r1", name: "Ali", now: NOW });
