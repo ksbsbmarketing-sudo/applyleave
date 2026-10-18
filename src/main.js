@@ -1300,7 +1300,10 @@ window.setDashboardTab = function(tab) {
 window.getUserReportDaerah = function(u) {
     if (!u) return null;
     const perms = window.effectivePerms(u);
-    if (perms.report_kuantan_only) return 'Kuantan';
+    // Kuantan ialah daerah Pahang — had ini tiada makna bagi zon lain. Tanpa
+    // semakan ini HR Terengganu (Zahirah) dapat laporan kosong.
+    const scope = window.getUserStateScope(u);
+    if (perms.report_kuantan_only && (scope === 'Pahang' || scope === 'all')) return 'Kuantan';
     return null;
 };
 
