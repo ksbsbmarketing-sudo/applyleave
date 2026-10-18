@@ -9720,7 +9720,7 @@ function renderView() {
               </table>
             </div>
           </section>
-          ` : `
+          ` : hrReportTab !== 'approved' ? '' : `
           <!-- CUTI DILULUSKAN -->
 
           <!-- Filter bar -->
