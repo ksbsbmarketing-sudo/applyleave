@@ -676,7 +676,7 @@ let editingStaff = null;
 let managementTab = 'pending';
 let managementGroup = 'approvals'; // 'approvals' | 'people' | 'reports' | 'config'
 let policyTab = 'ringkasan'; // tab Polisi: ringkasan | aliran | kelayakan | peraturan | cuti_umum
-let hrReportTab = 'all'; // 'all' | 'approved' | 'balance' | 'jenis'
+let hrReportTab = 'all'; // 'all' | 'approved' | 'balance' | 'jenis' | 'senarai' | 'attendance'
 let masterLogState = SCOPE_ALL;   // SCOPE_ALL | 'Pahang' | 'Terengganu'
 let masterLogBranch = SCOPE_ALL;
 // Kalendar cuti (view 'calendar')
@@ -707,7 +707,7 @@ let jenisCutiBranch = 'SEMUA';
 let attendanceReportMonth = String(new Date().getMonth() + 1);
 let attendanceReportYear = new Date().getFullYear().toString();
 let attendanceReportBranch = 'SEMUA';
-let attendanceSubTab = 'senarai'; // sub-tab Rekod Kedatangan: 'senarai' | 'cetakan' | 'jenis'
+let attendanceSubTab = 'cetakan'; // sub-tab Rekod Kedatangan: 'cetakan' | 'jenis'
 let manageSearchQuery = '';
 let manageRoleFilter = 'SEMUA';
 let manageCategoryFilter = 'SEMUA';
@@ -9637,7 +9637,7 @@ function renderView() {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                   PDF
                 </button>`
-              : (userPerms.report_attendance && attendanceSubTab === 'senarai' ? `<button onclick="window.generateAttendanceReport()" title="Muat turun PDF — Rekod Kedatangan" class="neu-btn" style="background:rgba(30,41,59,0.1);border:1px solid rgba(30,41,59,0.3);color:var(--text);font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
+              : (userPerms.report_attendance && hrReportTab === 'senarai' ? `<button onclick="window.generateAttendanceReport()" title="Muat turun PDF — Rekod Kedatangan" class="neu-btn" style="background:rgba(30,41,59,0.1);border:1px solid rgba(30,41,59,0.3);color:var(--text);font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                   PDF
                 </button>` : '')
@@ -9666,6 +9666,11 @@ function renderView() {
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
               Ringkasan Jenis
             </button>
+            ${userPerms.report_attendance ? `<button onclick="window.setHrReportTab('senarai')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;display:flex;align-items:center;gap:0.4rem;
+              ${hrReportTab==='senarai' ? 'background:#0f766e;color:#fff;box-shadow:0 2px 8px rgba(15,118,110,0.3);' : 'background:transparent;color:var(--text-muted);'}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
+              Senarai Cuti, MC &amp; EL
+            </button>` : ''}
             ${userPerms.report_attendance ? `<button onclick="window.setHrReportTab('attendance')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;display:flex;align-items:center;gap:0.4rem;
               ${hrReportTab==='attendance' ? 'background:#1e293b;color:#fff;box-shadow:0 2px 8px rgba(30,41,59,0.3);' : 'background:transparent;color:var(--text-muted);'}">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -10148,7 +10153,7 @@ function renderView() {
             `;
           })() : ''}
 
-          ${hrReportTab === 'attendance' && userPerms.report_attendance ? (() => {
+          ${(hrReportTab === 'attendance' || hrReportTab === 'senarai') && userPerms.report_attendance ? (() => {
             const MONTHS_MS = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
             const availYearsA = reportYearOptions(leaveRecords);
             const scopedBranchesA = [...new Set(staffList.filter(s=>!s.inactive).map(s=>s.branch).filter(Boolean))].sort().filter(b => {
@@ -10280,7 +10285,8 @@ function renderView() {
             const attKakitangan = attStaffPool.filter(s=>s.category!=='Doctor').sort((a,b)=>a.name.localeCompare(b.name));
             const attDoktor = attStaffPool.filter(s=>s.category==='Doctor').sort((a,b)=>a.name.localeCompare(b.name));
 
-            const attSub = attendanceSubTab;
+            // Tab 'senarai' = jadual SENARAI BILANGAN CUTI; tab 'attendance' = laporan cetakan (2 sub-tab).
+            const attSub = hrReportTab === 'senarai' ? 'senarai' : (attendanceSubTab === 'jenis' ? 'jenis' : 'cetakan');
             const attSubBtn = (key, label, color) => `<button onclick="window.setAttendanceSubTab('${key}')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;
               ${attSub===key ? `background:${color};color:#fff;box-shadow:0 2px 8px ${color}4d;` : 'background:transparent;color:var(--text-muted);'}">${label}</button>`;
             const attBranchSelect = !reportBranch ? `<select class="neu-inset" style="padding:0.4rem 0.75rem;font-size:0.82rem;color-scheme:light;border-radius:8px;cursor:pointer;" onchange="window.setAttendanceBranch(this.value)">
@@ -10307,12 +10313,12 @@ function renderView() {
             const attPrintBtn = (onclick, label, color) => `<button onclick="${onclick}" class="neu-btn" style="background:${color}14;border:1px solid ${color}55;color:${color};font-weight:700;padding:0.45rem 0.9rem;font-size:0.75rem;flex:none;white-space:nowrap;border-radius:8px;">${label}</button>`;
 
             return `
+            ${attSub !== 'senarai' ? `
             <!-- Sub-tab Rekod Kedatangan -->
             <div style="display:flex;gap:0.35rem;margin-bottom:1.25rem;background:rgba(163,177,198,0.1);padding:0.35rem;border-radius:14px;max-width:100%;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;width:fit-content;">
-              ${attSubBtn('senarai', 'Senarai Cuti, MC &amp; EL', '#1e293b')}
               ${attSubBtn('cetakan', 'Laporan Cetakan', '#7c3aed')}
               ${attSubBtn('jenis', 'Cetak Ikut Jenis', '#d97706')}
-            </div>
+            </div>` : ''}
 
             ${attSub === 'cetakan' ? `
             ${attPrintFilter}
