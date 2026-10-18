@@ -17,6 +17,7 @@ import { getNoticeDays, isNoticeExempt } from './leaveNotice.js';
 import { validateLeaveReason } from './leaveReason.js';
 import { showToast, showConfirm, restorePendingToasts } from './notify.js';
 import { statusBadge } from './statusBadge.js';
+import { searchStaff } from './staffSearch.js';
 import { sortMyRecords, statusTextMs, approvedDaysByType, shortReason } from './myLeaveReport.js';
 import { emptyState, emptyRow, dashboardSkeleton, userAvatar } from './uiStates.js';
 import { monthGrid, leavesByDay, shiftMonth, monthLabel } from './leaveCalendar.js';
@@ -707,6 +708,10 @@ let jenisCutiBranch = 'SEMUA';
 let attendanceReportMonth = String(new Date().getMonth() + 1);
 let attendanceReportYear = new Date().getFullYear().toString();
 let attendanceReportBranch = 'SEMUA';
+// Kotak "Cari staf" di atas Laporan & Log — profil staf (baki + senarai cuti).
+let staffLookupQuery = '';
+let staffLookupBranch = 'SEMUA';
+let staffLookupIc = null;   // staf yang profilnya sedang dibuka
 let attendanceSubTab = 'cetakan'; // sub-tab Rekod Kedatangan: 'cetakan' | 'jenis'
 let manageSearchQuery = '';
 let manageRoleFilter = 'SEMUA';
@@ -3545,6 +3550,10 @@ window.setAttendanceMonth = function(val) { attendanceReportMonth = val; render(
 window.setAttendanceYear = function(val) { attendanceReportYear = val; render(); };
 window.setAttendanceBranch = function(val) { attendanceReportBranch = val; render(); };
 window.setAttendanceSubTab = function(val) { attendanceSubTab = val; render(); };
+window.setStaffLookupQuery = function(val) { staffLookupQuery = val; staffLookupIc = null; render(); };
+window.setStaffLookupBranch = function(val) { staffLookupBranch = val; staffLookupIc = null; render(); };
+window.openStaffLookup = function(ic) { staffLookupIc = ic; render(); };
+window.closeStaffLookup = function() { staffLookupIc = null; staffLookupQuery = ''; render(); };
 
 window.generateBalanceReport = function(rows, branchName, leaveType, year) {
   const MONTHS = ['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ogo','Sep','Okt','Nov','Dis'];
@@ -3698,11 +3707,10 @@ const LEAVE_TYPE_COLOR = { AL:'#3b82f6', MC:'#10b981', EL:'#f59e0b', EL_EMG:'#ef
 const ALL_LEAVE_TYPES = ['AL','MC','EL','EL_EMG','HL','ML','ML_PL','CME','RL','UP'];
 
 // Active staff within the current user's report scope (same predicate as the attendance/CME report).
-function getReportStaffPool() {
+function getReportStaffPool(activeBranch = attendanceReportBranch) {
   const reportBranch = window.getUserReportBranch(user);
   const reportDaerah = window.getUserReportDaerah(user);
   const userStateScope = window.getUserStateScope(user);
-  const activeBranch = attendanceReportBranch;
   return staffList.filter(s => {
     if (s.inactive) return false;
     if (reportBranch && s.branch !== reportBranch) return false;
@@ -3724,6 +3732,94 @@ function fmtLeaveDate(d) {
 function fmtLeaveRange(r) {
   return (r.startDate && r.endDate && r.startDate !== r.endDate)
     ? `${fmtLeaveDate(r.startDate)} – ${fmtLeaveDate(r.endDate)}` : fmtLeaveDate(r.startDate || r.endDate);
+}
+
+// Kotak "Cari staf" di atas Laporan & Log: taip nama/IC → pilih → profil staf
+// (baki AL/MC/EL, + CME untuk doktor, dan semua cuti tahun cuti semasa).
+// Skop sama seperti laporan: getReportStaffPool (zon HR, Kuantan sahaja, cawangan sendiri).
+function renderStaffLookup() {
+  const pool = getReportStaffPool('SEMUA');
+  const branchOpts = [...new Set(pool.map(s => s.branch).filter(Boolean))].sort();
+  const sel = staffLookupIc ? pool.find(s => s.ic === staffLookupIc) : null;
+  // Cawangan dipilih tanpa nama → senaraikan semua staf cawangan itu.
+  const browseBranch = !staffLookupQuery.trim() && staffLookupBranch !== 'SEMUA';
+  const matches = sel ? []
+    : browseBranch ? pool.filter(s => s.branch === staffLookupBranch).sort((a, b) => a.name.localeCompare(b.name))
+    : searchStaff(pool, staffLookupQuery, { branch: staffLookupBranch });
+
+  const resultsHtml = !sel && (staffLookupQuery.trim() || browseBranch) ? `
+    <div class="glass-card" style="padding:0.35rem;margin-top:0.5rem;max-height:320px;overflow-y:auto;">
+      ${matches.length ? matches.map(s => `
+        <button onclick="window.openStaffLookup('${s.ic}')" style="display:flex;width:100%;justify-content:space-between;align-items:center;gap:0.75rem;padding:0.55rem 0.75rem;border:none;background:transparent;border-radius:8px;cursor:pointer;text-align:left;color:var(--text);"
+          onmouseover="this.style.background='rgba(59,130,246,0.07)'" onmouseout="this.style.background='transparent'">
+          <span style="font-size:0.82rem;font-weight:700;">${s.name}</span>
+          <span style="font-size:0.7rem;color:var(--text-muted);white-space:nowrap;">${s.branch || '-'}</span>
+        </button>`).join('')
+      : `<div style="padding:0.75rem;font-size:0.8rem;color:var(--text-muted);text-align:center;">Tiada staf sepadan dalam skop anda.</div>`}
+    </div>` : '';
+
+  let profileHtml = '';
+  if (sel) {
+    const year = window.getCurrentLeaveYear();
+    const isDoctor = sel.category === 'Doctor';
+    const types = isDoctor ? ['AL', 'MC', 'EL', 'CME'] : ['AL', 'MC', 'EL'];
+    const balCards = types.map(t => {
+      const st = window.getLeaveStats(sel, t);
+      const c = LEAVE_TYPE_COLOR[t];
+      return `<div style="flex:1;min-width:90px;padding:0.6rem 0.75rem;border-radius:10px;background:${c}12;border:1px solid ${c}40;">
+        <div style="font-size:0.65rem;font-weight:800;color:${c};letter-spacing:0.4px;">BAKI ${leaveTypeShort(t)}</div>
+        <div style="font-size:1.15rem;font-weight:800;color:var(--text);">${parseFloat(st.bal.toFixed(1))}<span style="font-size:0.75rem;font-weight:600;color:var(--text-muted);"> / ${parseFloat(st.ent.toFixed(1))}</span></div>
+      </div>`;
+    }).join('');
+    const recs = leaveRecords
+      .filter(r => r.ic === sel.ic && leaveYearOf(r) === year)
+      .sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
+    const rows = recs.length ? recs.map(r => `
+      <tr style="border-bottom:1px solid rgba(163,177,198,0.12);">
+        <td style="padding:0.5rem 0.75rem;font-size:0.78rem;white-space:nowrap;">${fmtLeaveRange(r)}</td>
+        <td style="padding:0.5rem 0.5rem;font-size:0.75rem;font-weight:700;color:${LEAVE_TYPE_COLOR[r.type] || 'var(--text)'};">${leaveTypeShort(r.type)}</td>
+        <td style="padding:0.5rem 0.5rem;font-size:0.78rem;text-align:center;">${parseFloat(r.days || 0)}</td>
+        <td style="padding:0.5rem 0.75rem;">${statusBadge(r.status, { compact: true })}</td>
+      </tr>`).join('')
+      : `<tr><td colspan="4" style="padding:1rem;text-align:center;font-size:0.8rem;color:var(--text-muted);">Tiada cuti direkodkan bagi tahun ${year}.</td></tr>`;
+    profileHtml = `
+    <section class="glass-card" style="padding:1rem 1.25rem;margin-top:0.75rem;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.75rem;margin-bottom:0.75rem;">
+        <div>
+          <div style="font-size:0.95rem;font-weight:800;">${sel.name}</div>
+          <div style="font-size:0.75rem;color:var(--text-muted);">${sel.branch || '-'}${sel.category ? ' · ' + sel.category : ''}</div>
+        </div>
+        <button onclick="window.closeStaffLookup()" title="Tutup" style="border:none;background:rgba(163,177,198,0.15);border-radius:8px;padding:0.3rem 0.6rem;cursor:pointer;font-weight:700;color:var(--text-muted);">✕</button>
+      </div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.9rem;">${balCards}</div>
+      <div style="font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:0.35rem;">Senarai cuti ${year} (${recs.length})</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr style="border-bottom:1px solid rgba(163,177,198,0.25);">
+            <th style="padding:0.4rem 0.75rem;text-align:left;font-size:0.62rem;color:var(--text-muted);">TARIKH</th>
+            <th style="padding:0.4rem 0.5rem;text-align:left;font-size:0.62rem;color:var(--text-muted);">JENIS</th>
+            <th style="padding:0.4rem 0.5rem;text-align:center;font-size:0.62rem;color:var(--text-muted);">HARI</th>
+            <th style="padding:0.4rem 0.75rem;text-align:left;font-size:0.62rem;color:var(--text-muted);">STATUS</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>`;
+  }
+
+  return `
+  <div style="margin-bottom:1.25rem;">
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+      <input type="text" id="staff-lookup-search" class="neu-inset" placeholder="🔍 Cari cuti staf — taip nama / IC..." value="${staffLookupQuery.replace(/"/g, '&quot;')}" oninput="window.setStaffLookupQuery(this.value)" autocomplete="off"
+        style="flex:1;min-width:200px;padding:0.55rem 0.9rem;border-radius:10px;font-size:0.85rem;color-scheme:light;">
+      <select class="neu-inset" onchange="window.setStaffLookupBranch(this.value)" style="padding:0.5rem 0.75rem;border-radius:10px;font-size:0.82rem;color-scheme:light;cursor:pointer;max-width:100%;">
+        <option value="SEMUA" ${staffLookupBranch === 'SEMUA' ? 'selected' : ''}>Semua Cawangan</option>
+        ${branchOpts.map(b => `<option value="${b}" ${staffLookupBranch === b ? 'selected' : ''}>${b}</option>`).join('')}
+      </select>
+    </div>
+    ${resultsHtml}
+    ${profileHtml}
+  </div>`;
 }
 
 // Build HTML for the given leave-type sections. Returns { html, sectionCount, grandTotal, staffCount }.
@@ -8630,7 +8726,8 @@ function renderView() {
             ${userPerms.manage_holidays ? `<button class="neu-tab ${managementTab==='public_holidays'?'active':''}" onclick="window.setManageTab('public_holidays')" style="border-radius:8px;">Cuti Umum</button>` : ''}
             ${userPerms.wa_setting ? `<button class="neu-tab ${managementTab==='whatsapp_settings'?'active':''}" onclick="window.setManageTab('whatsapp_settings')" style="border-radius:8px;color:#25d366;">WA Settings</button>` : ''}
           ` : ''}
-        </div>`;
+        </div>
+        ${activeGroup === 'reports' && userPerms.manage_reports ? renderStaffLookup() : ''}`;
       })()}
 
         ${managementTab === 'pending' ? `
