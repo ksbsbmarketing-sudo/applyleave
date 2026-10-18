@@ -707,7 +707,7 @@ let jenisCutiBranch = 'SEMUA';
 let attendanceReportMonth = String(new Date().getMonth() + 1);
 let attendanceReportYear = new Date().getFullYear().toString();
 let attendanceReportBranch = 'SEMUA';
-let attendanceSubTab = 'kakitangan'; // sub-tab Rekod Kedatangan: 'kakitangan' | 'doktor'
+let attendanceSubTab = 'senarai'; // sub-tab Rekod Kedatangan: 'senarai' | 'cetakan' | 'jenis'
 let manageSearchQuery = '';
 let manageRoleFilter = 'SEMUA';
 let manageCategoryFilter = 'SEMUA';
@@ -9637,24 +9637,10 @@ function renderView() {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                   PDF
                 </button>`
-              : (userPerms.report_attendance ? `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.5rem;"><div style="display:flex;gap:0.5rem;flex-wrap:wrap;justify-content:flex-end;"><button onclick="window.generateAttendanceReport()" title="Muat turun PDF — Rekod Kedatangan" class="neu-btn" style="background:rgba(30,41,59,0.1);border:1px solid rgba(30,41,59,0.3);color:var(--text);font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
+              : (userPerms.report_attendance && attendanceSubTab === 'senarai' ? `<button onclick="window.generateAttendanceReport()" title="Muat turun PDF — Rekod Kedatangan" class="neu-btn" style="background:rgba(30,41,59,0.1);border:1px solid rgba(30,41,59,0.3);color:var(--text);font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                   PDF
-                </button>
-                <button onclick="window.printCMEReport()" title="Cetak Laporan CME — Doktor" class="neu-btn" style="background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.25);color:#7c3aed;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 2H9a2 2 0 0 0-2 2v2"></path><rect x="3" y="8" width="13" height="13" rx="2"></rect></svg>
-                  CME
-                </button>
-                <button onclick="window.printAllLeaveReport()" title="Cetak Laporan Semua Cuti (ikut jenis)" class="neu-btn" style="background:rgba(51,65,85,0.1);border:1px solid rgba(51,65,85,0.3);color:#334155;font-weight:600;display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.85rem;font-size:0.75rem;flex:none;white-space:nowrap;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>
-                  Semua Cuti
-                </button>
-                </div>
-                <div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;justify-content:flex-end;padding:0.3rem 0.55rem;background:rgba(163,177,198,0.08);border:1px solid rgba(163,177,198,0.18);border-radius:10px;">
-                  <span style="font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-muted);white-space:nowrap;">Cetak Ikut Jenis</span>
-                  ${['AL','MC','EL','EL_EMG','HL','ML','ML_PL','RL','UP'].map(t => { const c=LEAVE_TYPE_COLOR[t]; const lbl=leaveTypeShort(t); return `<button onclick="window.printLeaveTypeReport('${t}')" title="Cetak Laporan ${lbl}" class="neu-btn" style="background:${c}14;border:1px solid ${c}55;color:${c};font-weight:700;padding:0.3rem 0.6rem;font-size:0.68rem;flex:none;white-space:nowrap;border-radius:7px;">${lbl}</button>`; }).join('')}
-                </div>
-              </div>` : '')
+                </button>` : '')
             }
           </div>
 
@@ -10293,14 +10279,50 @@ function renderView() {
 
             const attKakitangan = attStaffPool.filter(s=>s.category!=='Doctor').sort((a,b)=>a.name.localeCompare(b.name));
             const attDoktor = attStaffPool.filter(s=>s.category==='Doctor').sort((a,b)=>a.name.localeCompare(b.name));
-            // Jika sub-tab dipilih kosong tetapi satu lagi ada orang (cth. cawangan tanpa doktor), tunjuk yang ada.
-            const attSub = attendanceSubTab === 'doktor'
-              ? (attDoktor.length || !attKakitangan.length ? 'doktor' : 'kakitangan')
-              : (attKakitangan.length || !attDoktor.length ? 'kakitangan' : 'doktor');
-            const attSubBtn = (key, label, count, color) => `<button onclick="window.setAttendanceSubTab('${key}')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;
-              ${attSub===key ? `background:${color};color:#fff;box-shadow:0 2px 8px ${color}4d;` : 'background:transparent;color:var(--text-muted);'}">${label} <span style="font-weight:500;opacity:0.85;">(${count})</span></button>`;
+
+            const attSub = attendanceSubTab;
+            const attSubBtn = (key, label, color) => `<button onclick="window.setAttendanceSubTab('${key}')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;
+              ${attSub===key ? `background:${color};color:#fff;box-shadow:0 2px 8px ${color}4d;` : 'background:transparent;color:var(--text-muted);'}">${label}</button>`;
+            const attBranchSelect = !reportBranch ? `<select class="neu-inset" style="padding:0.4rem 0.75rem;font-size:0.82rem;color-scheme:light;border-radius:8px;cursor:pointer;" onchange="window.setAttendanceBranch(this.value)">
+                <option value="SEMUA" ${attendanceReportBranch==='SEMUA'?'selected':''}>Semua Cawangan</option>
+                ${scopedBranchesA.map(b=>`<option value="${b}" ${attendanceReportBranch===b?'selected':''}>${b}</option>`).join('')}
+              </select>` : '';
+            // Laporan cetakan (CME / Semua Cuti / Ikut Jenis) ikut cawangan dipilih + tahun cuti semasa.
+            const attPrintFilter = `
+            <div class="glass-card" style="padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;">
+              <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.5px;">Cawangan:</div>
+              ${attBranchSelect || `<span style="font-size:0.82rem;font-weight:700;">${reportBranch}</span>`}
+              <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);font-weight:600;">Tahun cuti: ${window.getCurrentLeaveYear()}</div>
+            </div>`;
+            const attPrintCard = (title, desc, color, buttons) => `
+            <section class="glass-card" style="padding:1rem 1.25rem;margin-bottom:1rem;border-left:3px solid ${color};">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap;">
+                <div style="min-width:200px;flex:1;">
+                  <div style="font-size:0.85rem;font-weight:800;text-transform:uppercase;letter-spacing:0.4px;color:${color};">${title}</div>
+                  <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.2rem;">${desc}</div>
+                </div>
+                <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">${buttons}</div>
+              </div>
+            </section>`;
+            const attPrintBtn = (onclick, label, color) => `<button onclick="${onclick}" class="neu-btn" style="background:${color}14;border:1px solid ${color}55;color:${color};font-weight:700;padding:0.45rem 0.9rem;font-size:0.75rem;flex:none;white-space:nowrap;border-radius:8px;">${label}</button>`;
 
             return `
+            <!-- Sub-tab Rekod Kedatangan -->
+            <div style="display:flex;gap:0.35rem;margin-bottom:1.25rem;background:rgba(163,177,198,0.1);padding:0.35rem;border-radius:14px;max-width:100%;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;width:fit-content;">
+              ${attSubBtn('senarai', 'Senarai Cuti, MC &amp; EL', '#1e293b')}
+              ${attSubBtn('cetakan', 'Laporan Cetakan', '#7c3aed')}
+              ${attSubBtn('jenis', 'Cetak Ikut Jenis', '#d97706')}
+            </div>
+
+            ${attSub === 'cetakan' ? `
+            ${attPrintFilter}
+            ${attPrintCard('Laporan CME Doktor', 'Cuti CME setiap doktor dalam skop — kelayakan, guna, baki dan tarikh cuti CME tahun ini.', '#7c3aed', attPrintBtn('window.printCMEReport()', '🖨️ Cetak', '#7c3aed'))}
+            ${attPrintCard('Laporan Semua Cuti', 'Semua cuti diluluskan tahun ini, dikumpul ikut jenis cuti.', '#334155', attPrintBtn('window.printAllLeaveReport()', '🖨️ Cetak', '#334155'))}
+            ` : attSub === 'jenis' ? `
+            ${attPrintFilter}
+            ${attPrintCard('Cetak Ikut Jenis Cuti', 'Pilih satu jenis cuti untuk cetak senarai cuti diluluskan tahun ini bagi jenis itu sahaja.', '#d97706',
+              ['AL','MC','EL','EL_EMG','HL','ML','ML_PL','RL','UP'].map(t => attPrintBtn(`window.printLeaveTypeReport('${t}')`, leaveTypeShort(t), LEAVE_TYPE_COLOR[t])).join(''))}
+            ` : `
             <!-- Filter bar -->
             <div class="glass-card" style="padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;">
               <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.5px;">Tapis:</div>
@@ -10310,10 +10332,7 @@ function renderView() {
               <select class="neu-inset" style="padding:0.4rem 0.75rem;font-size:0.82rem;color-scheme:light;border-radius:8px;cursor:pointer;" onchange="window.setAttendanceYear(this.value)">
                 ${availYearsA.map(y=>`<option value="${y}" ${attendanceReportYear===y?'selected':''}>${y}</option>`).join('')}
               </select>
-              ${!reportBranch ? `<select class="neu-inset" style="padding:0.4rem 0.75rem;font-size:0.82rem;color-scheme:light;border-radius:8px;cursor:pointer;" onchange="window.setAttendanceBranch(this.value)">
-                <option value="SEMUA" ${attendanceReportBranch==='SEMUA'?'selected':''}>Semua Cawangan</option>
-                ${scopedBranchesA.map(b=>`<option value="${b}" ${attendanceReportBranch===b?'selected':''}>${b}</option>`).join('')}
-              </select>` : ''}
+              ${attBranchSelect}
               <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);font-weight:600;">${attStaffPool.length} kakitangan</div>
             </div>
 
@@ -10328,15 +10347,10 @@ function renderView() {
               <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.2rem;">${attStaffPool.length} kakitangan</div>
             </div>
 
-            ${attStaffPool.length ? `
-            <div style="display:flex;gap:0.35rem;margin-bottom:1rem;background:rgba(163,177,198,0.1);padding:0.35rem;border-radius:14px;max-width:100%;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;width:fit-content;">
-              ${attSubBtn('kakitangan', 'Kakitangan', attKakitangan.length, '#3b82f6')}
-              ${attSubBtn('doktor', 'Doktor', attDoktor.length, '#8b5cf6')}
-            </div>` : ''}
-            ${attSub === 'kakitangan'
-              ? renderAttSection('KAKITANGAN', attKakitangan, false, '#3b82f6')
-              : renderAttSection('DOKTOR', attDoktor, true, '#8b5cf6')}
+            ${renderAttSection('KAKITANGAN', attKakitangan, false, '#3b82f6')}
+            ${renderAttSection('DOKTOR', attDoktor, true, '#8b5cf6')}
             ${attStaffPool.length === 0 ? `<div style="padding:3rem;text-align:center;color:var(--text-muted);">Tiada kakitangan untuk ditunjukkan</div>` : ''}
+            `}
             `;
           })() : ''}
         `; })() : ''}
