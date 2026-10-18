@@ -707,6 +707,7 @@ let jenisCutiBranch = 'SEMUA';
 let attendanceReportMonth = String(new Date().getMonth() + 1);
 let attendanceReportYear = new Date().getFullYear().toString();
 let attendanceReportBranch = 'SEMUA';
+let attendanceSubTab = 'kakitangan'; // sub-tab Rekod Kedatangan: 'kakitangan' | 'doktor'
 let manageSearchQuery = '';
 let manageRoleFilter = 'SEMUA';
 let manageCategoryFilter = 'SEMUA';
@@ -3543,6 +3544,7 @@ window.setJenisCutiBranch = function(val) { jenisCutiBranch = val; render(); };
 window.setAttendanceMonth = function(val) { attendanceReportMonth = val; render(); };
 window.setAttendanceYear = function(val) { attendanceReportYear = val; render(); };
 window.setAttendanceBranch = function(val) { attendanceReportBranch = val; render(); };
+window.setAttendanceSubTab = function(val) { attendanceSubTab = val; render(); };
 
 window.generateBalanceReport = function(rows, branchName, leaveType, year) {
   const MONTHS = ['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ogo','Sep','Okt','Nov','Dis'];
@@ -10291,6 +10293,12 @@ function renderView() {
 
             const attKakitangan = attStaffPool.filter(s=>s.category!=='Doctor').sort((a,b)=>a.name.localeCompare(b.name));
             const attDoktor = attStaffPool.filter(s=>s.category==='Doctor').sort((a,b)=>a.name.localeCompare(b.name));
+            // Jika sub-tab dipilih kosong tetapi satu lagi ada orang (cth. cawangan tanpa doktor), tunjuk yang ada.
+            const attSub = attendanceSubTab === 'doktor'
+              ? (attDoktor.length || !attKakitangan.length ? 'doktor' : 'kakitangan')
+              : (attKakitangan.length || !attDoktor.length ? 'kakitangan' : 'doktor');
+            const attSubBtn = (key, label, count, color) => `<button onclick="window.setAttendanceSubTab('${key}')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;
+              ${attSub===key ? `background:${color};color:#fff;box-shadow:0 2px 8px ${color}4d;` : 'background:transparent;color:var(--text-muted);'}">${label} <span style="font-weight:500;opacity:0.85;">(${count})</span></button>`;
 
             return `
             <!-- Filter bar -->
@@ -10320,8 +10328,14 @@ function renderView() {
               <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.2rem;">${attStaffPool.length} kakitangan</div>
             </div>
 
-            ${renderAttSection('KAKITANGAN', attKakitangan, false, '#3b82f6')}
-            ${renderAttSection('DOKTOR', attDoktor, true, '#8b5cf6')}
+            ${attStaffPool.length ? `
+            <div style="display:flex;gap:0.35rem;margin-bottom:1rem;background:rgba(163,177,198,0.1);padding:0.35rem;border-radius:14px;max-width:100%;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;width:fit-content;">
+              ${attSubBtn('kakitangan', 'Kakitangan', attKakitangan.length, '#3b82f6')}
+              ${attSubBtn('doktor', 'Doktor', attDoktor.length, '#8b5cf6')}
+            </div>` : ''}
+            ${attSub === 'kakitangan'
+              ? renderAttSection('KAKITANGAN', attKakitangan, false, '#3b82f6')
+              : renderAttSection('DOKTOR', attDoktor, true, '#8b5cf6')}
             ${attStaffPool.length === 0 ? `<div style="padding:3rem;text-align:center;color:var(--text-muted);">Tiada kakitangan untuk ditunjukkan</div>` : ''}
             `;
           })() : ''}
