@@ -22,6 +22,7 @@ import { sortMyRecords, statusTextMs, approvedDaysByType, shortReason } from './
 import { emptyState, emptyRow, dashboardSkeleton, userAvatar } from './uiStates.js';
 import { monthGrid, leavesByDay, shiftMonth, monthLabel } from './leaveCalendar.js';
 import { relativeTime, groupNotifs, filterNotifs, notifKind, notifSender, senderInitials, cleanSubject, fullTime } from './inboxView.js';
+import { AUDIT_CATEGORIES, auditCategory, auditDevice, filterAuditLogs, auditCounts, auditTodayStats } from './auditView.js';
 // Satu sumber versi: package.json (dulu ditulis tangan di topbar & log — mudah terlupa naikkan).
 import { version as APP_VERSION } from '../package.json';
 import { Chart, registerables } from 'chart.js';
@@ -713,6 +714,9 @@ let staffLookupQuery = '';
 let staffLookupBranch = 'SEMUA';
 let staffLookupIc = null;   // staf yang profilnya sedang dibuka
 let attendanceSubTab = 'cetakan'; // sub-tab Rekod Kedatangan: 'cetakan' | 'jenis'
+// Login Logs: cip kategori ('all' | kunci AUDIT_CATEGORIES) + kotak carian.
+let auditCatFilter = 'all';
+let auditSearch = '';
 let manageSearchQuery = '';
 let manageRoleFilter = 'SEMUA';
 let manageCategoryFilter = 'SEMUA';
@@ -3542,6 +3546,8 @@ window.confirmYearEnd = async function() {
 window.setBalanceReportBranch = function(val) { balanceReportBranch = val; render(); };
 window.setBalanceViewBranch = function(val) { balanceViewBranch = val; render(); };
 window.setBalanceViewSearch = function(val) { balanceViewSearch = val; render(); };
+window.setAuditCatFilter = function(val) { auditCatFilter = val; render(); };
+window.setAuditSearch = function(val) { auditSearch = val; render(); };
 window.setBalanceReportType = function(val) { balanceReportType = val; render(); };
 window.setBalanceReportYear = function(val) { balanceReportYear = val; render(); };
 window.setJenisCutiYear = function(val) { jenisCutiYear = val; render(); };
@@ -9379,53 +9385,80 @@ function renderView() {
           </section>
         `; })() : ''}
 
-        ${managementTab === 'login_audit' ? `
-          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem; margin-top: 1rem;">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-              <h2 style="font-size: 1.25rem; font-weight: 600;">System Access & Activity Log</h2>
-              <span style="font-size:0.68rem;color:var(--text-muted);font-weight:600;">${systemAuditLogs.length} rekod terbaru (had ${AUDIT_LOG_LIMIT})</span>
-          </div>
-
-          <section class="glass-card fade-in" style="padding: 0; overflow: hidden;">
-              <div style="overflow-x: auto;">
-                  <table class="data-table" style="width: 100%; border-collapse: collapse; margin: 0;">
-                      <thead>
-                          <tr style="text-transform: uppercase; font-size: 0.65rem; color: var(--text-muted); border-bottom: 1px solid rgba(163,177,198,0.25); letter-spacing: 1px;">
-                              <th style="padding: 1.5rem 1rem;">Timestamp</th>
-                              <th style="padding: 1.5rem 1rem;">User</th>
-                              <th style="padding: 1.5rem 1rem;">User ID / Network</th>
-                              <th style="padding: 1.5rem 1rem;">Activity Log</th>
-                          </tr>
-                      </thead>
-                      <tbody>
-                          ${systemAuditLogs.map(log => `
-                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.2s;">
-                              <td style="padding: 1.5rem 1rem;">
-                                  <div style="font-weight: 600; font-size: 0.8rem; color: var(--text-muted);">${auditTimeLabel(log)}</div>
-                              </td>
-                              <td style="padding: 1.5rem 1rem;">
-                                  <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; margin-bottom: 0.25rem;">${log.name}</div>
-                                  <div style="font-size: 0.65rem; color: var(--primary); text-transform: uppercase; font-weight: 600;">${log.branch}</div>
-                              </td>
-                              <td style="padding: 1.5rem 1rem;">
-                                  <div style="font-weight: 600; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">${log.userId}</div>
-                                  <div style="font-size: 0.65rem; color: #a855f7; font-family: monospace; font-weight: 600; display:flex; align-items: center; gap: 6px;">
-                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                                      ${log.ip} <span style="color: var(--text-muted); font-family: system-ui;">(${log.location})</span>
-                                  </div>
-                              </td>
-                              <td style="padding: 1.5rem 1rem;">
-                                  <div style="font-size: 0.8rem; font-weight: 600; color: ${log.activity.includes('Logged in') ? 'var(--accent)' : 'var(--text-muted)'}; background: rgba(163,177,198,0.15); padding: 0.5rem 0.75rem; border-radius: 8px; border-left: 2px solid ${log.activity.includes('Logged in') ? 'var(--accent)' : log.activity.includes('Leave') ? 'var(--primary)' : 'var(--text-muted)'}; display: inline-block;">
-                                      ${log.activity}
-                                  </div>
-                              </td>
-                          </tr>
-                          `).join('')}
-                      </tbody>
-                  </table>
+        ${managementTab === 'login_audit' ? (() => {
+          // Suapan aktiviti: statistik hari ini, cip kategori, carian, kumpulan ikut hari.
+          // Semua dikira di klien daripada 200 rekod yang sudah dimuat — tiada bacaan tambahan.
+          const now = Date.now();
+          const msOf = (log) => auditMillis(log.createdAt);
+          const today = auditTodayStats(systemAuditLogs, msOf, now);
+          const counts = auditCounts(systemAuditLogs);
+          const shown = filterAuditLogs(systemAuditLogs, { cat: auditCatFilter, q: auditSearch });
+          const groups = groupNotifs(shown.map(log => ({ log, createdAt: msOf(log) })), now);
+          const chip = (key, label) => `<button class="audit-chip ${auditCatFilter === key ? 'active' : ''}" onclick="window.setAuditCatFilter('${key}')">${label}<span class="audit-chip-n">${counts[key]}</span></button>`;
+          const stat = (label, value, tone) => `<div class="audit-stat tone-${tone}"><div class="audit-stat-v">${value}</div><div class="audit-stat-l">${label}</div></div>`;
+          const row = ({ log, createdAt }) => {
+            const cat = auditCategory(log.activity);
+            const dev = auditDevice(log);
+            const when = createdAt ? relativeTime(createdAt, now) : escapeHtml(log.timestamp || '-');
+            const full = createdAt ? fullTime(createdAt) : escapeHtml(log.timestamp || '');
+            return `
+              <div class="audit-row">
+                <div class="inbox-avatar">${senderInitials(log.name)}</div>
+                <div class="audit-text">
+                  <div class="inbox-head">
+                    <span class="inbox-from">${escapeHtml(log.name || '-')}</span>
+                    <span class="inbox-time" title="${full}">${when}</span>
+                  </div>
+                  <div class="audit-activity">
+                    <span class="inbox-kind tone-${cat.tone}" title="${cat.label}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${cat.svg}</svg></span>
+                    <span>${escapeHtml(log.activity || '-')}</span>
+                  </div>
+                  <div class="audit-meta">
+                    <span>${escapeHtml(log.branch || 'N/A')}</span>
+                    <span>IC ${escapeHtml(String(log.userId || '-'))}</span>
+                    <span class="audit-device"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${dev.svg}</svg>${escapeHtml(dev.label)}</span>
+                  </div>
+                </div>
+              </div>`;
+          };
+          return `
+          <div class="audit-wrap fade-in">
+            <div class="audit-header">
+              <div class="audit-title">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                <div>
+                  <h2>Log Akses &amp; Aktiviti Sistem</h2>
+                  <p>${systemAuditLogs.length} rekod terbaru (had ${AUDIT_LOG_LIMIT}) · dikemas kini secara langsung</p>
+                </div>
               </div>
-          </section>
-        ` : ''}
+            </div>
+
+            <div class="audit-stats">
+              ${stat('Aktiviti hari ini', today.events, 'action')}
+              ${stat('Log masuk hari ini', today.logins, 'info')}
+              ${stat('Pengguna aktif hari ini', today.users, 'ok')}
+            </div>
+
+            <section class="inbox-card">
+              <div class="audit-toolbar">
+                <div class="audit-search">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input id="auditSearchInput" type="search" placeholder="Cari nama, IC, cawangan atau aktiviti…" value="${escapeHtml(auditSearch)}" oninput="window.setAuditSearch(this.value)">
+                </div>
+                <div class="audit-chips">
+                  ${chip('all', 'Semua')}
+                  ${AUDIT_CATEGORIES.filter(c => counts[c.key] || auditCatFilter === c.key).map(c => chip(c.key, c.label)).join('')}
+                </div>
+              </div>
+              ${groups.length === 0
+                ? emptyState({ icon: 'search', title: systemAuditLogs.length ? 'Tiada aktiviti sepadan' : 'Tiada log lagi', text: systemAuditLogs.length ? 'Cuba tukar carian atau penapis kategori.' : 'Aktiviti log masuk dan kelulusan akan dipaparkan di sini.' })
+                : groups.map(g => `
+                  <div class="inbox-group">${g.label} · ${g.items.length}</div>
+                  ${g.items.map(row).join('')}
+                `).join('')}
+            </section>
+          </div>`;
+        })() : ''}
 
         ${managementTab === 'locum_records' ? (() => {
           const isSupervisorRole = ['supervisor', 'doctor_pic', 'hod_balok'].includes(user.role);

@@ -1195,6 +1195,62 @@ textarea.neu-inset { resize: vertical; min-height: 100px; }
 }
 .inbox-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 
+/* ── Login Logs (audit_logs) — suapan aktiviti, guna semula gaya Inbox ── */
+.audit-wrap { max-width: 860px; width: 100%; min-width: 0; box-sizing: border-box; margin: 1rem auto 0; }
+.audit-header { margin-bottom: 1rem; }
+.audit-title { display: flex; align-items: center; gap: 0.75rem; color: var(--primary); }
+.audit-title h2 { margin: 0; font-size: 1.2rem; font-weight: 700; color: #0f172a; }
+.audit-title p { margin: 0.15rem 0 0; font-size: 0.75rem; color: #94a3b8; font-weight: 600; }
+.audit-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+.audit-stat {
+  background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 14px; padding: 0.85rem 1rem;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.05); border-top: 3px solid var(--tc);
+}
+.audit-stat.tone-action { --tc: var(--primary); }
+.audit-stat.tone-info   { --tc: var(--info); }
+.audit-stat.tone-ok     { --tc: var(--accent); }
+.audit-stat-v { font-size: 1.5rem; font-weight: 800; color: #0f172a; line-height: 1.1; }
+.audit-stat-l { font-size: 0.72rem; font-weight: 600; color: #64748b; margin-top: 0.2rem; }
+.audit-toolbar { padding: 0.9rem 1.1rem; border-bottom: 1px solid #eef1f5; display: flex; flex-direction: column; gap: 0.7rem; }
+.audit-search { position: relative; }
+.audit-search svg { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: #94a3b8; pointer-events: none; }
+.audit-search input {
+  width: 100%; box-sizing: border-box; padding: 0.6rem 0.8rem 0.6rem 2.3rem; font: inherit; font-size: 0.85rem;
+  border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; box-shadow: none; color: #0f172a;
+}
+.audit-search input:focus { outline: none; border-color: var(--primary); background: #fff; }
+.audit-chips { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.audit-chip {
+  border: 1px solid #e2e8f0; background: #fff; cursor: pointer; font: inherit; font-size: 0.78rem; font-weight: 600;
+  color: #475569; padding: 0.32rem 0.7rem; border-radius: 999px; display: inline-flex; align-items: center; gap: 0.4rem;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.audit-chip:hover { border-color: #cbd5e1; color: #0f172a; }
+.audit-chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.audit-chip-n { font-size: 0.68rem; font-weight: 700; padding: 0 0.4rem; border-radius: 999px; background: #eef1f5; color: #64748b; }
+.audit-chip.active .audit-chip-n { background: rgba(255,255,255,0.25); color: #fff; }
+.audit-row { position: relative; display: flex; align-items: flex-start; gap: 0.85rem; padding: 0.8rem 1.1rem; transition: background 0.15s; }
+.audit-row + .audit-row::before {
+  content: ''; position: absolute; top: 0; right: 0; left: calc(1.1rem + 40px + 0.85rem); border-top: 1px solid #eef1f5;
+}
+.audit-row:hover { background: #f8fafc; }
+.audit-text { flex: 1; min-width: 0; }
+.audit-activity { display: flex; align-items: flex-start; gap: 0.4rem; margin-top: 0.15rem; font-size: 0.85rem; color: #334155; line-height: 1.4; }
+.audit-activity .inbox-kind { margin-top: 0.05rem; }
+.audit-activity > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.audit-meta { display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; margin-top: 0.3rem; font-size: 0.72rem; color: #94a3b8; }
+.audit-meta > span:first-child { color: var(--primary); font-weight: 600; text-transform: uppercase; }
+.audit-device { display: inline-flex; align-items: center; gap: 0.3rem; }
+.audit-device svg { width: 12px; height: 12px; }
+@media (max-width: 600px) {
+  .audit-stats { gap: 0.5rem; }
+  .audit-stat { padding: 0.7rem; }
+  .audit-stat-v { font-size: 1.25rem; }
+  .audit-toolbar, .audit-row { padding-left: 0.85rem; padding-right: 0.85rem; }
+  .audit-chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 0.15rem; }
+  .audit-chip { flex-shrink: 0; }
+}
+
 /* ── Surat penuh ── */
 .inbox-letter { padding: 0 0 1.5rem !important; }
 .inbox-letter-bar {
