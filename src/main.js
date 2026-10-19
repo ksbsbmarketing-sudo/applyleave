@@ -11654,122 +11654,122 @@ function renderView() {
       `;
     }
 
-    case 'settings':
+    case 'settings': {
+      // Tetapan Akaun: kad hero (gambar, nama, peranan) + Maklumat Peribadi,
+      // Keselamatan dan Akaun Google. Gaya dalam style.css (.set-*).
+      const g = googleIdentityOf(auth.currentUser);
+      const roleLabel = (window.staffConfig?.roleLabels || {})[user.role] || user.role || '-';
+      const ico = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+      const I = {
+        user:  '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+        id:    '<rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="12" r="2"/><line x1="13" y1="10" x2="18" y2="10"/><line x1="13" y1="14" x2="17" y2="14"/>',
+        phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.18 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>',
+        mail:  '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
+        pin:   '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
+        home:  '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
+        clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+        lock:  '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+        edit:  '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
+        cam:   '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+        eye:   '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+        back:  '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+        warn:  '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+      };
+      const missing = `<span class="set-missing">${ico(I.warn)} Belum ditetapkan</span>`;
+      const info = (icon, label, value) => `
+        <div class="set-info">
+          <span class="set-info-ico">${ico(icon)}</span>
+          <div class="set-info-text">
+            <div class="set-info-l">${label}</div>
+            <div class="set-info-v">${value}</div>
+          </div>
+        </div>`;
+      const pwd = (id, label, placeholder) => `
+        <label class="set-field" for="${id}">
+          <span>${label}</span>
+          <div class="set-pwd">
+            <input type="password" id="${id}" required minlength="6" placeholder="${placeholder}" autocomplete="${id === 'pwd-current' ? 'current-password' : 'new-password'}">
+            <button type="button" class="set-eye" aria-label="Tunjuk kata laluan" onclick="const i=this.previousElementSibling; i.type = i.type === 'password' ? 'text' : 'password'; this.classList.toggle('on');">${ico(I.eye)}</button>
+          </div>
+        </label>`;
       return `
         <header class="top-bar">
-          <h1>Tetapan Akaun (Settings)</h1>
+          <h1>Tetapan Akaun</h1>
           <button class="neu-btn primary-text" onclick="window.setView('dashboard')">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${I.back}</svg>
               Kembali ke Dashboard
           </button>
         </header>
 
-        <section style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 2rem;">
-            <!-- Profile Card -->
-            <div class="glass-card fade-in" style="padding: 2.5rem; position: relative;">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem;">
-                    <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--primary); display: flex; align-items: center; gap: 0.5rem;">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                        My Profile
-                    </h2>
-                    <button class="neu-btn" onclick="window.setProfileSettings(true)" style="padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem;">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                        Edit Profile
-                    </button>
-                </div>
-
-                <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(163,177,198,0.25); padding-bottom: 1rem;">
-                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Full Name</span>
-                        <span style="font-weight: 600;">${user.name}</span>
-                    </div>
-
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(163,177,198,0.25); padding-bottom: 1rem;">
-                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">IC Number</span>
-                        <span style="font-weight: 600;">${user.ic}</span>
-                    </div>
-
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(163,177,198,0.25); padding-bottom: 1rem;">
-                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Phone</span>
-                        <span style="font-weight: 600;">${user.phone || 'Belum ditetapkan'}</span>
-                    </div>
-
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(163,177,198,0.25); padding-bottom: 1rem;">
-                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px; display: flex; align-items: center; gap: 0.25rem;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg> Email</span>
-                        ${user.email ? `<span style="font-weight: 600; font-size: 0.85rem;">${user.email}</span>` : `<span style="font-weight: 600; font-size: 0.8rem; color: var(--warning); display: flex; align-items: center; gap: 0.25rem;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> Belum ditetapkan &mdash; Klik Edit</span>`}
-                    </div>
-                    
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(163,177,198,0.25); padding-bottom: 1rem;">
-                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Access Level</span>
-                        <span style="font-weight: 700; font-size: 0.75rem; background: rgba(59, 130, 246, 0.1); color: var(--primary); padding: 0.25rem 0.75rem; border-radius: 20px; border: 1px solid rgba(59, 130, 246, 0.2); text-transform: uppercase;">${user.role}</span>
-                    </div>
-
-                    <div style="display: flex; flex-direction: column; gap: 0.25rem; border-bottom: 1px solid rgba(163,177,198,0.25); padding-bottom: 1rem;">
-                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Alamat</span>
-                        <span style="font-weight: 600; font-size: 0.9rem;">${user.address || '—'}</span>
-                    </div>
-
-                    <div style="display: flex; flex-direction: column; gap: 0.25rem; border-bottom: 1px solid rgba(163,177,198,0.25); padding-bottom: 1rem;">
-                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Branch</span>
-                        <span style="font-weight: 600; font-size: 0.9rem;">${user.branch}</span>
-                    </div>
-
-                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Service Duration</span>
-                        <span style="font-weight: 700; font-size: 0.9rem; color: var(--primary);">${window.getServiceDurationText(user.startDate)}</span>
-                    </div>
-                </div>
+        <div class="set-wrap fade-in">
+          <section class="set-hero">
+            <div class="set-hero-avatar">
+              ${userAvatar(user, { large: true })}
+              <label class="set-cam" title="Tukar gambar profil">
+                ${ico(I.cam)}
+                <input type="file" accept="${PHOTO_ACCEPT}" onchange="window.uploadProfilePhoto(this)">
+              </label>
             </div>
+            <div class="set-hero-text">
+              <h2>${escapeHtml(user.name || '-')}</h2>
+              <div class="set-hero-tags">
+                <span class="set-tag is-role">${escapeHtml(roleLabel)}</span>
+                ${user.branch ? `<span class="set-tag">${ico(I.pin)}${escapeHtml(user.branch)}</span>` : ''}
+                ${user.startDate ? `<span class="set-tag">${ico(I.clock)}${window.getServiceDurationText(user.startDate)}</span>` : ''}
+              </div>
+            </div>
+            <button class="set-btn" onclick="window.setProfileSettings(true)">${ico(I.edit)} Edit Profil</button>
+          </section>
 
-            <!-- Security Card -->
-            <div class="glass-card fade-in" style="padding: 2.5rem; height: fit-content;">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2.5rem;">
-                    <h2 style="font-size: 1.25rem; font-weight: 600; color: #f97316; display: flex; align-items: center; gap: 0.5rem;">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                        Security
-                    </h2>
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(249, 115, 22, 0.2)" stroke-width="1"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          <div class="set-grid">
+            <section class="set-card">
+              <div class="set-card-head">
+                <span class="set-card-ico">${ico(I.user)}</span>
+                <div><h3>Maklumat Peribadi</h3><p>Dikemas kini melalui butang Edit Profil</p></div>
+              </div>
+              <div class="set-info-list">
+                ${info(I.id, 'No. Kad Pengenalan', escapeHtml(String(user.ic || '-')))}
+                ${info(I.phone, 'No. Telefon', user.phone ? escapeHtml(user.phone) : missing)}
+                ${info(I.mail, 'Emel', user.email ? escapeHtml(user.email) : missing)}
+                ${info(I.home, 'Alamat', user.address ? escapeHtml(user.address) : '—')}
+                ${info(I.pin, 'Cawangan', escapeHtml(user.branch || '—'))}
+                ${info(I.clock, 'Tempoh Perkhidmatan', window.getServiceDurationText(user.startDate))}
+              </div>
+            </section>
+
+            <div class="set-col">
+              <section class="set-card">
+                <div class="set-card-head">
+                  <span class="set-card-ico is-warn">${ico(I.lock)}</span>
+                  <div><h3>Keselamatan</h3><p>Minimum 6 aksara dan bukan No. IC anda</p></div>
                 </div>
-                
-                <form style="display: flex; flex-direction: column; gap: 1.5rem;" onsubmit="window.changePassword(event)">
-                    <div>
-                        <label style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px; margin-bottom: 0.5rem; display: block;">Current Password</label>
-                        <input type="password" id="pwd-current" required class="neu-inset" placeholder="Masukkan kata laluan semasa" style="width: 100%; padding: 1rem; color-scheme: light;">
-                    </div>
-
-                    <div>
-                        <label style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px; margin-bottom: 0.5rem; display: block;">New Password</label>
-                        <input type="password" id="pwd-new" required minlength="4" class="neu-inset" placeholder="Masukkan kata laluan baharu" style="width: 100%; padding: 1rem; color-scheme: light;">
-                    </div>
-
-                    <div>
-                        <label style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 1px; margin-bottom: 0.5rem; display: block;">Confirm New Password</label>
-                        <input type="password" id="pwd-confirm" required minlength="4" class="neu-inset" placeholder="Ulang kata laluan baharu" style="width: 100%; padding: 1rem; color-scheme: light;">
-                    </div>
-
-                    <button type="submit" class="neu-btn" style="width: 100%; padding: 1rem; display: flex; justify-content: center; align-items: center; gap: 0.5rem; color: var(--primary); font-weight: 600; font-size: 1rem;">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                        Tukar Kata Laluan
-                    </button>
+                <form class="set-form" onsubmit="window.changePassword(event)">
+                  ${pwd('pwd-current', 'Kata laluan semasa', 'Masukkan kata laluan semasa')}
+                  ${pwd('pwd-new', 'Kata laluan baharu', 'Sekurang-kurangnya 6 aksara')}
+                  ${pwd('pwd-confirm', 'Sahkan kata laluan baharu', 'Ulang kata laluan baharu')}
+                  <button type="submit" class="set-btn is-primary">${ico(I.lock)} Tukar Kata Laluan</button>
                 </form>
-            </div>
+              </section>
 
-            ${(() => {
-              const g = googleIdentityOf(auth.currentUser);
-              return `
-            <div class="glass-card fade-in" style="padding: 2.5rem;">
-                <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--primary); margin-bottom: 1rem;">Akaun Google</h2>
+              <section class="set-card">
+                <div class="set-card-head">
+                  <span class="set-card-ico is-google"><svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg></span>
+                  <div><h3>Akaun Google</h3><p>Log masuk tanpa kata laluan</p></div>
+                  <span class="set-status ${g ? 'is-on' : ''}">${g ? 'Dipautkan' : 'Belum dipautkan'}</span>
+                </div>
                 ${g ? `
-                  <p style="margin-bottom: 0.75rem;">✅ Dipautkan: <strong>${escapeHtml(g.email || '')}</strong></p>
-                  <p style="color: var(--text-muted); font-size: 0.85rem;">Untuk buang pautan, sila hubungi HR/Admin.</p>
+                  <div class="set-google">${ico(I.mail)}<strong>${escapeHtml(g.email || '')}</strong></div>
+                  <p class="set-note">Untuk buang pautan, sila hubungi HR/Admin.</p>
                 ` : `
-                  <p style="color: var(--text-muted); margin-bottom: 1.25rem;">Pautkan akaun Google untuk log masuk tanpa kata laluan. Log masuk dengan IC dan kata laluan masih boleh digunakan.</p>
-                  <button class="neu-btn" onclick="window.linkMyGoogle()" style="width: 100%; padding: 0.9rem; color: var(--primary); font-weight: 600;">Pautkan akaun Google</button>
+                  <p class="set-note">Pautkan akaun Google untuk log masuk tanpa kata laluan. Log masuk dengan IC dan kata laluan masih boleh digunakan.</p>
+                  <button class="set-btn is-block" onclick="window.linkMyGoogle()">Pautkan akaun Google</button>
                 `}
-            </div>`;
-            })()}
-        </section>
+              </section>
+            </div>
+          </div>
+        </div>
       `;
+    }
 
     default:
       return `<div style="padding: 2rem; text-align: center;">Coming Soon: ${view} Module</div>`;
