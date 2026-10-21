@@ -11974,81 +11974,77 @@ function renderLeaveModal() {
 
 function renderSelfProfileModal() {
     if (!showProfileSettings) return '';
+    const _branch = user.branch || '';
+    const _role = window.staffConfig.roleLabels[user.role] || user.role || '';
 
     return `
     <div class="modal-overlay" id="profile-modal-backdrop" onclick="if(event.target === this) window.setProfileSettings(false)">
-      <div class="glass-card modal-content fade-in" style="background: rgba(243, 244, 246, 0.95); padding: 0; min-width: 500px; max-width: 600px; max-height: 90vh; overflow-y: auto; color: #1f2937;">
-         
-         <div style="padding: 2rem 2.5rem; border-bottom: 1px solid rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; position: relative;">
-            <h2 style="font-size: 1.25rem; font-weight: 600; color: #1e3a8a; display: flex; align-items: center; gap: 0.5rem; margin: 0;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                My Profile
-            </h2>
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(59, 130, 246, 0.1)" stroke-width="2" style="position: absolute; right: 2rem; top: 1.5rem;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M12 22s-8-4-8-10V5l8-3 8 3v7c0 6-8 10-8 10z"></path></svg>
-         </div>
-
-         <form id="edit-self-profile" style="padding: 2.5rem;" onsubmit="window.saveSelfProfile(event)">
-
-            <div style="display:flex; flex-direction:column; align-items:center; margin-bottom: 1.75rem;">
-               <div onclick="document.getElementById('settings-avatar-upload').click()" title="Tukar gambar profil"
-                    style="width:96px; height:96px; border-radius:50%; overflow:hidden; cursor:pointer; position:relative;
-                           background:linear-gradient(135deg,#9b2c2c,#841824); display:flex; align-items:center; justify-content:center;
-                           color:#fff; font-size:2.2rem; font-weight:800; box-shadow:0 4px 12px rgba(0,0,0,0.15);">
-                  ${user.photoUrl
-                    ? `<img src="${user.photoUrl}" alt="${escapeHtml(user.name || '')}" style="width:100%;height:100%;object-fit:cover;">`
-                    : escapeHtml(((user.name || '?')[0] || '?'))}
-                  <span style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.45); color:#fff; font-size:0.7rem; text-align:center; padding:2px 0;">📷 Tukar</span>
-               </div>
-               <input type="file" id="settings-avatar-upload" accept="${PHOTO_ACCEPT}" style="display:none;" onchange="window.uploadProfilePhoto(this)">
-               <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.5rem;">Tekan gambar untuk muat naik (maks 5MB)</div>
+      <div class="glass-card modal-content ep-modal sp-modal fade-in">
+        <div class="ep-head">
+          <button type="button" class="sp-photo" onclick="document.getElementById('settings-avatar-upload').click()" title="Tukar gambar profil" aria-label="Tukar gambar profil">
+            ${user.photoUrl
+              ? `<img src="${escapeHtml(user.photoUrl)}" alt="${escapeHtml(user.name || '')}">`
+              : `<span>${escapeHtml(((user.name || '?')[0] || '?').toUpperCase())}</span>`}
+            <span class="sp-cam"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+          </button>
+          <input type="file" id="settings-avatar-upload" accept="${PHOTO_ACCEPT}" style="display:none;" onchange="window.uploadProfilePhoto(this)">
+          <div class="ep-head-text">
+            <div class="ep-kicker">Profil Saya</div>
+            <h2>${escapeHtml(user.name || '-')}</h2>
+            <div class="ep-meta">
+              ${_role ? `<span class="ep-badge">${escapeHtml(_role)}</span>` : ''}
+              ${_branch ? `<span>${escapeHtml(_branch)}</span>` : ''}
             </div>
+          </div>
+          <button type="button" class="ep-close" onclick="window.setProfileSettings(false)" aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
 
-            <div style="margin-bottom: 1.5rem;">
-               <label style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 0.5rem;">Nama Penuh</label>
-               <input id="self-name" type="text" value="${(user.name || '').replace(/"/g,'&quot;')}" placeholder="Nama penuh anda..." required style="width: 100%; padding: 1rem; border-radius: 12px; background: rgba(0,0,0,0.03); border: 1px inset rgba(255,255,255,0.5); outline: none; box-shadow: inset 2px 2px 5px rgba(0,0,0,0.05), inset -2px -2px 5px white; color: #374151; box-sizing: border-box;">
-               <div style="font-size:0.7rem; color:#9ca3af; margin-top:0.4rem;">Nama akan ditukar kepada HURUF BESAR automatik semasa simpan (cth: <em>ahmad bin ali</em> → <em>AHMAD BIN ALI</em>). Nama ini digunakan di skrin log masuk dan pada permohonan cuti baharu.</div>
+        <form id="edit-self-profile" class="ep-body" onsubmit="window.saveSelfProfile(event)">
+          <section class="ep-sec" style="--sc:var(--primary);">
+            <div class="ep-sec-head"><span class="ep-sec-dot"></span>Maklumat Peribadi</div>
+            <div class="ep-grid ep-grid-2">
+              <div class="ep-field is-wide" style="--fc:var(--primary);">
+                <label for="self-name">Nama Penuh</label>
+                <input id="self-name" type="text" class="ep-input" value="${escapeHtml(user.name || '')}" placeholder="Nama penuh anda..." required>
+                <small>Ditukar ke HURUF BESAR semasa simpan. Dipakai di skrin log masuk dan pada permohonan cuti baharu.</small>
+              </div>
+              <div class="ep-field" style="--fc:#16a34a;">
+                <label for="self-phone">No. Telefon (WhatsApp)</label>
+                <input type="text" id="self-phone" class="ep-input" value="${escapeHtml(user.phone || '')}" placeholder="Cth: 60123456789">
+              </div>
+              <div class="ep-field" style="--fc:#f97316;">
+                <label for="self-email">Email Notifikasi <span class="sp-req">Wajib</span></label>
+                <input type="email" id="self-email" class="ep-input" placeholder="contoh@email.com" value="${escapeHtml(user.email || '')}" required>
+              </div>
+              <div class="ep-field is-wide" style="--fc:#64748b;">
+                <label for="self-address">Alamat</label>
+                <input id="self-address" type="text" class="ep-input" value="${escapeHtml(user.address || '')}" placeholder="Masukkan alamat anda...">
+              </div>
             </div>
+          </section>
 
-            <div style="margin-bottom: 1.5rem;">
-               <label style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 0.5rem;">Alamat</label>
-               <input id="self-address" type="text" value="${(user.address || '').replace(/"/g,'&quot;')}" placeholder="Masukkan alamat anda..." style="width: 100%; padding: 1rem; border-radius: 12px; background: rgba(0,0,0,0.03); border: 1px inset rgba(255,255,255,0.5); outline: none; box-shadow: inset 2px 2px 5px rgba(0,0,0,0.05), inset -2px -2px 5px white; color: #374151; box-sizing: border-box;">
+          <section class="ep-sec" style="--sc:#16a34a;">
+            <div class="ep-sec-head"><span class="ep-sec-dot"></span>Notifikasi Kelulusan Cuti</div>
+            <div class="sp-notifs">
+              <div class="sp-notif is-wa">
+                <span class="sp-notif-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span>
+                <div><b>WhatsApp</b><span>Dihantar ke nombor telefon di atas. Tiada setup diperlukan.</span></div>
+              </div>
+              <div class="sp-notif is-mail">
+                <span class="sp-notif-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></span>
+                <div><b>Email</b><span>Dihantar ke alamat email di atas.</span></div>
+              </div>
             </div>
+          </section>
 
-            <div style="margin-bottom: 1.5rem;">
-               <label style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 0.5rem;">Phone Number</label>
-               <input type="text" id="self-phone" value="${user.phone || ''}" placeholder="Cth: 60123456789" style="width: 100%; padding: 1rem; border-radius: 12px; background: rgba(0,0,0,0.03); border: 1px inset rgba(255,255,255,0.5); outline: none; box-shadow: inset 2px 2px 5px rgba(0,0,0,0.05), inset -2px -2px 5px white; color: #374151;">
-            </div>
-
-            <div style="margin-bottom: 2rem;">
-               <label style="font-size: 0.75rem; color: #f97316; text-transform: uppercase; font-weight: 700; display: flex; align-items: center; gap: 0.25rem; margin-bottom: 0.5rem;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                  Email Notifikasi &starf; Wajib
-               </label>
-               <input type="email" id="self-email" placeholder="contoh@email.com" value="${user.email || ''}" required style="width: 100%; padding: 1rem; border-radius: 12px; background: rgba(0,0,0,0.03); border: 1px inset rgba(255,255,255,0.5); outline: none; box-shadow: inset 2px 2px 5px rgba(0,0,0,0.05), inset -2px -2px 5px white; color: #374151; margin-bottom: 0.5rem;">
-               <div style="font-size: 0.7rem; color: #f97316;">Email ini digunakan untuk menerima notifikasi kelulusan cuti.</div>
-            </div>
-
-            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 1.5rem; margin-bottom: 2.5rem;">
-                <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700; color: #166534; font-size: 0.9rem; margin-bottom: 1rem;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-                    WhatsApp Notifikasi
-                </div>
-                
-                <label style="font-size: 0.75rem; color: #4b5563; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 0.5rem;">Penerima Notifikasi WhatsApp</label>
-                <div style="background: #e6ffed; padding: 1rem; border-radius: 8px; font-size: 0.75rem; font-weight: 600; color: #16a34a; line-height: 1.6;">
-                    📱 Notifikasi sentiasa dihantar ke nombor telefon di atas.<br>
-                    Sistem menggunakan Fonnte &mdash; tiada setup diperlukan dari pihak anda.
-                </div>
-            </div>
-
-            <div style="display: flex; gap: 1rem;">
-                <button type="button" onclick="window.setProfileSettings(false);" style="flex: 1; padding: 1rem; border-radius: 12px; background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.05); color: #ef4444; font-weight: 600; cursor: pointer;">Cancel</button>
-                <button type="submit" style="flex: 1; padding: 1rem; border-radius: 12px; background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.05); color: #2563eb; font-weight: 600; display: flex; justify-content: center; align-items: center; gap: 0.5rem; cursor: pointer;">
-                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                   Save
-                </button>
-            </div>
-         </form>
+          <div class="ep-foot">
+            <button type="button" class="set-btn" onclick="window.setProfileSettings(false);">Batal</button>
+            <button type="submit" class="set-btn is-primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              Simpan
+            </button>
+          </div>
+        </form>
       </div>
     </div>
     `;
