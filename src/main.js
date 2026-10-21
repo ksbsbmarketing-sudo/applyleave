@@ -7720,21 +7720,25 @@ function renderView() {
       return `
         <div class="dashboard-wrapper">
           ${showSwitcher ? `
-            <div style="display:flex;gap:0.6rem;margin-bottom:2rem;background:rgba(163,177,198,0.12);padding:0.4rem;border-radius:12px;width:fit-content;border:1px solid rgba(163,177,198,0.5);">
+            <div class="tabs tabs-dash">
                 ${canSeeAnalytics ? `
-                <button onclick="window.setDashboardTab('analytics')" style="border:none;padding:0.6rem 1.4rem;border-radius:8px;font-size:0.92rem;font-weight:700;cursor:pointer;transition:all 0.2s;${dashboardTab === 'analytics' ? 'background:var(--primary);color:#fff;box-shadow:0 4px 12px var(--primary-glow);' : 'background:transparent;color:var(--text-muted);'}">
-                  📊 ANALISA (ADMIN)
+                <button class="tab ${dashboardTab === 'analytics' ? 'on' : ''}" onclick="window.setDashboardTab('analytics')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                  Analisa (Admin)
                 </button>` : ''}
                 ${canSeeBranchAnalytics ? `
-                <button onclick="window.setDashboardTab('branch_analytics')" style="border:none;padding:0.6rem 1.4rem;border-radius:8px;font-size:0.92rem;font-weight:700;cursor:pointer;transition:all 0.2s;${dashboardTab === 'branch_analytics' ? 'background:linear-gradient(135deg,#fb923c,#f97316);color:#fff;box-shadow:0 4px 12px rgba(251,146,60,0.35);' : 'background:transparent;color:var(--text-muted);'}">
-                  📊 ANALISA CAWANGAN
+                <button class="tab ${dashboardTab === 'branch_analytics' ? 'on' : ''}" onclick="window.setDashboardTab('branch_analytics')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                  Analisa Cawangan
                 </button>` : ''}
                 ${canSeeBranch ? `
-                <button onclick="window.setDashboardTab('branch')" style="border:none;padding:0.6rem 1.4rem;border-radius:8px;font-size:0.92rem;font-weight:700;cursor:pointer;transition:all 0.2s;${dashboardTab === 'branch' ? 'background:var(--primary);color:#fff;box-shadow:0 4px 12px var(--primary-glow);' : 'background:transparent;color:var(--text-muted);'}">
-                  🏠 CAWANGAN SAYA
+                <button class="tab ${dashboardTab === 'branch' ? 'on' : ''}" onclick="window.setDashboardTab('branch')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  Cawangan Saya
                 </button>` : ''}
-                <button onclick="window.setDashboardTab('personal')" style="border:none;padding:0.6rem 1.4rem;border-radius:8px;font-size:0.92rem;font-weight:700;cursor:pointer;transition:all 0.2s;${dashboardTab === 'personal' ? 'background:var(--primary);color:#fff;box-shadow:0 4px 12px var(--primary-glow);' : 'background:transparent;color:var(--text-muted);'}">
-                  👤 PERSONAL
+                <button class="tab ${dashboardTab === 'personal' ? 'on' : ''}" onclick="window.setDashboardTab('personal')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  Personal
                 </button>
             </div>
           ` : ''}
@@ -8623,14 +8627,13 @@ function renderView() {
         const showConfig    = userPerms.manage_routing || userPerms.manage_access || userPerms.manage_holidays || userPerms.wa_setting || userPerms.manage_policy;
 
         const grpBtn = (key, icon, label, badge, show) => !show ? '' : `
-          <button onclick="window.setManageGroup('${key}')" style="display:flex;align-items:center;gap:0.5rem;padding:0.6rem 1.1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.82rem;font-weight:700;transition:all 0.2s;position:relative;
-            ${activeGroup === key ? 'background:var(--card-bg);color:var(--primary);box-shadow:0 2px 10px rgba(0,0,0,0.12);' : 'background:transparent;color:var(--text-muted);'}">
-            ${icon}${label}${badge > 0 ? `<span style="position:absolute;top:3px;right:4px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:#ef4444;color:#fff;font-size:0.6rem;font-weight:800;display:flex;align-items:center;justify-content:center;">${badge}</span>` : ''}
+          <button class="tab ${activeGroup === key ? 'on' : ''}" onclick="window.setManageGroup('${key}')">
+            ${icon}${label}${badge > 0 ? `<span class="tab-badge">${badge}</span>` : ''}
           </button>`;
 
         return `
         <!-- Level 1: Kumpulan Utama -->
-        <div style="display:flex;gap:0.3rem;margin-bottom:0.75rem;background:rgba(163,177,198,0.18);padding:0.35rem;border-radius:14px;overflow-x:auto;flex-wrap:wrap;">
+        <div class="tabs tabs-main">
           ${grpBtn('approvals','<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>','Kelulusan', pendingCount, showApprovals)}
           ${grpBtn('people','<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>','Staf & Cawangan', pendingRegs, showPeople)}
           ${grpBtn('reports','<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>','Laporan & Log', 0, showReports)}
@@ -8638,7 +8641,7 @@ function renderView() {
         </div>
 
         <!-- Level 2: Sub-tab dalam kumpulan aktif -->
-        <div style="display:flex;gap:0.3rem;margin-bottom:1.75rem;background:rgba(163,177,198,0.1);padding:0.3rem;border-radius:10px;overflow-x:auto;flex-wrap:wrap;">
+        <div class="tabs-line">
           ${activeGroup === 'approvals' ? `
             ${userPerms.manage_pending ? (() => {
               const isFullBoss = window.isFinalApprover(user);
@@ -8648,28 +8651,28 @@ function renderView() {
               if (isFullBoss) { const p2=leaveRecords.filter(r=>window.canManageRequest(user,r)&&['HOD APPROVED','HOD RECOMMENDED'].includes(r.status)).length; const by=leaveRecords.filter(r=>window.canManageRequest(user,r)&&r.status==='PENDING').length; label=`Kelulusan${p2>0?` ✅${p2}`:''}${by>0?` ⚡${by}`:''}`; }
               else if (isTL) { const p0=leaveRecords.filter(r=>window.canManageRequest(user,r)&&r.status==='PENDING').length; label=`Sokongan TL (${p0})`; }
               else if (isHODRole) { const p1=leaveRecords.filter(r=>window.canManageRequest(user,r)&&r.status==='PENDING').length; const tl=leaveRecords.filter(r=>window.canManageRequest(user,r)&&r.status==='TL APPROVED').length; label=`Nilai Cuti${tl>0?` 🟡${tl}`:''}${p1>0?` ⚡${p1}`:''}`; }
-              return `<button class="neu-tab ${managementTab==='pending'?'active':''}" onclick="window.setManageTab('pending')" style="border-radius:8px;">${label}</button>`;
+              return `<button class="neu-tab ${managementTab==='pending'?'active':''}" onclick="window.setManageTab('pending')">${label}</button>`;
             })() : ''}
           ` : ''}
           ${activeGroup === 'people' ? `
-            ${userPerms.manage_staff ? `<button class="neu-tab ${managementTab==='staff'?'active':''}" onclick="window.setManageTab('staff')" style="border-radius:8px;">Staff</button>` : ''}
-            ${userPerms.manage_branches ? `<button class="neu-tab ${managementTab==='branches'?'active':''}" onclick="window.setManageTab('branches')" style="border-radius:8px;">Cawangan</button>` : ''}
-            ${userPerms.manage_roles_categories ? `<button class="neu-tab ${managementTab==='roles_categories'?'active':''}" onclick="window.setManageTab('roles_categories')" style="border-radius:8px;">Peranan & Kategori</button>` : ''}
-            ${window.canSeeRegRequests(user) ? (() => { const pr=window.regRequestsInScope(registrationRequests).filter(r=>['pending','approving'].includes(r.status)).length; return `<button class="neu-tab ${managementTab==='reg_requests'?'active':''}" onclick="window.setManageTab('reg_requests')" style="border-radius:8px;">Daftar Baharu${pr>0?` <span style="background:#ef4444;color:#fff;border-radius:999px;padding:0 5px;font-size:0.65rem;font-weight:800;">${pr}</span>`:''}</button>`; })() : ''}
+            ${userPerms.manage_staff ? `<button class="neu-tab ${managementTab==='staff'?'active':''}" onclick="window.setManageTab('staff')">Staff</button>` : ''}
+            ${userPerms.manage_branches ? `<button class="neu-tab ${managementTab==='branches'?'active':''}" onclick="window.setManageTab('branches')">Cawangan</button>` : ''}
+            ${userPerms.manage_roles_categories ? `<button class="neu-tab ${managementTab==='roles_categories'?'active':''}" onclick="window.setManageTab('roles_categories')">Peranan & Kategori</button>` : ''}
+            ${window.canSeeRegRequests(user) ? (() => { const pr=window.regRequestsInScope(registrationRequests).filter(r=>['pending','approving'].includes(r.status)).length; return `<button class="neu-tab ${managementTab==='reg_requests'?'active':''}" onclick="window.setManageTab('reg_requests')">Daftar Baharu${pr>0?` <span class="tab-badge">${pr}</span>`:''}</button>`; })() : ''}
           ` : ''}
           ${activeGroup === 'reports' ? `
-            ${userPerms.manage_reports ? `<button class="neu-tab ${managementTab==='hr_reports'?'active':''}" onclick="window.setManageTab('hr_reports')" style="border-radius:8px;">HR Reports</button>` : ''}
-            ${userPerms.manage_reports ? `<button class="neu-tab ${managementTab==='balance_view'?'active':''}" onclick="window.setManageTab('balance_view')" style="border-radius:8px;">📊 Baki Cuti</button>` : ''}
-            ${userPerms.locum_records ? `<button class="neu-tab ${managementTab==='locum_records'?'active':''}" onclick="window.setManageTab('locum_records')" style="border-radius:8px;">Rekod Locum</button>` : ''}
-            ${userPerms.manage_audit ? `<button class="neu-tab ${managementTab==='master_audit'?'active':''}" onclick="window.setManageTab('master_audit')" style="border-radius:8px;">Master Logs</button>` : ''}
-            ${userPerms.manage_login_audit ? `<button class="neu-tab ${managementTab==='login_audit'?'active':''}" onclick="window.setManageTab('login_audit')" style="border-radius:8px;">Login Logs</button>` : ''}
+            ${userPerms.manage_reports ? `<button class="neu-tab ${managementTab==='hr_reports'?'active':''}" onclick="window.setManageTab('hr_reports')">HR Reports</button>` : ''}
+            ${userPerms.manage_reports ? `<button class="neu-tab ${managementTab==='balance_view'?'active':''}" onclick="window.setManageTab('balance_view')">Baki Cuti</button>` : ''}
+            ${userPerms.locum_records ? `<button class="neu-tab ${managementTab==='locum_records'?'active':''}" onclick="window.setManageTab('locum_records')">Rekod Locum</button>` : ''}
+            ${userPerms.manage_audit ? `<button class="neu-tab ${managementTab==='master_audit'?'active':''}" onclick="window.setManageTab('master_audit')">Master Logs</button>` : ''}
+            ${userPerms.manage_login_audit ? `<button class="neu-tab ${managementTab==='login_audit'?'active':''}" onclick="window.setManageTab('login_audit')">Login Logs</button>` : ''}
           ` : ''}
           ${activeGroup === 'config' ? `
-            ${userPerms.manage_policy ? `<button class="neu-tab ${managementTab==='policy_editor'?'active':''}" onclick="window.setManageTab('policy_editor')" style="border-radius:8px;">📋 Editor Polisi</button>` : ''}
-            ${userPerms.manage_routing ? `<button class="neu-tab ${managementTab==='routing'?'active':''}" onclick="window.setManageTab('routing')" style="border-radius:8px;">Laluan Kelulusan</button>` : ''}
-            ${userPerms.manage_access ? `<button class="neu-tab ${managementTab==='access_control'?'active':''}" onclick="window.setManageTab('access_control')" style="border-radius:8px;">Access Control</button>` : ''}
-            ${userPerms.manage_holidays ? `<button class="neu-tab ${managementTab==='public_holidays'?'active':''}" onclick="window.setManageTab('public_holidays')" style="border-radius:8px;">Cuti Umum</button>` : ''}
-            ${userPerms.wa_setting ? `<button class="neu-tab ${managementTab==='whatsapp_settings'?'active':''}" onclick="window.setManageTab('whatsapp_settings')" style="border-radius:8px;color:#25d366;">WA Settings</button>` : ''}
+            ${userPerms.manage_policy ? `<button class="neu-tab ${managementTab==='policy_editor'?'active':''}" onclick="window.setManageTab('policy_editor')">Editor Polisi</button>` : ''}
+            ${userPerms.manage_routing ? `<button class="neu-tab ${managementTab==='routing'?'active':''}" onclick="window.setManageTab('routing')">Laluan Kelulusan</button>` : ''}
+            ${userPerms.manage_access ? `<button class="neu-tab ${managementTab==='access_control'?'active':''}" onclick="window.setManageTab('access_control')">Access Control</button>` : ''}
+            ${userPerms.manage_holidays ? `<button class="neu-tab ${managementTab==='public_holidays'?'active':''}" onclick="window.setManageTab('public_holidays')">Cuti Umum</button>` : ''}
+            ${userPerms.wa_setting ? `<button class="neu-tab ${managementTab==='whatsapp_settings'?'active':''}" onclick="window.setManageTab('whatsapp_settings')">WA Settings</button>` : ''}
           ` : ''}
         </div>
         ${activeGroup === 'reports' && userPerms.manage_reports ? renderStaffLookup() : ''}`;
@@ -9217,9 +9220,9 @@ function renderView() {
                gagal-tertutup ke kosong dan mesej "Tiada rekod" meliputinya,
                jadi cip tidak memaparkan apa-apa dalam kes itu. -->
           ${_mlScope === 'all' ? `
-          <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;overflow-x:auto;padding-bottom:0.25rem;">
-            <button class="neu-tab ${masterLogState === SCOPE_ALL ? 'active' : ''}" onclick="window.setMasterLogState('ALL')" style="border-radius:8px;white-space:nowrap;">SEMUA</button>
-            ${_mlStates.map(s => `<button class="neu-tab ${masterLogState === s ? 'active' : ''}" onclick="window.setMasterLogState('${s}')" style="border-radius:8px;white-space:nowrap;">${s.toUpperCase()}</button>`).join('')}
+          <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap;">
+            <button class="neu-tab ${masterLogState === SCOPE_ALL ? 'active' : ''}" onclick="window.setMasterLogState('ALL')">SEMUA</button>
+            ${_mlStates.map(s => `<button class="neu-tab ${masterLogState === s ? 'active' : ''}" onclick="window.setMasterLogState('${s}')">${s.toUpperCase()}</button>`).join('')}
           </div>
           ` : (typeof _mlScope === 'string' && _mlScope) ? `
           <div style="display:flex;align-items:center;gap:0.4rem;background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.35);border-radius:20px;padding:0.25rem 0.75rem;margin-bottom:0.75rem;width:fit-content;">
@@ -9228,11 +9231,11 @@ function renderView() {
           </div>
           ` : ''}
 
-          <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem;overflow-x:auto;padding-bottom:0.25rem;">
-            <button class="neu-tab ${masterLogBranch === SCOPE_ALL ? 'active' : ''}" onclick="window.setMasterLogBranch('ALL')" style="border-radius:8px;white-space:nowrap;">Semua (${_mlCount(SCOPE_ALL)})</button>
-            ${_mlBranchList.map(b => `<button class="neu-tab ${masterLogBranch === b ? 'active' : ''}" onclick="window.setMasterLogBranch(decodeURIComponent('${_mlArg(b)}'))" style="border-radius:8px;white-space:nowrap;">${b} (${_mlCount(b)})</button>`).join('')}
-            ${_mlOrphans > 0 ? `<button class="neu-tab ${masterLogBranch === NO_BRANCH ? 'active' : ''}" onclick="window.setMasterLogBranch('__NONE__')" style="border-radius:8px;white-space:nowrap;color:#f59e0b;" title="Rekod dengan cawangan yang tiada dalam senarai cawangan — perlu dibetulkan">Lain-lain (${_mlOrphans})</button>` : ''}
-            ${(_mlOverlapCount > 0 || masterLogOverlapOnly) ? `<button class="neu-tab ${masterLogOverlapOnly ? 'active' : ''}" onclick="window.toggleMasterLogOverlap()" style="border-radius:8px;white-space:nowrap;color:#dc2626;" title="Tunjuk hanya rekod yang bertindih dengan cuti lain staf yang sama">⚠️ Bertindih (${_mlOverlapCount})</button>` : ''}
+          <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem;flex-wrap:wrap;">
+            <button class="neu-tab ${masterLogBranch === SCOPE_ALL ? 'active' : ''}" onclick="window.setMasterLogBranch('ALL')">Semua (${_mlCount(SCOPE_ALL)})</button>
+            ${_mlBranchList.map(b => `<button class="neu-tab ${masterLogBranch === b ? 'active' : ''}" onclick="window.setMasterLogBranch(decodeURIComponent('${_mlArg(b)}'))">${b} (${_mlCount(b)})</button>`).join('')}
+            ${_mlOrphans > 0 ? `<button class="neu-tab ${masterLogBranch === NO_BRANCH ? 'active' : ''}" onclick="window.setMasterLogBranch('__NONE__')" style="color:#f59e0b;" title="Rekod dengan cawangan yang tiada dalam senarai cawangan — perlu dibetulkan">Lain-lain (${_mlOrphans})</button>` : ''}
+            ${(_mlOverlapCount > 0 || masterLogOverlapOnly) ? `<button class="neu-tab ${masterLogOverlapOnly ? 'active' : ''}" onclick="window.toggleMasterLogOverlap()" style="color:#dc2626;" title="Tunjuk hanya rekod yang bertindih dengan cuti lain staf yang sama">⚠️ Bertindih (${_mlOverlapCount})</button>` : ''}
           </div>
 
           <section class="glass-card fade-in" style="padding: 0; overflow: hidden;">
@@ -9680,34 +9683,28 @@ function renderView() {
           </div>
 
           <!-- Sub-tabs -->
-          <div style="display:flex;gap:0.35rem;margin-bottom:1.5rem;background:rgba(163,177,198,0.1);padding:0.35rem;border-radius:14px;max-width:100%;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;">
-            <button onclick="window.setHrReportTab('all')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;display:flex;align-items:center;gap:0.4rem;white-space:nowrap;
-              ${hrReportTab==='all' ? 'background:#fff;color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,0.1);' : 'background:transparent;color:var(--text-muted);'}">
+          <div class="tabs tabs-hr">
+            <button class="tab ${hrReportTab==='all' ? 'on' : ''}" style="--tc:#475569;" onclick="window.setHrReportTab('all')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
               Semua Rekod
             </button>
-            <button onclick="window.setHrReportTab('approved')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;display:flex;align-items:center;gap:0.4rem;
-              ${hrReportTab==='approved' ? 'background:#059669;color:#fff;box-shadow:0 2px 8px rgba(5,150,105,0.3);' : 'background:transparent;color:var(--text-muted);'}">
+            <button class="tab ${hrReportTab==='approved' ? 'on' : ''}" style="--tc:#059669;" onclick="window.setHrReportTab('approved')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
               Cuti Diluluskan
             </button>
-            <button onclick="window.setHrReportTab('balance')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;display:flex;align-items:center;gap:0.4rem;
-              ${hrReportTab==='balance' ? 'background:#7c3aed;color:#fff;box-shadow:0 2px 8px rgba(124,58,237,0.3);' : 'background:transparent;color:var(--text-muted);'}">
+            <button class="tab ${hrReportTab==='balance' ? 'on' : ''}" style="--tc:#7c3aed;" onclick="window.setHrReportTab('balance')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
               Baki Cuti Bulanan
             </button>
-            <button onclick="window.setHrReportTab('jenis')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;display:flex;align-items:center;gap:0.4rem;
-              ${hrReportTab==='jenis' ? 'background:#d97706;color:#fff;box-shadow:0 2px 8px rgba(217,119,6,0.3);' : 'background:transparent;color:var(--text-muted);'}">
+            <button class="tab ${hrReportTab==='jenis' ? 'on' : ''}" style="--tc:#d97706;" onclick="window.setHrReportTab('jenis')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
               Ringkasan Jenis
             </button>
-            ${userPerms.report_attendance ? `<button onclick="window.setHrReportTab('senarai')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;display:flex;align-items:center;gap:0.4rem;
-              ${hrReportTab==='senarai' ? 'background:#0f766e;color:#fff;box-shadow:0 2px 8px rgba(15,118,110,0.3);' : 'background:transparent;color:var(--text-muted);'}">
+            ${userPerms.report_attendance ? `<button class="tab ${hrReportTab==='senarai' ? 'on' : ''}" style="--tc:#0f766e;" onclick="window.setHrReportTab('senarai')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
               Senarai Cuti, MC &amp; EL
             </button>` : ''}
-            ${userPerms.report_attendance ? `<button onclick="window.setHrReportTab('attendance')" style="padding:0.5rem 1rem;border-radius:10px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;flex-shrink:0;white-space:nowrap;display:flex;align-items:center;gap:0.4rem;
-              ${hrReportTab==='attendance' ? 'background:#1e293b;color:#fff;box-shadow:0 2px 8px rgba(30,41,59,0.3);' : 'background:transparent;color:var(--text-muted);'}">
+            ${userPerms.report_attendance ? `<button class="tab ${hrReportTab==='attendance' ? 'on' : ''}" style="--tc:#1e293b;" onclick="window.setHrReportTab('attendance')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               Rekod Kedatangan
             </button>` : ''}
