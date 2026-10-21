@@ -11049,70 +11049,80 @@ function renderView() {
           const _hCtx = { role: user.role, perms: userPerms, zone: window.getUserStateScope(user) };
           const canEditPahang     = canEditHolidayState(_hCtx, 'pahang');
           const canEditTerengganu = canEditHolidayState(_hCtx, 'terengganu');
-          const rowStyle = 'display:grid;grid-template-columns:150px 1fr auto;gap:0.5rem;align-items:center;padding:0.45rem 0.75rem;border-bottom:1px solid rgba(163,177,198,0.1);';
+          const todayStr = new Date().toISOString().slice(0, 10);
 
           const renderPanel = (state, label, color, canEdit) => {
             const list = publicHolidays[state] || [];
-            const year = list.length ? list[0].date.substring(0,4) : new Date().getFullYear();
+            const year = list.length && list[0].date ? list[0].date.substring(0,4) : new Date().getFullYear();
+            const nextIdx = list.findIndex(h => h.date && h.date >= todayStr);
             return `
-            <section class="glass-card" style="padding:0;overflow:hidden;">
-              <div style="padding:0.85rem 1rem;border-bottom:1px solid rgba(163,177,198,0.15);display:flex;align-items:center;justify-content:space-between;background:rgba(163,177,198,0.04);">
-                <div style="display:flex;align-items:center;gap:0.6rem;">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                  <span style="font-size:0.9rem;font-weight:700;color:var(--text);">Cuti Umum ${label} ${year}</span>
-                  <span style="font-size:0.72rem;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.1rem 0.5rem;border-radius:999px;">${list.length} hari</span>
-                </div>
-                ${canEdit ? `<button onclick="window.addHoliday('${state}')" style="padding:0.3rem 0.8rem;border-radius:999px;border:1px solid ${color}55;background:${color}11;font-size:0.78rem;font-weight:600;color:${color};cursor:pointer;">+ Tambah</button>` : `<span style="font-size:0.72rem;color:var(--text-muted);font-style:italic;">Baca sahaja</span>`}
+            <section class="set-card ph-card" style="--zc:${color};">
+              <div class="wa-zone-head">
+                <span class="wa-zone-dot"></span>
+                <div><h3>Cuti Umum ${label} ${year}</h3><p>${list.length} hari pelepasan am${canEdit ? '' : ' · baca sahaja'}</p></div>
+                ${canEdit ? `<button class="set-btn wa-zone-save" onclick="window.addHoliday('${state}')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Tambah</button>` : ''}
               </div>
-              ${!canEdit ? `<div style="padding:0.6rem 0.75rem;background:rgba(163,177,198,0.04);border-bottom:1px solid rgba(163,177,198,0.08);font-size:0.75rem;color:var(--text-muted);">⚠️ Hanya Admin atau HR/HOD zon ${label} boleh mengubah senarai ini.</div>` : ''}
-              <div style="padding:0.6rem 1rem;background:${color}0d;border-bottom:1px solid ${color}22;text-align:center;">
-                <span style="font-size:0.78rem;font-weight:700;color:${color};letter-spacing:0.5px;text-transform:uppercase;">
-                  Jumlah: ${list.length} Hari Pelepasan Am
-                </span>
-              </div>
-              <div style="padding:0.35rem 0.75rem;background:rgba(163,177,198,0.03);border-bottom:1px solid rgba(163,177,198,0.08);">
-                <div style="display:grid;grid-template-columns:150px 1fr auto;gap:0.5rem;font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);padding:0.25rem 0;">
-                  <span>Tarikh</span><span>Nama Cuti</span><span></span>
-                </div>
-              </div>
-              ${list.length === 0 ? emptyState({ compact: true, icon: 'calendar', title: 'Tiada cuti umum ditetapkan', text: 'Klik "+ Tambah" untuk mula.' }) : ''}
-              ${list.map((h, i) => `
-                <div style="${rowStyle}">
-                  ${canEdit
-                    ? `<input type="date" value="${h.date}" onchange="window.updateHolidayField('${state}',${i},'date',this.value)" style="padding:0.35rem 0.5rem;border-radius:6px;border:1px solid rgba(163,177,198,0.25);background:rgba(163,177,198,0.07);color:var(--text);font-size:0.82rem;width:100%;">`
-                    : `<span style="font-size:0.82rem;color:var(--text-muted);">${h.date ? new Date(h.date+'T00:00:00').toLocaleDateString('ms-MY',{day:'2-digit',month:'short',year:'numeric'}) : '-'}</span>`
-                  }
-                  ${canEdit
-                    ? `<input type="text" value="${h.name.replace(/"/g,'&quot;')}" oninput="window.updateHolidayField('${state}',${i},'name',this.value)" placeholder="Nama cuti..." style="padding:0.35rem 0.5rem;border-radius:6px;border:1px solid rgba(163,177,198,0.25);background:rgba(163,177,198,0.07);color:var(--text);font-size:0.82rem;width:100%;">`
-                    : `<span style="font-size:0.82rem;color:var(--text);">${h.name}</span>`
-                  }
-                  ${canEdit ? `<button onclick="window.deleteHoliday('${state}',${i})" title="Padam" style="padding:0.25rem 0.5rem;border-radius:6px;border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.06);color:#ef4444;cursor:pointer;font-size:0.8rem;">✕</button>` : '<span></span>'}
-                </div>`).join('')}
-              <div style="padding:0.75rem;border-top:1px solid rgba(163,177,198,0.1);display:flex;align-items:center;justify-content:${canEdit ? 'space-between' : 'flex-end'};gap:0.75rem;flex-wrap:wrap;">
-                ${canEdit ? `
-                <button onclick="window.savePublicHolidays('${state}')" style="padding:0.55rem 1.25rem;border-radius:999px;border:none;background:linear-gradient(135deg,${color},${color}cc);color:#fff;font-size:0.85rem;font-weight:700;cursor:pointer;box-shadow:0 4px 12px ${color}44;">
-                  💾 Simpan Cuti Umum ${label}
-                </button>` : '<span></span>'}
-                <button onclick="window.printPublicHolidays('${state}')" style="padding:0.55rem 1.25rem;border-radius:999px;border:1px solid ${color}55;background:${color}11;color:${color};font-size:0.85rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                  Cetak / Jana PDF
-                </button>
+              ${!canEdit ? `<div class="ph-note">Hanya Admin atau HR/HOD zon ${label} boleh mengubah senarai ini.</div>` : ''}
+              ${list.length === 0 ? emptyState({ compact: true, icon: 'calendar', title: 'Tiada cuti umum ditetapkan', text: canEdit ? 'Tekan "Tambah" untuk mula.' : '' }) : `
+              <div class="ph-list">
+                ${list.map((h, i) => {
+                  const d = h.date ? new Date(h.date + 'T00:00:00') : null;
+                  const past = h.date && h.date < todayStr;
+                  const day = d ? d.toLocaleDateString('ms-MY', { weekday: 'long' }) : 'Pilih tarikh';
+                  return `
+                  <div class="ph-row ${past ? 'is-past' : ''} ${i === nextIdx ? 'is-next' : ''}">
+                    <div class="ph-badge">
+                      <span>${d ? d.toLocaleDateString('ms-MY', { month: 'short' }) : '—'}</span>
+                      <strong>${d ? d.getDate() : '?'}</strong>
+                    </div>
+                    <div class="ph-body">
+                      ${canEdit
+                        ? `<input type="text" class="ph-name" value="${escapeHtml(h.name || '')}" oninput="window.updateHolidayField('${state}',${i},'name',this.value)" placeholder="Nama cuti...">`
+                        : `<div class="ph-name">${escapeHtml(h.name || '-')}</div>`}
+                      <div class="ph-meta">
+                        ${canEdit
+                          ? `<input type="date" class="ph-date" value="${h.date}" onchange="window.updateHolidayField('${state}',${i},'date',this.value)">`
+                          : ''}
+                        <span>${day}</span>
+                        ${i === nextIdx ? '<span class="ph-tag">Seterusnya</span>' : ''}
+                      </div>
+                    </div>
+                    ${canEdit ? `<button class="ph-del" onclick="window.deleteHoliday('${state}',${i})" title="Padam" aria-label="Padam">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                    </button>` : ''}
+                  </div>`;
+                }).join('')}
+              </div>`}
+              <div class="ph-foot">
+                ${canEdit ? `<button class="set-btn ph-save" onclick="window.savePublicHolidays('${state}')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                  Simpan ${label}</button>` : ''}
+                <button class="set-btn" onclick="window.printPublicHolidays('${state}')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                  Cetak / PDF</button>
               </div>
             </section>`;
           };
 
           return `
-          <header class="top-bar">
-            <h1>📅 Polisi Cuti Umum</h1>
-          </header>
-          <div style="margin-bottom:1rem;padding:0.75rem 1rem;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.25);border-radius:0.75rem;font-size:0.82rem;color:var(--text-muted);">
-            <strong style="color:#f59e0b;">Skop Kebenaran:</strong>
-            HR / Admin → menguruskan Cuti Umum <strong>Pahang</strong> &amp; <strong>Terengganu</strong> &nbsp;|&nbsp;
-            HOD → menguruskan Cuti Umum <strong>Terengganu</strong> sahaja
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;align-items:start;">
-            ${renderPanel('pahang',     'Pahang',     '#3b82f6', canEditPahang)}
-            ${renderPanel('terengganu', 'Terengganu', '#f59e0b', canEditTerengganu)}
+          <div class="wa-wrap fade-in">
+            <div class="wa-head">
+              <div class="set-card-ico ph-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+              <div class="wa-head-text">
+                <h2>Polisi Cuti Umum</h2>
+                <p>Senarai hari pelepasan am mengikut zon — digunakan untuk kiraan hari cuti</p>
+              </div>
+            </div>
+            <div class="ph-scope">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span><strong>HR / Admin</strong> urus Pahang &amp; Terengganu · <strong>HOD</strong> urus Terengganu sahaja</span>
+            </div>
+            <div class="ph-grid">
+              ${renderPanel('pahang',     'Pahang',     '#3b82f6', canEditPahang)}
+              ${renderPanel('terengganu', 'Terengganu', '#f59e0b', canEditTerengganu)}
+            </div>
           </div>
           `;
         })() : ''}
@@ -12298,6 +12308,7 @@ window.deleteHoliday = function(state, idx) {
 window.updateHolidayField = function(state, idx, field, value) {
   if (publicHolidays[state] && publicHolidays[state][idx] !== undefined) {
     publicHolidays[state][idx][field] = value;
+    if (field === 'date') render();   // kemas kini lencana tarikh & hari
   }
 };
 window.savePublicHolidays = async function(state) {
