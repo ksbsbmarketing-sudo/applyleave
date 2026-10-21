@@ -6204,15 +6204,18 @@ function renderDashboard() {
     <div class="dashboard-layout fade-in">
       <header class="app-topbar">
         ${(() => {
-          // Anak syarikat (KSB Pharma) nampak jenamanya sendiri; klinik kekal KSB.
+          // Anak syarikat (KSB Pharma) nampak jenamanya sendiri; klinik kekal KSB (simbol bulat).
           const _own = user && OWN_HR_ZONE[user.branch] ? window.printBrandFor(user.branch) : null;
-          return `<img src="${_own ? _own.logo : logos.ksb}" alt="Logo" class="app-topbar-logo">
+          return `<img src="${_own ? _own.logo : '/logo-ksb-mark.png'}" alt="Logo" class="app-topbar-logo${_own ? ' is-boxed' : ''}">
         <div class="app-topbar-titles">
-          <span class="app-topbar-company">${_own ? _own.name : 'KLINIK SYED BADARUDDIN SDN. BHD.'}</span>`;
+          <span class="app-topbar-company">${_own ? _own.name : 'Klinik Syed Badaruddin Sdn. Bhd.'}</span>`;
         })()}
-          <span class="app-topbar-system">Sistem Permohonan Cuti &amp; Rekod Pekerja</span>
+          <span class="app-topbar-system"><i data-lucide="calendar-check" width="14" height="14"></i>Sistem Permohonan Cuti &amp; Rekod Pekerja</span>
         </div>
-        <span class="app-topbar-version">v${APP_VERSION}</span>
+        <div class="app-topbar-meta">
+          <span class="app-topbar-date">${new Date().toLocaleDateString('ms-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+          <span class="app-topbar-version">v${APP_VERSION}</span>
+        </div>
       </header>
       <aside class="sidebar">
         <nav class="nav-menu">
