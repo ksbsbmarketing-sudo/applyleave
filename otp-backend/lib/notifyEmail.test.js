@@ -131,3 +131,18 @@ test("handler: mail not configured → no send, no log", async () => {
   assert.equal(sent.length, 0);
   assert.equal(db.updates.length, 0);
 });
+
+test("handler: staff who chose WhatsApp only get no email, unless they have no phone", async () => {
+  const waOnly = setup({ ...BASE, "staff/S1": { ...BASE["staff/S1"], notifyChannel: "whatsapp", phone: "60123456789" }, "leaves/L1": { ...REC, status: "APPROVED" } });
+  const r1 = res(); await waOnly.h(post({ leaveId: "L1" }), r1);
+  assert.deepEqual(r1.body, { sent: false, reason: "prefers_whatsapp" });
+  assert.equal(waOnly.sent.length, 0);
+  const noPhone = setup({ ...BASE, "staff/S1": { ...BASE["staff/S1"], notifyChannel: "whatsapp", phone: "" }, "leaves/L1": { ...REC, status: "APPROVED" } });
+  const r2 = res(); await noPhone.h(post({ leaveId: "L1" }), r2);
+  assert.equal(r2.body.sent, true);
+  for (const notifyChannel of ["email", "both", undefined]) {
+    const x = setup({ ...BASE, "staff/S1": { ...BASE["staff/S1"], notifyChannel, phone: "60123456789" }, "leaves/L1": { ...REC, status: "APPROVED" } });
+    const r = res(); await x.h(post({ leaveId: "L1" }), r);
+    assert.equal(r.body.sent, true, String(notifyChannel));
+  }
+});

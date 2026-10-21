@@ -2090,3 +2090,34 @@ select.lf-select.is-ok { border-color: #6ee7b7; background-color: #f0fdf7; }
   .sp-photo { width: 48px; height: 48px; border-radius: 14px; }
   .sp-photo img { border-radius: 14px; }
 }
+
+/* ── Tetapan: saluran notifikasi ── */
+.nc-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.nc-opt { display: flex; align-items: center; gap: 0.75rem; margin: 0; padding: 0.7rem 0.85rem; border: 1.5px solid #e5e9f0; border-radius: 12px; background: #fff; cursor: pointer; transition: border-color 0.15s, background 0.15s; text-transform: none; letter-spacing: normal; font-weight: 400; }
+.nc-opt:hover { border-color: color-mix(in srgb, var(--primary) 35%, #fff); }
+.nc-opt input { position: absolute; opacity: 0; width: 0; height: 0; }
+.nc-opt:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }
+.nc-ico { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #f1f5f9; color: #64748b; }
+.nc-ico svg { width: 17px; height: 17px; }
+.nc-text { flex: 1; min-width: 0; }
+.nc-text b { display: block; font-size: 0.88rem; color: #0f172a; }
+.nc-text small { display: block; font-size: 0.74rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nc-radio { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #cbd5e1; flex-shrink: 0; box-sizing: border-box; }
+.nc-opt.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 5%, #fff); }
+.nc-opt.on .nc-ico { background: var(--primary); color: #fff; }
+.nc-opt.on .nc-radio { border: 5px solid var(--primary); }
+.nc-warn { color: #b45309; margin-bottom: 0; }
+
+/* ── Modal peringatan e-mel semasa log masuk ── */
+.er-overlay { z-index: 99998; }
+.er-card { width: 100%; max-width: 420px; box-sizing: border-box; padding: 1.75rem 1.5rem 1.4rem; border-radius: 22px; background: #fff; text-align: center; box-shadow: 0 24px 60px rgba(15,23,42,0.25); }
+.er-ico { width: 60px; height: 60px; margin: 0 auto 1rem; border-radius: 18px; display: flex; align-items: center; justify-content: center; color: #fff; background: linear-gradient(135deg, #f97316, #ea580c); box-shadow: 0 10px 24px rgba(249,115,22,0.35); }
+.er-ico svg { width: 28px; height: 28px; }
+.er-card h2 { margin: 0 0 0.5rem; font-size: 1.2rem; font-weight: 800; color: #0f172a; }
+.er-card p { margin: 0 0 1.1rem; font-size: 0.86rem; line-height: 1.55; color: #64748b; }
+.er-input { width: 100%; box-sizing: border-box; margin: 0 0 0.85rem; padding: 0.8rem 1rem; font: inherit; font-size: 0.95rem; text-align: center; color: #0f172a; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; box-shadow: none; color-scheme: light; }
+.er-input:focus { outline: none; border-color: #f97316; background: #fff; box-shadow: 0 0 0 3px rgba(249,115,22,0.15); }
+.er-save { width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin: 0; padding: 0.85rem; border: 0; border-radius: 12px; cursor: pointer; font: inherit; font-size: 0.95rem; font-weight: 800; color: #fff; background: var(--primary); box-shadow: 0 10px 22px color-mix(in srgb, var(--primary) 30%, transparent); }
+.er-save svg { width: 17px; height: 17px; }
+.er-skip { width: 100%; margin: 0.6rem 0 0; padding: 0.6rem; border: 0; background: transparent; box-shadow: none; cursor: pointer; font: inherit; font-size: 0.82rem; font-weight: 600; color: #94a3b8; }
+.er-skip:hover { color: #475569; }

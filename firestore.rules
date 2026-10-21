@@ -119,7 +119,9 @@ service cloud.firestore {
              && companyOK(request.resource.data.get('branch', '')) )
         || ( myIC() == ic
              && request.resource.data.diff(resource.data).affectedKeys()
-                  .hasOnly(['name', 'phone', 'email', 'address', 'photoUrl', 'googleEmail'])
+                  .hasOnly(['name', 'phone', 'email', 'address', 'photoUrl', 'googleEmail', 'notifyChannel'])
+             // Saluran notifikasi kelulusan cuti (Tetapan Akaun) — hanya nilai yang dikenali.
+             && request.resource.data.get('notifyChannel', 'both') in ['whatsapp', 'email', 'both']
              && request.resource.data.name is string
              && request.resource.data.name.size() >= 3
              && request.resource.data.name.size() <= 80 )

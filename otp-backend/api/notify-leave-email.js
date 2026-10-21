@@ -57,6 +57,12 @@ export function makeNotifyLeaveEmailHandler(deps) {
       } else {
         const applicant = await db.doc(`staff/${record.ic}`).get();
         const a = applicant.exists ? applicant.data() : {};
+        // Pilihan staf (Tetapan Akaun). "WhatsApp sahaja" dihormati hanya jika dia
+        // ada nombor telefon — jika tiada, e-mel kekal supaya notifikasi tidak terlepas.
+        // ⚠️ Selari dengan src/notifyPrefs.js (sisi WhatsApp).
+        if (a.notifyChannel === "whatsapp" && String(a.phone || "").replace(/\D/g, "")) {
+          return res.status(200).json({ sent: false, reason: "prefers_whatsapp" });
+        }
         to = a.email; recipientName = a.name || record.name;
       }
       to = String(to || "").trim();

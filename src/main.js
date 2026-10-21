@@ -10,6 +10,7 @@ import { ALL as SCOPE_ALL, NO_BRANCH, visibleStates, branchOptions, filterByScop
 import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps,
          findApprovedOverlaps, findOverlapGroups } from './leaveOverlap.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
+import { notifyChannelOf, wantsWhatsApp, isValidEmail } from './notifyPrefs.js';
 import { deriveRolePermissions, changedRoles, claimsFor } from './rolePermissions.js';
 import { canEditHolidayState } from './holidayAccess.js';
 import { canSeeAuditLogs, canSeeRegistrations, listenerScope, canSeeWaLogs, STAFF_APPROVER_ROLES } from './listenerScope.js';
@@ -749,6 +750,7 @@ let showFirstLoginWarning = false;
 const MUST_CHANGE_PWD_KEY = 'ksb_must_change_pwd';
 let firstLoginPwd = '';            // kata laluan lalai yang baru ditaip — memori sahaja, tidak pernah disimpan
 let showPhoneReminderModal = false;
+let showEmailReminderModal = false;   // log masuk tanpa e-mel sah → minta kemas kini (selepas modal telefon)
 
 let publicHolidays = { pahang: [], terengganu: [] };
 let policyContent = {
@@ -3245,7 +3247,7 @@ window.finalizeLeave = async function(id) {
                 '📥 Cuti Perlu Penilaian Supervisor (Peringkat 1)',
                 `${record.name} — ${leaveTypeName} (${record.startDate} → ${record.endDate}) telah disokong Team Leader; memerlukan penilaian anda.`,
                 id.toString(), record.ic, record);
-            if (applicant && applicant.phone) {
+            if (applicant && applicant.phone && wantsWhatsApp(applicant)) {
                 const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *disokong oleh Team Leader*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini menunggu *penilaian Supervisor*. Anda akan dimaklumkan selepas kelulusan akhir.\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
                 window.sendWhatsApp(applicant.phone, staffMsg);
             }
@@ -3281,7 +3283,9 @@ window.finalizeLeave = async function(id) {
             newStatus = "APPROVED";
             const approvedName = (applicant || {}).name || record.name;
             const approvedMsg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${approvedName},\n\nPermohonan cuti anda telah *DILULUSKAN SEPENUHNYA* oleh HR/Admin.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
-            if (!WHATSAPP_ENABLED()) {
+            if (applicant && !wantsWhatsApp(applicant)) {
+                waFinalFeedback = `\n\n📧 ${approvedName} memilih notifikasi melalui e-mel — e-mel dihantar ke ${applicant.email}.`;
+            } else if (!WHATSAPP_ENABLED()) {
                 waFinalFeedback = `\n\n⚠️ Token WhatsApp belum dikonfigurasi — ${approvedName} TIDAK dapat notifikasi WA. Sila hubungi Super Admin untuk tetapkan token Fonnte.`;
             } else if (!applicant || !applicant.phone) {
                 waFinalFeedback = `\n\n⚠️ Notifikasi WA TIDAK dihantar — ${approvedName} tiada nombor telefon dalam sistem. Sila kemaskini profil staf.`;
@@ -3319,7 +3323,7 @@ window.finalizeLeave = async function(id) {
                     '📥 Cuti Perlu Kelulusan Akhir (Peringkat 2)',
                     `${record.name} — ${leaveTypeName} (${record.startDate} → ${record.endDate}) telah disokong ${p1Label}; memerlukan kelulusan akhir HR/Admin.`,
                     id.toString(), record.ic, record);
-                if (applicant && applicant.phone) {
+                if (applicant && applicant.phone && wantsWhatsApp(applicant)) {
                     const staffMsg = `📋 *DIKEMASKINI — Permohonan Cuti Anda*\n\nSalam ${applicant.name},\n\nPermohonan cuti anda telah *dinilai dan disokong oleh ${user.name} (${p1Label})*.\n\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n\nPermohonan kini sedang menunggu *kelulusan akhir HR/Admin*. Anda akan dimaklumkan selepas kelulusan akhir.\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
                     window.sendWhatsApp(applicant.phone, staffMsg);
                 }
@@ -3328,7 +3332,9 @@ window.finalizeLeave = async function(id) {
                 newStatus = "APPROVED";
                 const hodApprovedName = (applicant || {}).name || record.name;
                 const hodApprovedMsg = `✅ *CUTI DILULUSKAN — KSB Leave Apply*\n\nSalam ${hodApprovedName},\n\nPermohonan cuti anda telah *DILULUSKAN* oleh *${user.name}* (${p1Label}).\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n• Sebab: ${record.reason}\n\nTerima kasih. Selamat bercuti! 🎉\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
-                if (!WHATSAPP_ENABLED()) {
+                if (applicant && !wantsWhatsApp(applicant)) {
+                    waFinalFeedback = `\n\n📧 ${hodApprovedName} memilih notifikasi melalui e-mel — e-mel dihantar ke ${applicant.email}.`;
+                } else if (!WHATSAPP_ENABLED()) {
                     waFinalFeedback = `\n\n⚠️ Token WhatsApp belum dikonfigurasi — ${hodApprovedName} TIDAK dapat notifikasi WA. Sila hubungi Super Admin untuk tetapkan token Fonnte.`;
                 } else if (!applicant || !applicant.phone) {
                     waFinalFeedback = `\n\n⚠️ Notifikasi WA TIDAK dihantar — ${hodApprovedName} tiada nombor telefon dalam sistem. Sila kemaskini profil staf.`;
@@ -3427,7 +3433,7 @@ window.cancelLeave = async function(id) {
         showToast(`Cuti ${req.name} berjaya dibatalkan.`);
         
         const staff = staffList.find(s => s.ic === req.ic);
-        if (staff && staff.phone) {
+        if (staff && staff.phone && wantsWhatsApp(staff)) {
             const leaveTypeName = leaveCategories.find(c => c.id === req.type)?.name || req.type;
             const msg = `🚩 *PEMBATALAN CUTI*\n\nPermohonan cuti anda (${leaveTypeName}) pada ${req.startDate} telah *DIBATALKAN* oleh ${(user.role || '').toUpperCase()}.\n\nBaki cuti anda telah dikembalikan.\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
             window.sendWhatsApp(staff.phone, msg);
@@ -3460,7 +3466,7 @@ window.rejectLeave = async function(id) {
 
         // Notify applicant of rejection
         const applicant = staffList.find(s => s.ic === record.ic);
-        if (applicant && applicant.phone) {
+        if (applicant && applicant.phone && wantsWhatsApp(applicant)) {
             const msg = `❌ *CUTI TIDAK DILULUSKAN — KSB Leave Apply*\n\nSalam ${applicant.name},\n\nMaaf, permohonan cuti anda telah *DITOLAK*.\n\n📋 *Butiran Cuti:*\n• Jenis: ${leaveTypeName}\n• Tarikh: ${record.startDate} → ${record.endDate}\n• Tempoh: ${record.days} hari\n\nSila hubungi HR/Admin untuk maklumat lanjut.\n\n🔗 *Log masuk:* https://cuti-staff.ksbsb.com.my\n_— KSB Leave System_`;
             window.sendWhatsApp(applicant.phone, msg);
         }
@@ -4876,6 +4882,7 @@ async function completeLogin(ic, { viaGoogle = false, pwd = '' } = {}) {
   } catch (e) {}
   const _ph = (user.phone || '').replace(/\D/g, '');
   showPhoneReminderModal = !showFirstLoginWarning && (!_ph || !_ph.startsWith('6'));
+  showEmailReminderModal = !showFirstLoginWarning && !isValidEmail(user.email);
   currentSessionId = Date.now().toString() + '_' + Math.random().toString(36).substring(2);
   duplicateSessionDetected = false;
   sessionKickHandled = false;
@@ -6262,6 +6269,7 @@ function renderDashboard() {
     ${renderAddStaffModal()}
     ${renderFirstLoginModal()}
     ${renderPhoneReminderModal()}
+    ${showPhoneReminderModal ? '' : renderEmailReminderModal()}
   `;
 
   // Logout Listener
@@ -11678,6 +11686,34 @@ function renderView() {
                 </form>
               </section>
 
+              ${(() => {
+                const ch = notifyChannelOf(user);
+                const hasMail = isValidEmail(user.email);
+                const opt = (val, title, sub, icoSvg) => `
+                  <label class="nc-opt ${ch === val ? 'on' : ''}">
+                    <input type="radio" name="notify-channel" value="${val}" ${ch === val ? 'checked' : ''} onchange="window.setNotifyChannel(this.value)">
+                    <span class="nc-ico">${icoSvg}</span>
+                    <span class="nc-text"><b>${title}</b><small>${sub}</small></span>
+                    <span class="nc-radio"></span>
+                  </label>`;
+                const waSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
+                const mailSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>';
+                const bothSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+                return `
+              <section class="set-card">
+                <div class="set-card-head">
+                  <span class="set-card-ico">${bothSvg}</span>
+                  <div><h3>Notifikasi Kelulusan Cuti</h3><p>Cara anda dimaklumkan bila cuti disokong, diluluskan, ditolak atau dibatalkan</p></div>
+                </div>
+                <div class="nc-list">
+                  ${opt('whatsapp', 'WhatsApp sahaja', user.phone ? escapeHtml(user.phone) : 'Tiada nombor telefon', waSvg)}
+                  ${opt('email', 'E-mel sahaja', hasMail ? escapeHtml(user.email) : 'Tiada e-mel', mailSvg)}
+                  ${opt('both', 'WhatsApp & E-mel', 'Disyorkan — tidak terlepas notifikasi', bothSvg)}
+                </div>
+                ${ch !== 'whatsapp' && !hasMail ? `<p class="set-note nc-warn">⚠️ Anda belum ada e-mel. Tambah melalui <b>Edit Profil</b>. Sehingga itu, notifikasi dihantar melalui WhatsApp.</p>` : ''}
+              </section>`;
+              })()}
+
               <section class="set-card">
                 <div class="set-card-head">
                   <span class="set-card-ico is-google"><svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg></span>
@@ -12279,6 +12315,64 @@ window.savePhoneFromReminder = async function() {
     showToast('Ralat menyimpan nombor. Sila cuba lagi.');
   }
 };
+
+window.dismissEmailReminder = function() { showEmailReminderModal = false; render(); };
+window.saveEmailFromReminder = async function() {
+  const input = document.getElementById('reminder-email-input');
+  if (!input) return;
+  const email = input.value.trim();
+  if (!isValidEmail(email)) { showToast('⚠️ Alamat e-mel tidak sah.\n\nContoh: nama@gmail.com'); input.focus(); return; }
+  try {
+    await updateDoc(doc(db, 'staff', user.ic), { email });
+    user.email = email;
+    const s = staffList.find(i => i.ic === user.ic);
+    if (s) s.email = email;
+    showEmailReminderModal = false;
+    render();
+    showToast('✅ E-mel berjaya disimpan! Notifikasi kelulusan cuti akan dihantar ke ' + email + '.');
+  } catch (err) {
+    console.error('saveEmailFromReminder error:', err);
+    showToast('Ralat menyimpan e-mel. Sila cuba lagi.');
+  }
+};
+
+// Tetapan Akaun → pilihan saluran notifikasi kelulusan cuti (WhatsApp / E-mel / Kedua-dua).
+window.setNotifyChannel = async function(channel) {
+  if (!['whatsapp', 'email', 'both'].includes(channel) || notifyChannelOf(user) === channel) return;
+  try {
+    await updateDoc(doc(db, 'staff', user.ic), { notifyChannel: channel });
+    user.notifyChannel = channel;
+    const s = staffList.find(i => i.ic === user.ic);
+    if (s) s.notifyChannel = channel;
+    render();
+    const label = { whatsapp: 'WhatsApp sahaja', email: 'E-mel sahaja', both: 'WhatsApp & E-mel' }[channel];
+    const warn = channel !== 'whatsapp' && !isValidEmail(user.email) ? '\n\n⚠️ Anda belum ada e-mel — sila tambah melalui Edit Profil. Sehingga itu, notifikasi dihantar melalui WhatsApp.'
+      : channel !== 'email' && !user.phone ? '\n\n⚠️ Anda belum ada nombor telefon — sila tambah melalui Edit Profil.' : '';
+    showToast(`✅ Notifikasi kelulusan cuti: ${label}.${warn}`);
+  } catch (err) {
+    console.error('setNotifyChannel error:', err);
+    showToast('Ralat menyimpan pilihan notifikasi. Sila cuba lagi.');
+  }
+};
+
+function renderEmailReminderModal() {
+  if (!showEmailReminderModal || !user || showFirstLoginWarning) return '';
+  return `
+  <div class="modal-overlay er-overlay">
+    <div class="er-card fade-in" role="dialog" aria-labelledby="er-title">
+      <div class="er-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+      <h2 id="er-title">Kemas Kini E-mel Anda</h2>
+      <p>Masukkan alamat e-mel supaya anda boleh menerima <b>notifikasi kelulusan cuti</b> melalui e-mel. Anda boleh pilih WhatsApp, e-mel atau kedua-duanya di <b>Tetapan Akaun</b>.</p>
+      <input id="reminder-email-input" type="email" class="er-input" value="${escapeHtml(user.email || '')}" placeholder="nama@gmail.com" autocomplete="email"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();window.saveEmailFromReminder();}">
+      <button class="er-save" onclick="window.saveEmailFromReminder()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Simpan E-mel
+      </button>
+      <button class="er-skip" onclick="window.dismissEmailReminder()">Ingatkan saya kemudian</button>
+    </div>
+  </div>`;
+}
 
 function renderPhoneReminderModal() {
   if (!showPhoneReminderModal || !user) return '';

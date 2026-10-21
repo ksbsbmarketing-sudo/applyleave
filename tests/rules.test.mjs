@@ -99,6 +99,15 @@ test("staff can update only phone/email/address/photoUrl of own profile", async 
   await assertFails(updateDoc(doc(db, "staff", "S1"), { role: "super_admin" }));
 });
 
+test("staff can set their own notifyChannel, only to a known value", async () => {
+  const db = ctxDb(staffAuth("S1"));
+  for (const notifyChannel of ["email", "whatsapp", "both"]) {
+    await assertSucceeds(updateDoc(doc(db, "staff", "S1"), { notifyChannel }));
+  }
+  await assertFails(updateDoc(doc(db, "staff", "S1"), { notifyChannel: "sms" }));
+  await assertFails(updateDoc(doc(ctxDb(staffAuth("S2")), "staff", "S1"), { notifyChannel: "email" }));
+});
+
 test("only manageStaff can write staff records", async () => {
   const approver = ctxDb(approverAuth("SUP"));
   await assertFails(setDoc(doc(approver, "staff", "S9"), { ic: "S9", role: "staff" }));
