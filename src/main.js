@@ -8981,113 +8981,102 @@ function renderView() {
             { key: 'pahang',     label: 'Cawangan Pahang',     desc: 'Semua cawangan Pahang selain Balok', color: '#3b82f6' },
             { key: 'terengganu', label: 'Cawangan Terengganu', desc: 'Kerteh, Paka, Dungun',               color: '#8b5cf6' }
           ];
+          const waIco = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
           return `
-            <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.5rem;margin-top:1rem;">
-               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-               <h2 style="font-size:1.25rem;font-weight:600;">WhatsApp Notification Settings</h2>
-            </div>
-
-            <!-- WA Settings sub-tabs -->
-            <div style="display:flex;gap:0.4rem;margin-bottom:1.75rem;background:rgba(163,177,198,0.1);padding:0.3rem;border-radius:12px;width:fit-content;flex-wrap:wrap;">
-              <button onclick="window.setWaSettingsSubTab('token_log')" style="padding:0.5rem 1.1rem;border-radius:9px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;${waSettingsSubTab==='token_log' ? 'background:var(--card-bg);color:var(--primary);box-shadow:0 2px 8px rgba(0,0,0,0.12);' : 'background:transparent;color:var(--text-muted);'}">
-                <span style="display:flex;align-items:center;gap:0.4rem;">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <div class="wa-wrap fade-in">
+            <div class="wa-head">
+              <div class="set-card-ico wa-ico">${waIco}</div>
+              <div class="wa-head-text">
+                <h2>WhatsApp Notification Settings</h2>
+                <p>Nombor penghantar Fonnte, log penghantaran dan penerima notifikasi kelulusan</p>
+              </div>
+              <div class="wa-seg">
+                <button class="${waSettingsSubTab==='token_log' ? 'on' : ''}" onclick="window.setWaSettingsSubTab('token_log')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                   Token &amp; Log
-                </span>
-              </button>
-              <button onclick="window.setWaSettingsSubTab('rbac_notif')" style="padding:0.5rem 1.1rem;border-radius:9px;border:none;cursor:pointer;font-size:0.8rem;font-weight:700;transition:all 0.2s;${waSettingsSubTab==='rbac_notif' ? 'background:var(--card-bg);color:var(--primary);box-shadow:0 2px 8px rgba(0,0,0,0.12);' : 'background:transparent;color:var(--text-muted);'}">
-                <span style="display:flex;align-items:center;gap:0.4rem;">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </button>
+                <button class="${waSettingsSubTab==='rbac_notif' ? 'on' : ''}" onclick="window.setWaSettingsSubTab('rbac_notif')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                   RBAC Notifikasi Kelulusan
-                </span>
-              </button>
+                </button>
+              </div>
             </div>
 
             ${waSettingsSubTab === 'token_log' ? `
-            <!-- Token & Test card -->
-            <div class="glass-card fade-in" style="padding:2rem;max-width:600px;margin-bottom:2rem;">
-                <div style="margin-bottom:1.5rem;background:rgba(37,211,102,0.1);border-left:4px solid #25d366;padding:1.25rem;border-radius:4px;">
-                    <h4 style="color:#25d366;margin-bottom:0.4rem;font-size:0.95rem;">Integration Status: Fonnte.com</h4>
-                    <p style="font-size:0.75rem;color:var(--text-muted);line-height:1.5;">Satu nombor penghantar per zon, dipilih ikut zon penerima. Zon tanpa token guna nombor Pahang.</p>
+            <div class="wa-grid">
+              <!-- Token -->
+              <div class="set-card">
+                <div class="set-card-head">
+                  <div class="set-card-ico wa-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+                  <div><h3>Nombor Penghantar</h3><p>Fonnte.com — satu nombor per zon</p></div>
                 </div>
+                <p class="set-note" style="margin-top:0;">Nombor dipilih ikut zon penerima. Zon tanpa token guna nombor Pahang.</p>
                 ${Object.keys(WA_TOKEN_FIELDS).map(zone => `
-                <div class="form-group">
-                    <label style="font-size:0.75rem;text-transform:uppercase;font-weight:700;color:var(--text-muted);letter-spacing:1px;">Token Fonnte — ${WA_ZONE_LABELS[zone]}</label>
-                    <div style="display:flex;gap:0.75rem;margin-top:0.5rem;">
-                        <input type="password" id="wa-token-${zone}" class="neu-inset" value="${WA_TOKENS[zone]}" placeholder="${zone === 'pahang' ? 'Masukkan API Token dari Fonnte...' : 'Kosong = guna nombor Pahang'}" style="flex:1;">
-                        <button class="btn-primary" onclick="window.saveWAToken('${zone}', document.getElementById('wa-token-${zone}').value)" style="width:auto;padding:0.75rem 1.5rem;">Save</button>
-                    </div>
-                    <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.4rem;">Penghantar: <strong>${WA_DEVICES[zone] || (WA_TOKENS[zone] ? '…' : (zone === 'pahang' ? WHATSAPP_SENDER : 'guna Pahang'))}</strong></div>
+                <div class="wa-token">
+                  <label for="wa-token-${zone}">${WA_ZONE_LABELS[zone]}</label>
+                  <div class="wa-row">
+                    <input type="password" id="wa-token-${zone}" class="wa-input" value="${WA_TOKENS[zone]}" placeholder="${zone === 'pahang' ? 'API Token dari Fonnte' : 'Kosong = guna nombor Pahang'}">
+                    <button class="set-btn" onclick="window.saveWAToken('${zone}', document.getElementById('wa-token-${zone}').value)">Simpan</button>
+                  </div>
+                  <div class="wa-hint">Penghantar: <strong>${WA_DEVICES[zone] || (WA_TOKENS[zone] ? '…' : (zone === 'pahang' ? WHATSAPP_SENDER : 'guna Pahang'))}</strong></div>
                 </div>`).join('')}
-                <div style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid rgba(163,177,198,0.25);">
-                    <h4 style="font-size:0.85rem;margin-bottom:0.75rem;">Test Notification</h4>
-                    <div style="display:flex;gap:0.75rem;">
-                        <input type="tel" id="wa-test-phone" class="neu-inset" placeholder="Contoh: 60123456789" style="flex:1;">
-                        <button class="btn-logout" onclick="window.testWANotification()" style="width:auto;padding:0.75rem 1.5rem;background:rgba(163,177,198,0.2);border:1px solid var(--border);color:var(--primary);">Test Send</button>
-                    </div>
+              </div>
+
+              <div class="set-col">
+                <!-- Test -->
+                <div class="set-card">
+                  <div class="set-card-head">
+                    <div class="set-card-ico wa-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div>
+                    <div><h3>Uji Notifikasi</h3><p>Hantar mesej ujian ke satu nombor</p></div>
+                  </div>
+                  <div class="wa-row">
+                    <input type="tel" id="wa-test-phone" class="wa-input" placeholder="Contoh: 60123456789">
+                    <button class="set-btn is-primary" onclick="window.testWANotification()">Hantar</button>
+                  </div>
                 </div>
+                <!-- Stats -->
+                <div class="wa-stats">
+                  <div class="wa-stat"><span>${waLogs.length}</span>Jumlah log</div>
+                  <div class="wa-stat is-ok"><span>${sentCount}</span>Berjaya</div>
+                  <div class="wa-stat is-bad"><span>${failedCount}</span>Gagal</div>
+                </div>
+              </div>
             </div>
 
             <!-- WA Log -->
-            <div class="glass-card fade-in" style="padding:0;overflow:hidden;">
-              <div style="padding:0.85rem 1.25rem;border-bottom:1px solid rgba(163,177,198,0.15);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;background:rgba(163,177,198,0.04);">
-                <div style="display:flex;align-items:center;gap:0.7rem;">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                  <span style="font-size:0.9rem;font-weight:700;color:var(--text);">Log Notifikasi WhatsApp</span>
-                  <span style="font-size:0.72rem;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.1rem 0.5rem;border-radius:999px;">${waLogs.length} entri</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
-                  <span style="font-size:0.75rem;font-weight:700;background:rgba(16,185,129,0.12);color:#10b981;border:1px solid rgba(16,185,129,0.25);border-radius:999px;padding:0.2rem 0.65rem;">✓ ${sentCount} Berjaya</span>
-                  <span style="font-size:0.75rem;font-weight:700;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.2);border-radius:999px;padding:0.2rem 0.65rem;">✗ ${failedCount} Gagal</span>
-                  ${waLogs.length > 0 ? `<button onclick="window.clearWALogs()" style="padding:0.3rem 0.8rem;border-radius:999px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.07);font-size:0.75rem;font-weight:600;color:#ef4444;cursor:pointer;">🗑 Kosongkan Log</button>` : ''}
-                </div>
+            <div class="set-card">
+              <div class="set-card-head">
+                <div class="set-card-ico wa-ico">${waIco}</div>
+                <div><h3>Log Notifikasi WhatsApp</h3><p>${waLogs.length} entri terkini</p></div>
+                ${waLogs.length > 0 ? `<button class="set-btn wa-clear" onclick="window.clearWALogs()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                  Kosongkan</button>` : ''}
               </div>
               ${waLogs.length === 0 ? `
-                <div style="padding:3rem;text-align:center;color:var(--text-muted);font-size:0.85rem;">
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3;margin-bottom:0.75rem;display:block;margin-inline:auto;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                  Tiada log notifikasi lagi. Log akan muncul selepas sistem menghantar WhatsApp.
-                </div>
+                <div class="wa-empty">Tiada log notifikasi lagi. Log akan muncul selepas sistem menghantar WhatsApp.</div>
               ` : `
-              <div style="overflow-x:auto;">
-                <table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
-                  <thead>
-                    <tr style="background:rgba(163,177,198,0.04);border-bottom:1px solid rgba(163,177,198,0.15);">
-                      <th style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:left;white-space:nowrap;">Masa</th>
-                      <th style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:left;white-space:nowrap;">Status</th>
-                      <th style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:left;white-space:nowrap;">Penerima</th>
-                      <th style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:left;white-space:nowrap;">No. Telefon</th>
-                      <th style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:left;">Pratonton Mesej / Sebab Gagal</th>
-                      <th style="padding:0.5rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:left;white-space:nowrap;">Dihantar Oleh</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${waLogs.map((log, i) => {
-                      const d = new Date(log.ts);
-                      const timeStr = d.toLocaleDateString('ms-MY', { day:'2-digit', month:'short', year:'2-digit' }) + ' ' + d.toLocaleTimeString('ms-MY', { hour:'2-digit', minute:'2-digit' });
-                      const isSent = log.status === 'sent';
-                      const rowBg = !isSent ? 'rgba(239,68,68,0.04)' : (i % 2 === 0 ? '' : 'rgba(163,177,198,0.03)');
-                      return `
-                      <tr style="border-bottom:1px solid rgba(163,177,198,0.08);background:${rowBg};">
-                        <td style="padding:0.55rem 0.75rem;white-space:nowrap;color:var(--text-muted);font-size:0.73rem;">${timeStr}</td>
-                        <td style="padding:0.55rem 0.75rem;white-space:nowrap;">
-                          ${isSent
-                            ? `<span style="display:inline-flex;align-items:center;gap:0.3rem;background:rgba(16,185,129,0.12);color:#10b981;border:1px solid rgba(16,185,129,0.25);border-radius:999px;padding:0.18rem 0.6rem;font-size:0.7rem;font-weight:700;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Berjaya</span>`
-                            : `<span style="display:inline-flex;align-items:center;gap:0.3rem;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.2);border-radius:999px;padding:0.18rem 0.6rem;font-size:0.7rem;font-weight:700;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Gagal</span>`
-                          }
-                        </td>
-                        <td style="padding:0.55rem 0.75rem;font-weight:600;color:var(--text);">${log.name || '—'}</td>
-                        <td style="padding:0.55rem 0.75rem;color:var(--text-muted);font-family:monospace;font-size:0.75rem;">${log.phone || '—'}</td>
-                        <td style="padding:0.55rem 0.75rem;max-width:320px;">
-                          ${!isSent && log.error
-                            ? `<span style="color:#ef4444;font-size:0.75rem;font-weight:600;">⚠️ ${log.error}</span>`
-                            : `<span style="color:var(--text-muted);font-size:0.75rem;">${(log.preview || '').substring(0, 100)}${(log.preview||'').length > 100 ? '…' : ''}</span>`
-                          }
-                        </td>
-                        <td style="padding:0.55rem 0.75rem;color:var(--text-muted);font-size:0.73rem;white-space:nowrap;">${log.sentBy || '—'}</td>
-                      </tr>`;
-                    }).join('')}
-                  </tbody>
-                </table>
+              <div class="wa-log-list">
+                ${waLogs.map(log => {
+                  const d = new Date(log.ts);
+                  const timeStr = d.toLocaleDateString('ms-MY', { day:'2-digit', month:'short', year:'2-digit' }) + ' ' + d.toLocaleTimeString('ms-MY', { hour:'2-digit', minute:'2-digit' });
+                  const isSent = log.status === 'sent';
+                  const msg = String((!isSent && log.error) ? log.error : (log.preview || ''));
+                  return `
+                  <div class="wa-log-item ${isSent ? '' : 'is-bad'}">
+                    <div class="wa-log-dot">${isSent
+                      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`
+                      : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`}</div>
+                    <div class="wa-log-body">
+                      <div class="wa-log-top">
+                        <strong>${escapeHtml(log.name || '—')}</strong>
+                        <span class="wa-log-phone">${escapeHtml(log.phone || '—')}</span>
+                        <span class="wa-log-time">${timeStr}</span>
+                      </div>
+                      <div class="wa-log-msg">${!isSent && log.error ? '⚠️ ' : ''}${escapeHtml(msg.substring(0, 160))}${msg.length > 160 ? '…' : ''}</div>
+                      ${log.sentBy ? `<div class="wa-log-by">oleh ${escapeHtml(log.sentBy)}</div>` : ''}
+                    </div>
+                  </div>`;
+                }).join('')}
               </div>
               `}
             </div>
@@ -9095,62 +9084,39 @@ function renderView() {
 
             ${waSettingsSubTab === 'rbac_notif' ? `
             <!-- RBAC Notifikasi Kelulusan -->
-            <div style="margin-bottom:1rem;">
-              <p style="font-size:0.8rem;color:var(--text-muted);line-height:1.6;">Pilih role yang akan menerima notifikasi WhatsApp bagi setiap peringkat kelulusan cuti, mengikut zon cawangan. Konfigurasi disimpan dalam Firestore dan berkuat kuasa untuk semua pengguna.</p>
-            </div>
+            <p class="set-note" style="margin:0;">Tekan role untuk hidup/matikan notifikasi WhatsApp bagi setiap peringkat kelulusan, mengikut zon. Tekan <strong>Simpan</strong> pada zon yang diubah — tetapan berkuat kuasa untuk semua pengguna.</p>
             ${zoneConfig.map(zone => {
               const cfg = waNotifRbac[zone.key] || {};
               return `
-              <div class="glass-card fade-in" style="padding:0;overflow:hidden;margin-bottom:1.5rem;border-top:3px solid ${zone.color};">
-                <div style="padding:1rem 1.25rem;border-bottom:1px solid rgba(163,177,198,0.15);background:rgba(163,177,198,0.04);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;">
-                  <div>
-                    <div style="display:flex;align-items:center;gap:0.6rem;">
-                      <div style="width:10px;height:10px;border-radius:50%;background:${zone.color};flex-shrink:0;"></div>
-                      <span style="font-size:0.95rem;font-weight:700;color:var(--text);">${zone.label}</span>
-                    </div>
-                    <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.2rem;margin-left:1.1rem;">${zone.desc}</div>
-                  </div>
-                  <button id="save-rbac-${zone.key}" onclick="window.saveWaNotifRbac('${zone.key}')" style="padding:0.45rem 1.1rem;border-radius:8px;border:1px solid ${zone.color};background:transparent;color:${zone.color};font-size:0.78rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                    Simpan ${zone.label}
+              <div class="set-card wa-zone" style="--zc:${zone.color};">
+                <div class="wa-zone-head">
+                  <span class="wa-zone-dot"></span>
+                  <div><h3>${zone.label}</h3><p>${zone.desc}</p></div>
+                  <button id="save-rbac-${zone.key}" class="set-btn wa-zone-save" onclick="window.saveWaNotifRbac('${zone.key}')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    Simpan
                   </button>
                 </div>
-                <div style="overflow-x:auto;">
-                  <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
-                    <thead>
-                      <tr style="background:rgba(163,177,198,0.06);border-bottom:1px solid rgba(163,177,198,0.15);">
-                        <th style="padding:0.65rem 1rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:left;white-space:nowrap;min-width:140px;">Role</th>
-                        ${triggers.map(t => `
-                        <th style="padding:0.65rem 0.75rem;font-weight:700;font-size:0.67rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-muted);text-align:center;white-space:nowrap;">
-                          <div>${t.label}</div>
-                          <div style="font-size:0.6rem;font-weight:400;color:var(--text-muted);opacity:0.7;text-transform:none;letter-spacing:0;">${t.desc}</div>
-                        </th>`).join('')}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${allRoles.map((role, ri) => {
-                        const label = window.staffConfig.roleLabels[role] || role;
-                        return `
-                        <tr style="border-bottom:1px solid rgba(163,177,198,0.07);${ri % 2 === 1 ? 'background:rgba(163,177,198,0.025);' : ''}">
-                          <td style="padding:0.55rem 1rem;font-weight:600;color:var(--text);white-space:nowrap;">${label}</td>
-                          ${triggers.map(t => {
-                            const checked = (cfg[t.key] || []).includes(role);
-                            return `
-                            <td style="padding:0.55rem 0.75rem;text-align:center;">
-                              <label style="display:inline-flex;align-items:center;justify-content:center;cursor:pointer;width:32px;height:32px;border-radius:8px;border:1.5px solid ${checked ? zone.color : 'rgba(163,177,198,0.35)'};background:${checked ? zone.color + '22' : 'transparent'};transition:all 0.15s;">
-                                <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleWaNotifRole('${zone.key}','${t.key}','${role}')" style="position:absolute;opacity:0;width:0;height:0;">
-                                ${checked ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${zone.color}" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>` : ''}
-                              </label>
-                            </td>`;
-                          }).join('')}
-                        </tr>`;
+                ${triggers.map((t, ti) => {
+                  const on = cfg[t.key] || [];
+                  return `
+                  <div class="wa-trig">
+                    <div class="wa-trig-label">
+                      <div><span class="wa-step">${ti + 1}</span>${t.label}<span class="wa-count">${on.length}</span></div>
+                      <p>${t.desc}</p>
+                    </div>
+                    <div class="wa-chips">
+                      ${allRoles.map(role => {
+                        const checked = on.includes(role);
+                        return `<label class="wa-chip ${checked ? 'on' : ''}"><input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleWaNotifRole('${zone.key}','${t.key}','${role}')">${checked ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>` : ''}${window.staffConfig.roleLabels[role] || role}</label>`;
                       }).join('')}
-                    </tbody>
-                  </table>
-                </div>
+                    </div>
+                  </div>`;
+                }).join('')}
               </div>`;
             }).join('')}
             ` : ''}
+            </div>
           `;
         })() : ''}
 
