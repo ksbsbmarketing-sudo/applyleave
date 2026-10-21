@@ -8519,147 +8519,86 @@ function renderView() {
       // Kumpulkan branch yang diketahui
       const knownBranchNames = new Set(branches.map(b => b.name));
 
+      const mhCatColor = { 'Doctor': '#8b5cf6', 'Admin Staff': '#0ea5e9', 'Operation Staff': '#10b981' };
+      const mhChevron = (bid) => '<svg id="bch-' + bid + '" class="mh-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>';
+      const mhStat = (label, val, ent, cls) => '<span class="mh-stat ' + cls + '"><b>' + label + '</b>' + val + '<small>/' + ent + '</small></span>';
+
+      // Satu baris staf (nama, peranan, baki AL/MC/HL, Edit/Buang) — tiada jadual, tiada skrol mendatar
+      const mhStaffRow = function(staff, subText) {
+        const al = window.getLeaveStats(staff, 'AL');
+        const mc = window.getLeaveStats(staff, 'MC');
+        const hl = window.getLeaveStats(staff, 'HL');
+        const alLow = al.bal <= 3 && al.ent > 0;
+        const color = mhCatColor[staff.category] || '#64748b';
+        const initials = (staff.name || '?').trim().split(/\s+/).slice(0, 2).map(w => w.charAt(0)).join('').toUpperCase();
+        const roleLabel = window.staffConfig.roleLabels[staff.role] || staff.role || '-';
+        return '<div class="mh-row' + (staff.inactive ? ' is-inactive' : '') + '">'
+          + '<div class="mh-ava" style="--ac:' + color + ';">' + escapeHtml(initials) + '</div>'
+          + '<div class="mh-who">'
+          +   '<div class="mh-name">' + escapeHtml(staff.name || '-') + (staff.inactive ? '<span class="mh-off">Tidak Aktif</span>' : '') + '</div>'
+          +   '<div class="mh-sub"><span class="mh-role">' + escapeHtml(roleLabel) + '</span>' + escapeHtml(subText || '') + '</div>'
+          + '</div>'
+          + '<div class="mh-stats">'
+          +   mhStat('AL', al.bal.toFixed(1), al.ent.toFixed(1), alLow ? 'is-low' : 'is-al')
+          +   mhStat('MC', mc.bal, mc.ent, 'is-mc')
+          +   mhStat('HL', hl.used, hl.ent, 'is-hl')
+          + '</div>'
+          + '<div class="mh-acts">'
+          +   '<button class="mh-btn" data-ic="' + staff.ic + '" onclick="window.setEditingStaff(this.dataset.ic)" title="Edit staf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><span>Edit</span></button>'
+          +   (window.isBranchScopedHod(user) ? '' : '<button class="mh-btn is-del" data-ic="' + staff.ic + '" onclick="window.deleteStaff(this.dataset.ic)" title="Buang dari sistem" aria-label="Buang dari sistem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>')
+          + '</div>'
+          + '</div>';
+      };
+
+      // Kad cawangan boleh buka/tutup (id bc-/bch- dipakai oleh toggleBranch/toggleAllBranches)
+      const mhBranchCard = function(title, staffList, pills, subOf) {
+        const bid = 'b' + (++branchIdCounter);
+        return '<div class="mh-branch">'
+          + '<div class="mh-branch-head" data-bid="' + bid + '" onclick="window.toggleBranch(this.dataset.bid)">'
+          +   '<div class="mh-branch-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg></div>'
+          +   '<div class="mh-branch-text"><div class="mh-branch-name">' + escapeHtml(title) + '</div><div class="mh-pills">' + pills + '</div></div>'
+          +   '<span class="mh-count">' + staffList.length + '</span>'
+          +   mhChevron(bid)
+          + '</div>'
+          + '<div id="bc-' + bid + '" class="mh-branch-body" style="display:none;">'
+          +   staffList.map(s => mhStaffRow(s, subOf(s))).join('')
+          + '</div>'
+          + '</div>';
+      };
+
       const stateGroupedHtml = ['Pahang', 'Terengganu'].map(function(stateName) {
         const stateBranches = branches.filter(function(b) { return b.state === stateName; });
         const stateStaff = filteredStaff.filter(function(s) { return stateBranches.some(function(b) { return b.name === s.branch; }); });
         if (stateStaff.length === 0) return '';
         const stateColor = stateName === 'Pahang' ? '#4361ee' : '#0d9488';
-        const stateBg    = stateName === 'Pahang' ? 'rgba(67,97,238,0.07)' : 'rgba(13,148,136,0.07)';
-        const stateBar   = stateName === 'Pahang' ? '#4361ee' : '#0d9488';
 
         const branchPanels = stateBranches.map(function(branchObj) {
           const branchStaff = filteredStaff.filter(function(s) { return s.branch === branchObj.name; });
           if (branchStaff.length === 0) return '';
-          const bid = 'b' + (++branchIdCounter);
-
-          // Role mini-summary for accordion header
+          // Ringkasan kategori untuk kepala kad
           const roleCounts = {};
           branchStaff.forEach(function(s) {
             const cat = s.category || s.role || 'Lain';
             roleCounts[cat] = (roleCounts[cat] || 0) + 1;
           });
-          const rolePills = Object.keys(roleCounts).map(function(cat) {
-            return '<span style="font-size:0.7rem;color:var(--text-muted);background:rgba(163,177,198,0.25);padding:0.1rem 0.45rem;border-radius:999px;white-space:nowrap;">'
-              + roleCounts[cat] + ' ' + cat + '</span>';
-          }).join(' ');
-
-          // Compact card rows (no table, no horizontal scroll)
-          const staffRows = branchStaff.map(function(staff) {
-            const al = window.getLeaveStats(staff, 'AL');
-            const mc = window.getLeaveStats(staff, 'MC');
-            const hl = window.getLeaveStats(staff, 'HL');
-            const alLow = al.bal <= 3 && al.ent > 0;
-            const inBadge = staff.inactive
-              ? '<span style="background:rgba(239,68,68,0.1);color:#ef4444;font-size:0.68rem;padding:0.08rem 0.35rem;border-radius:4px;font-weight:700;border:1px solid rgba(239,68,68,0.2);vertical-align:middle;margin-left:4px;">TIDAK AKTIF</span>'
-              : '';
-            return '<div style="display:flex;align-items:center;gap:0.75rem;padding:0.55rem 0.9rem;border-bottom:1px solid rgba(163,177,198,0.15);">'
-              // Name + role
-              + '<div style="flex:1;min-width:0;">'
-              +   '<div style="font-size:0.85rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + staff.name + inBadge + '</div>'
-              +   '<div style="display:flex;align-items:center;gap:0.35rem;margin-top:0.15rem;">'
-              +     '<span style="font-size:0.7rem;font-weight:600;color:#fff;background:#4361ee;padding:0.08rem 0.4rem;border-radius:4px;text-transform:capitalize;">' + (staff.role || '-') + '</span>'
-              +     '<span style="font-size:0.7rem;color:var(--text-muted);">' + (staff.category || '') + '</span>'
-              +   '</div>'
-              + '</div>'
-              // AL / MC / HL compact stats
-              + '<div style="display:flex;gap:0.5rem;align-items:center;flex-shrink:0;">'
-              +   statCell('AL', al.bal.toFixed(1), al.ent.toFixed(1), alLow ? '#ef4444' : '#38bdf8')
-              +   statCell('MC', mc.bal, mc.ent, '#10b981')
-              +   statCell('HL', hl.used, hl.ent, '#06b6d4')
-              + '</div>'
-              // Edit + Delete buttons
-              + '<button class="btn-logout" data-ic="' + staff.ic + '" onclick="window.setEditingStaff(this.dataset.ic)" style="flex-shrink:0;width:auto;padding:0.2rem 0.65rem;font-size:0.75rem;">Edit</button>'
-              + (window.isBranchScopedHod(user) ? '' : '<button class="btn-logout" data-ic="' + staff.ic + '" onclick="window.deleteStaff(this.dataset.ic)" style="flex-shrink:0;width:auto;padding:0.2rem 0.65rem;font-size:0.75rem;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);" title="Buang dari sistem">&#10005;</button>')
-              + '</div>';
+          const pills = Object.keys(roleCounts).map(function(cat) {
+            return '<span class="mh-pill" style="--ac:' + (mhCatColor[cat] || '#64748b') + ';">' + roleCounts[cat] + ' ' + escapeHtml(cat) + '</span>';
           }).join('');
-
-          function statCell(label, used, ent, color) {
-            return '<div style="text-align:center;min-width:38px;">'
-              +   '<div style="font-size:0.62rem;font-weight:600;color:var(--text-muted);letter-spacing:0.3px;">' + label + '</div>'
-              +   '<div style="font-size:0.8rem;font-weight:700;color:' + color + ';line-height:1.1;">' + used
-              +     '<span style="font-size:0.6rem;color:var(--text-muted);font-weight:400;">/' + ent + '</span>'
-              +   '</div>'
-              + '</div>';
-          }
-
-          // Accordion wrapper
-          return '<div style="border:1px solid rgba(163,177,198,0.3);border-radius:10px;margin-bottom:0.4rem;overflow:hidden;">'
-            // Header (clickable)
-            + '<div data-bid="' + bid + '" onclick="window.toggleBranch(this.dataset.bid)"'
-            +   ' style="display:flex;align-items:center;justify-content:space-between;padding:0.55rem 0.9rem;background:rgba(255,255,255,0.55);cursor:pointer;user-select:none;gap:0.75rem;">'
-            +   '<div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;flex:1;min-width:0;">'
-            +     '<i data-lucide="building-2" width="14" height="14" style="color:var(--text-muted);flex-shrink:0;"></i>'
-            +     '<span style="font-size:0.88rem;font-weight:700;color:var(--text-soft);white-space:nowrap;">' + branchObj.name + '</span>'
-            +     '<span style="font-size:0.72rem;font-weight:600;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.1rem 0.5rem;border-radius:999px;">' + branchStaff.length + ' staf</span>'
-            +     rolePills
-            +   '</div>'
-            +   '<i id="bch-' + bid + '" data-lucide="chevron-down" width="15" height="15" style="color:var(--text-muted);transition:transform 0.2s;flex-shrink:0;"></i>'
-            + '</div>'
-            // Content (collapsed by default)
-            + '<div id="bc-' + bid + '" style="display:none;background:#fff;">'
-            +   staffRows
-            + '</div>'
-            + '</div>';
+          return mhBranchCard(branchObj.name, branchStaff, pills, s => s.category || '');
         }).join('');
 
-        // State section header + branch panels
-        return '<div style="margin-bottom:1.25rem;">'
-          + '<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem;padding:0.5rem 0.9rem;background:' + stateBg + ';border-radius:8px;border-left:3px solid ' + stateBar + ';">'
-          +   '<i data-lucide="map-pin" width="14" height="14" style="color:' + stateColor + ';"></i>'
-          +   '<span style="font-size:0.9rem;font-weight:700;color:' + stateColor + ';">Negeri ' + stateName + '</span>'
-          +   '<span style="font-size:0.75rem;color:var(--text-muted);">' + stateStaff.length + ' staf</span>'
-          + '</div>'
+        return '<div class="mh-state" style="--sc:' + stateColor + ';">'
+          + '<div class="mh-state-head"><span class="mh-state-dot"></span>Negeri ' + stateName + '<span class="mh-state-n">' + stateStaff.length + ' staf</span></div>'
           + branchPanels
           + '</div>';
       }).join('') + (function() {
         // Kumpulan "Lain-lain" — staff yang branchnya tidak termasuk dalam Pahang/Terengganu
         const unmatched = filteredStaff.filter(function(s) { return !knownBranchNames.has(s.branch); });
         if (unmatched.length === 0) return '';
-        const bid = 'b' + (++branchIdCounter);
-        const rows = unmatched.map(function(staff) {
-          const al = window.getLeaveStats(staff, 'AL');
-          const mc = window.getLeaveStats(staff, 'MC');
-          const hl = window.getLeaveStats(staff, 'HL');
-          const alLow = al.bal <= 3 && al.ent > 0;
-          const inBadge = staff.inactive
-            ? '<span style="background:rgba(239,68,68,0.1);color:#ef4444;font-size:0.68rem;padding:0.08rem 0.35rem;border-radius:4px;font-weight:700;border:1px solid rgba(239,68,68,0.2);vertical-align:middle;margin-left:4px;">TIDAK AKTIF</span>'
-            : '';
-          function statCell(label, used, ent, color) {
-            return '<div style="text-align:center;min-width:38px;">'
-              + '<div style="font-size:0.62rem;font-weight:600;color:var(--text-muted);letter-spacing:0.3px;">' + label + '</div>'
-              + '<div style="font-size:0.8rem;font-weight:700;color:' + color + ';line-height:1.1;">' + used
-              + '<span style="font-size:0.6rem;color:var(--text-muted);font-weight:400;">/' + ent + '</span>'
-              + '</div></div>';
-          }
-          return '<div style="display:flex;align-items:center;gap:0.75rem;padding:0.55rem 0.9rem;border-bottom:1px solid rgba(163,177,198,0.15);">'
-            + '<div style="flex:1;min-width:0;">'
-            +   '<div style="font-size:0.85rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + staff.name + inBadge + '</div>'
-            +   '<div style="display:flex;align-items:center;gap:0.35rem;margin-top:0.15rem;">'
-            +     '<span style="font-size:0.7rem;font-weight:600;color:#fff;background:#4361ee;padding:0.08rem 0.4rem;border-radius:4px;text-transform:capitalize;">' + (staff.role || '-') + '</span>'
-            +     '<span style="font-size:0.7rem;color:var(--text-muted);">' + (staff.branch || '—') + '</span>'
-            +   '</div>'
-            + '</div>'
-            + '<div style="display:flex;gap:0.5rem;align-items:center;flex-shrink:0;">'
-            +   statCell('AL', al.bal.toFixed(1), al.ent.toFixed(1), alLow ? '#ef4444' : '#38bdf8')
-            +   statCell('MC', mc.bal, mc.ent, '#10b981')
-            +   statCell('HL', hl.used, hl.ent, '#06b6d4')
-            + '</div>'
-            + '<button class="btn-logout" data-ic="' + staff.ic + '" onclick="window.setEditingStaff(this.dataset.ic)" style="flex-shrink:0;width:auto;padding:0.2rem 0.65rem;font-size:0.75rem;">Edit</button>'
-            + (window.isBranchScopedHod(user) ? '' : '<button class="btn-logout" data-ic="' + staff.ic + '" onclick="window.deleteStaff(this.dataset.ic)" style="flex-shrink:0;width:auto;padding:0.2rem 0.65rem;font-size:0.75rem;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);" title="Buang dari sistem">&#10005;</button>')
-            + '</div>';
-        }).join('');
-        return '<div style="margin-bottom:1.25rem;">'
-          + '<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem;padding:0.5rem 0.9rem;background:rgba(163,177,198,0.1);border-radius:8px;border-left:3px solid #94a3b8;">'
-          +   '<span style="font-size:0.9rem;font-weight:700;color:#64748b;">Lain-lain / Tiada Cawangan</span>'
-          +   '<span style="font-size:0.75rem;color:var(--text-muted);">' + unmatched.length + ' staf</span>'
-          + '</div>'
-          + '<div style="border:1px solid rgba(163,177,198,0.3);border-radius:10px;overflow:hidden;">'
-          + '<div data-bid="' + bid + '" onclick="window.toggleBranch(this.dataset.bid)" style="display:flex;align-items:center;justify-content:space-between;padding:0.55rem 0.9rem;background:rgba(255,255,255,0.55);cursor:pointer;user-select:none;">'
-          +   '<span style="font-size:0.88rem;font-weight:700;color:var(--text-soft);">Tidak Ditetapkan</span>'
-          +   '<span style="font-size:0.72rem;font-weight:600;color:var(--text-muted);background:rgba(163,177,198,0.2);padding:0.1rem 0.5rem;border-radius:999px;">' + unmatched.length + ' staf</span>'
-          + '</div>'
-          + '<div id="bc-' + bid + '" style="display:none;background:#fff;">' + rows + '</div>'
-          + '</div></div>';
+        return '<div class="mh-state" style="--sc:#94a3b8;">'
+          + '<div class="mh-state-head"><span class="mh-state-dot"></span>Lain-lain / Tiada Cawangan<span class="mh-state-n">' + unmatched.length + ' staf</span></div>'
+          + mhBranchCard('Tidak Ditetapkan', unmatched, '', s => s.branch || '—')
+          + '</div>';
       })();
 
       return `
@@ -10458,47 +10397,56 @@ function renderView() {
         `; })() : ''}
 
         ${managementTab === 'staff' ? `
-        <header class="top-bar">
-          <h1>Management Hub</h1>
-          ${window.isBranchScopedHod(user) ? '' : `<button class="btn-primary" onclick="window.openAddStaff()" style="width: auto; padding: 0.75rem 1.5rem;">+ Tambah Staf</button>`}
-        </header>
-
-                <section class="glass-card" style="padding: 1rem 1.25rem;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.6rem;">
-            <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
-              <button onclick="window.toggleAllBranches(true)" style="padding:0.3rem 0.8rem;border-radius:999px;border:1px solid rgba(163,177,198,0.45);background:rgba(255,255,255,0.6);font-size:0.78rem;font-weight:600;color:var(--text-soft);cursor:pointer;">▼ Buka Semua</button>
-              <button onclick="window.toggleAllBranches(false)" style="padding:0.3rem 0.8rem;border-radius:999px;border:1px solid rgba(163,177,198,0.45);background:rgba(255,255,255,0.6);font-size:0.78rem;font-weight:600;color:var(--text-soft);cursor:pointer;">▶ Tutup Semua</button>
-              <div style="display:flex;align-items:center;gap:0.4rem;">
-                <div class="neu-toggle ${showInactiveStaff ? 'active' : ''}" onclick="window.toggleInactive()"></div>
-                <span style="font-size:0.75rem;font-weight:600;color:${showInactiveStaff ? '#ef4444' : 'var(--text-muted)'};text-transform:uppercase;letter-spacing:0.4px;">${showInactiveStaff ? 'Melihat: Tidak Aktif' : 'Tidak Aktif'}</span>
-              </div>
-              <select onchange="window.setManageRoleFilter(this.value)" style="padding:0.3rem 0.7rem;border-radius:999px;border:1px solid rgba(163,177,198,0.45);background:rgba(255,255,255,0.6);font-size:0.78rem;font-weight:600;color:var(--text-soft);cursor:pointer;color-scheme:light;">
-                ${[
-                  { val: 'SEMUA', label: 'Semua Peranan' },
-                  { val: 'super_admin', label: 'Super Admin' },
-                  { val: 'admin', label: 'Admin' },
-                  { val: 'hr', label: 'HR' },
-                  { val: 'hod_cawangan', label: 'HOD Cawangan' },
-                  { val: 'hod_balok', label: 'HOD Balok' },
-                  { val: 'doctor_pic', label: 'Doctor PIC' },
-                  { val: 'supervisor', label: 'Supervisor' },
-                  { val: 'team_leader', label: 'Team Leader' },
-                  { val: 'staff', label: 'Staff' },
-                ].filter(o => o.val === 'SEMUA' || window.staffFormRoles([o.val]).length).map(o => '<option value="' + o.val + '"' + (manageRoleFilter === o.val ? ' selected' : '') + '>' + o.label + '</option>').join('')}
-              </select>
-              <select onchange="window.setManageCategoryFilter(this.value)" style="padding:0.3rem 0.7rem;border-radius:999px;border:1px solid rgba(163,177,198,0.45);background:rgba(255,255,255,0.6);font-size:0.78rem;font-weight:600;color:var(--text-soft);cursor:pointer;color-scheme:light;">
-                ${[
-                  { val: 'SEMUA', label: 'Semua Kategori' },
-                  { val: 'Doctor', label: 'Doktor' },
-                  { val: 'Admin Staff', label: 'Admin Staff' },
-                  { val: 'Operation Staff', label: 'Operasi' },
-                ].map(o => '<option value="' + o.val + '"' + (manageCategoryFilter === o.val ? ' selected' : '') + '>' + o.label + '</option>').join('')}
-              </select>
+        <div class="wa-wrap mh-wrap fade-in">
+          <div class="wa-head">
+            <div class="set-card-ico ph-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+            <div class="wa-head-text">
+              <h2>Management Hub</h2>
+              <p>${filteredStaff.length} staf ${showInactiveStaff ? 'tidak aktif' : 'aktif'} dipaparkan · tekan cawangan untuk lihat senarai</p>
             </div>
-            <input type="text" id="manage-staff-search" class="neu-inset" placeholder="Cari nama / IC..." value="${manageSearchQuery}" oninput="window.setManageSearch(this.value)" style="width:180px;padding:0.4rem 0.8rem;border-radius:10px;font-size:0.82rem;color-scheme:light;">
+            ${window.isBranchScopedHod(user) ? '' : `<button class="set-btn is-primary" onclick="window.openAddStaff()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Tambah Staf</button>`}
           </div>
-          ${stateGroupedHtml}
-        </section>
+
+          <div class="mh-toolbar">
+            <div class="mh-search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="manage-staff-search" placeholder="Cari nama / IC..." value="${escapeHtml(manageSearchQuery)}" oninput="window.setManageSearch(this.value)">
+            </div>
+            <select class="mh-select" onchange="window.setManageRoleFilter(this.value)" aria-label="Tapis peranan">
+              ${[
+                { val: 'SEMUA', label: 'Semua Peranan' },
+                { val: 'super_admin', label: 'Super Admin' },
+                { val: 'admin', label: 'Admin' },
+                { val: 'hr', label: 'HR' },
+                { val: 'hod_cawangan', label: 'HOD Cawangan' },
+                { val: 'hod_balok', label: 'HOD Balok' },
+                { val: 'doctor_pic', label: 'Doctor PIC' },
+                { val: 'supervisor', label: 'Supervisor' },
+                { val: 'team_leader', label: 'Team Leader' },
+                { val: 'staff', label: 'Staff' },
+              ].filter(o => o.val === 'SEMUA' || window.staffFormRoles([o.val]).length).map(o => '<option value="' + o.val + '"' + (manageRoleFilter === o.val ? ' selected' : '') + '>' + o.label + '</option>').join('')}
+            </select>
+            <select class="mh-select" onchange="window.setManageCategoryFilter(this.value)" aria-label="Tapis kategori">
+              ${[
+                { val: 'SEMUA', label: 'Semua Kategori' },
+                { val: 'Doctor', label: 'Doktor' },
+                { val: 'Admin Staff', label: 'Admin Staff' },
+                { val: 'Operation Staff', label: 'Operasi' },
+              ].map(o => '<option value="' + o.val + '"' + (manageCategoryFilter === o.val ? ' selected' : '') + '>' + o.label + '</option>').join('')}
+            </select>
+            <button class="mh-chip ${showInactiveStaff ? 'on' : ''}" onclick="window.toggleInactive()">
+              <span class="mh-chip-dot"></span>${showInactiveStaff ? 'Melihat: Tidak Aktif' : 'Tidak Aktif'}
+            </button>
+            <div class="mh-expand">
+              <button onclick="window.toggleAllBranches(true)" title="Buka semua cawangan">Buka Semua</button>
+              <button onclick="window.toggleAllBranches(false)" title="Tutup semua cawangan">Tutup Semua</button>
+            </div>
+          </div>
+
+          ${stateGroupedHtml || emptyState({ icon: 'users', title: 'Tiada staf ditemui', text: 'Cuba ubah carian atau penapis.' })}
+        </div>
         ` : ''}
 
         ${managementTab === 'branches' ? `
