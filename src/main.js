@@ -476,6 +476,16 @@ async function authedPost(path, payload) {
   return { ok: res.ok, status: res.status, data };
 }
 
+// E-mel kepada pemohon tentang status SEMASA rekod cuti (disokong / lulus / tolak / batal).
+// Server (otp-backend/api/notify-leave-email.js) baca rekod dari Firestore dan pilih
+// kandungan sendiri; tiada e-mel berganda bagi status yang sama dalam 10 minit.
+// Tanpa await: kegagalan e-mel tidak boleh menggagalkan kelulusan.
+window.emailLeaveStatus = function(id) {
+  authedPost('/api/notify-leave-email', { leaveId: String(id) })
+    .then(r => { if (!r.ok || (r.data && r.data.sent === false && r.data.reason !== 'already_sent')) console.info('notify-leave-email:', r.status, r.data); })
+    .catch(() => {});
+};
+
 const ADMIN_ERR_MS = {
   network: 'Tidak dapat menghubungi pelayan. Sila cuba lagi.',
   unauthenticated: 'Sesi tidak sah. Sila log masuk semula.',
@@ -3343,6 +3353,7 @@ window.finalizeLeave = async function(id) {
             if (record.locum2TimeEnd)   updateData.locum2TimeEnd   = record.locum2TimeEnd;
 
             await updateDoc(doc(db, "leaves", id.toString()), updateData);
+            window.emailLeaveStatus(id);
             const isFinalApproval = newStatus === 'APPROVED';
             const isTLApproval = newStatus === 'TL APPROVED';
             window.logSystemActivity(
@@ -3411,6 +3422,7 @@ window.cancelLeave = async function(id) {
 
     try {
         await updateDoc(doc(db, "leaves", id.toString()), { status: 'CANCELLED' });
+        window.emailLeaveStatus(id);
         window.logSystemActivity(`Cancelled Leave for ${req.name}`);
         showToast(`Cuti ${req.name} berjaya dibatalkan.`);
         
@@ -3442,6 +3454,7 @@ window.rejectLeave = async function(id) {
 
     try {
         await updateDoc(doc(db, "leaves", id.toString()), { status: "REJECTED" });
+        window.emailLeaveStatus(id);
         window.logSystemActivity(`Rejected Leave for ${record.name}`);
         window.addNotification(record.ic, 'leave_rejected', '❌ Cuti Ditolak', `Maaf, permohonan cuti anda (${leaveTypeName}, ${record.startDate} → ${record.endDate}) telah DITOLAK. Sila hubungi HR/Admin untuk maklumat lanjut.`, id.toString(), user);
 
@@ -12032,7 +12045,7 @@ function renderSelfProfileModal() {
               </div>
               <div class="sp-notif is-mail">
                 <span class="sp-notif-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></span>
-                <div><b>Email</b><span>Dihantar ke alamat email di atas.</span></div>
+                <div><b>Email</b><span>Dihantar ke alamat email di atas bila cuti disokong, diluluskan, ditolak atau dibatalkan.</span></div>
               </div>
             </div>
           </section>
