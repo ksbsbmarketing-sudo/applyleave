@@ -2121,3 +2121,11 @@ select.lf-select.is-ok { border-color: #6ee7b7; background-color: #f0fdf7; }
 .er-save svg { width: 17px; height: 17px; }
 .er-skip { width: 100%; margin: 0.6rem 0 0; padding: 0.6rem; border: 0; background: transparent; box-shadow: none; cursor: pointer; font: inherit; font-size: 0.82rem; font-weight: 600; color: #94a3b8; }
 .er-skip:hover { color: #475569; }
+/* modal wajib Lengkapkan Notifikasi */
+.er-card .er-label { display: flex; align-items: center; gap: 0.3rem; margin: 0 0 0.4rem; font-size: 0.78rem; font-weight: 700; color: #334155; text-align: left; text-transform: none; letter-spacing: normal; }
+.er-card .er-opts { margin-bottom: 1rem; text-align: left; }
+.er-card .nc-opt { padding: 0.55rem 0.75rem; }
+.nc-opt:has(input:checked) { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 5%, #fff); }
+.nc-opt:has(input:checked) .nc-ico { background: var(--primary); color: #fff; }
+.nc-opt:has(input:checked) .nc-radio { border: 5px solid var(--primary); }
+.er-overlay .er-card { max-height: calc(100dvh - 2rem); overflow-y: auto; }

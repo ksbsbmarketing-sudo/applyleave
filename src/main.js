@@ -10,7 +10,7 @@ import { ALL as SCOPE_ALL, NO_BRANCH, visibleStates, branchOptions, filterByScop
 import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps,
          findApprovedOverlaps, findOverlapGroups } from './leaveOverlap.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
-import { notifyChannelOf, wantsWhatsApp, isValidEmail } from './notifyPrefs.js';
+import { notifyChannelOf, wantsWhatsApp, isValidEmail, needsNotifySetup } from './notifyPrefs.js';
 import { deriveRolePermissions, changedRoles, claimsFor } from './rolePermissions.js';
 import { canEditHolidayState } from './holidayAccess.js';
 import { canSeeAuditLogs, canSeeRegistrations, listenerScope, canSeeWaLogs, STAFF_APPROVER_ROLES } from './listenerScope.js';
@@ -750,7 +750,6 @@ let showFirstLoginWarning = false;
 const MUST_CHANGE_PWD_KEY = 'ksb_must_change_pwd';
 let firstLoginPwd = '';            // kata laluan lalai yang baru ditaip — memori sahaja, tidak pernah disimpan
 let showPhoneReminderModal = false;
-let showEmailReminderModal = false;   // log masuk tanpa e-mel sah → minta kemas kini (selepas modal telefon)
 
 let publicHolidays = { pahang: [], terengganu: [] };
 let policyContent = {
@@ -4882,7 +4881,6 @@ async function completeLogin(ic, { viaGoogle = false, pwd = '' } = {}) {
   } catch (e) {}
   const _ph = (user.phone || '').replace(/\D/g, '');
   showPhoneReminderModal = !showFirstLoginWarning && (!_ph || !_ph.startsWith('6'));
-  showEmailReminderModal = !showFirstLoginWarning && !isValidEmail(user.email);
   currentSessionId = Date.now().toString() + '_' + Math.random().toString(36).substring(2);
   duplicateSessionDetected = false;
   sessionKickHandled = false;
@@ -6269,7 +6267,7 @@ function renderDashboard() {
     ${renderAddStaffModal()}
     ${renderFirstLoginModal()}
     ${renderPhoneReminderModal()}
-    ${showPhoneReminderModal ? '' : renderEmailReminderModal()}
+    ${showPhoneReminderModal ? '' : renderNotifySetupModal()}
   `;
 
   // Logout Listener
@@ -12316,23 +12314,25 @@ window.savePhoneFromReminder = async function() {
   }
 };
 
-window.dismissEmailReminder = function() { showEmailReminderModal = false; render(); };
-window.saveEmailFromReminder = async function() {
-  const input = document.getElementById('reminder-email-input');
-  if (!input) return;
-  const email = input.value.trim();
-  if (!isValidEmail(email)) { showToast('⚠️ Alamat e-mel tidak sah.\n\nContoh: nama@gmail.com'); input.focus(); return; }
+// WAJIB selepas log masuk: e-mel sah + pilihan saluran notifikasi (staff.email, staff.notifyChannel).
+window.saveNotifySetup = async function() {
+  const input = document.getElementById('setup-email-input');
+  const picked = document.querySelector('input[name="setup-channel"]:checked');
+  const email = (input && input.value || '').trim();
+  if (!isValidEmail(email)) { showToast('⚠️ Sila masukkan alamat e-mel yang sah.\n\nContoh: nama@gmail.com'); input && input.focus(); return; }
+  if (!picked) { showToast('⚠️ Sila pilih cara anda mahu menerima notifikasi kelulusan cuti.'); return; }
+  const notifyChannel = picked.value;
   try {
-    await updateDoc(doc(db, 'staff', user.ic), { email });
-    user.email = email;
+    await updateDoc(doc(db, 'staff', user.ic), { email, notifyChannel });
+    user.email = email; user.notifyChannel = notifyChannel;
     const s = staffList.find(i => i.ic === user.ic);
-    if (s) s.email = email;
-    showEmailReminderModal = false;
+    if (s) { s.email = email; s.notifyChannel = notifyChannel; }
     render();
-    showToast('✅ E-mel berjaya disimpan! Notifikasi kelulusan cuti akan dihantar ke ' + email + '.');
+    const label = { whatsapp: 'WhatsApp', email: 'E-mel', both: 'WhatsApp & E-mel' }[notifyChannel];
+    showToast(`✅ Tetapan disimpan. Notifikasi kelulusan cuti akan dihantar melalui ${label}. Boleh ditukar bila-bila masa di Tetapan Akaun.`);
   } catch (err) {
-    console.error('saveEmailFromReminder error:', err);
-    showToast('Ralat menyimpan e-mel. Sila cuba lagi.');
+    console.error('saveNotifySetup error:', err);
+    showToast('Ralat menyimpan. Sila cuba lagi.');
   }
 };
 
@@ -12355,21 +12355,38 @@ window.setNotifyChannel = async function(channel) {
   }
 };
 
-function renderEmailReminderModal() {
-  if (!showEmailReminderModal || !user || showFirstLoginWarning) return '';
+function renderNotifySetupModal() {
+  if (!user || showFirstLoginWarning || !needsNotifySetup(user)) return '';
+  const cur = ['whatsapp', 'email', 'both'].includes(user.notifyChannel) ? user.notifyChannel : '';
+  const opt = (val, title, sub, svg) => `
+        <label class="nc-opt">
+          <input type="radio" name="setup-channel" value="${val}" ${cur === val ? 'checked' : ''}>
+          <span class="nc-ico">${svg}</span>
+          <span class="nc-text"><b>${title}</b><small>${sub}</small></span>
+          <span class="nc-radio"></span>
+        </label>`;
+  const waSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
+  const mailSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>';
+  const bothSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
   return `
   <div class="modal-overlay er-overlay">
     <div class="er-card fade-in" role="dialog" aria-labelledby="er-title">
-      <div class="er-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
-      <h2 id="er-title">Kemas Kini E-mel Anda</h2>
-      <p>Masukkan alamat e-mel supaya anda boleh menerima <b>notifikasi kelulusan cuti</b> melalui e-mel. Anda boleh pilih WhatsApp, e-mel atau kedua-duanya di <b>Tetapan Akaun</b>.</p>
-      <input id="reminder-email-input" type="email" class="er-input" value="${escapeHtml(user.email || '')}" placeholder="nama@gmail.com" autocomplete="email"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();window.saveEmailFromReminder();}">
-      <button class="er-save" onclick="window.saveEmailFromReminder()">
+      <div class="er-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
+      <h2 id="er-title">Lengkapkan Tetapan Notifikasi</h2>
+      <p>Wajib diisi sebelum meneruskan. Ia menentukan cara anda dimaklumkan bila cuti <b>disokong, diluluskan, ditolak atau dibatalkan</b>.</p>
+      <label class="er-label" for="setup-email-input">1. Alamat e-mel <span class="sp-req">Wajib</span></label>
+      <input id="setup-email-input" type="email" class="er-input" value="${escapeHtml(user.email || '')}" placeholder="nama@gmail.com" autocomplete="email">
+      <div class="er-label">2. Terima notifikasi melalui <span class="sp-req">Wajib</span></div>
+      <div class="nc-list er-opts">
+        ${opt('whatsapp', 'WhatsApp sahaja', user.phone ? escapeHtml(user.phone) : 'Nombor telefon dalam profil', waSvg)}
+        ${opt('email', 'E-mel sahaja', 'Ke alamat e-mel di atas', mailSvg)}
+        ${opt('both', 'WhatsApp & E-mel', 'Disyorkan — tidak terlepas notifikasi', bothSvg)}
+      </div>
+      <button class="er-save" onclick="window.saveNotifySetup()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-        Simpan E-mel
+        Simpan &amp; Teruskan
       </button>
-      <button class="er-skip" onclick="window.dismissEmailReminder()">Ingatkan saya kemudian</button>
+      <button class="er-skip" onclick="window.logout()">Log Keluar</button>
     </div>
   </div>`;
 }

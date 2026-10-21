@@ -23,3 +23,8 @@ export function notifyChannelOf(staff) {
 export function wantsWhatsApp(staff) {
   return notifyChannelOf(staff) !== 'email' || !isValidEmail(staff && staff.email);
 }
+
+// Log masuk: staf WAJIB ada e-mel sah DAN pernah memilih saluran (bukan lalai).
+export function needsNotifySetup(staff) {
+  return !!staff && (!isValidEmail(staff.email) || !NOTIFY_CHANNELS.includes(staff.notifyChannel));
+}
