@@ -1869,3 +1869,76 @@ select.mh-select:focus { outline: none; border-color: var(--primary); }
   .mh-expand button { flex: 1; }
   .mh-wrap .wa-head .set-btn.is-primary { width: 100%; }
 }
+
+/* ── Kemaskini Profil & Baki Cuti (modal) ── */
+.modal-content.ep-modal { max-width: 900px; padding: 0 !important; max-height: 92vh; overflow-y: auto; background: #f6f8fb; display: flex; flex-direction: column; }
+.ep-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 0.9rem; padding: 1.1rem 1.4rem; background: #fff; border-bottom: 1px solid #eef1f5; }
+.ep-head-text { flex: 1; min-width: 0; }
+.ep-kicker { font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; }
+.ep-head h2 { margin: 0.1rem 0 0; font-size: 1.05rem; font-weight: 800; color: #0f172a; overflow-wrap: anywhere; }
+.ep-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.25rem; font-size: 0.75rem; color: #64748b; }
+.ep-badge { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.68rem; font-weight: 700; color: var(--primary); background: color-mix(in srgb, var(--primary) 9%, #fff); border-radius: 999px; padding: 0.15rem 0.55rem; }
+.ep-badge svg { width: 12px; height: 12px; }
+.ep-close { width: 36px; height: 36px; flex-shrink: 0; padding: 0; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; color: #64748b; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: none; }
+.ep-close:hover { background: #f1f5f9; color: #0f172a; }
+.ep-close svg { width: 18px; height: 18px; }
+.ep-body { display: flex; flex-direction: column; gap: 0.9rem; padding: 1.1rem 1.4rem 0; }
+.ep-note { padding: 0.75rem 0.9rem; border-radius: 12px; background: #eff8ff; border: 1px solid #bae6fd; font-size: 0.75rem; color: #475569; line-height: 1.5; }
+.ep-note strong { display: block; color: #0369a1; font-size: 0.8rem; }
+.ep-sec { background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 14px; padding: 0.95rem 1.05rem 1.05rem; box-shadow: 0 1px 2px rgba(15,23,42,0.04); }
+.ep-sec-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; font-size: 0.78rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #334155; }
+.ep-sec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sc); box-shadow: 0 0 0 4px color-mix(in srgb, var(--sc) 15%, transparent); flex-shrink: 0; }
+.ep-grid { display: grid; gap: 0.75rem; }
+.ep-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ep-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ep-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ep-grid-5 { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.ep-divide { margin-top: 0.85rem; padding-top: 0.85rem; border-top: 1px dashed #e5e9f0; }
+.ep-field { display: flex; flex-direction: column; min-width: 0; }
+.ep-field.is-wide { grid-column: 1 / -1; }
+.ep-field > label { margin: 0 0 0.3rem; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: color-mix(in srgb, var(--fc) 85%, #0f172a); }
+.ep-field > small { margin-top: 0.25rem; font-size: 0.66rem; color: #94a3b8; line-height: 1.35; }
+.ep-input {
+  width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 0.5rem 0.7rem; font: inherit; font-size: 0.86rem; color: #0f172a;
+  border: 1px solid #e2e8f0; border-left: 3px solid var(--fc); border-radius: 9px; background: #f8fafc; box-shadow: none; color-scheme: light;
+}
+select.ep-input { cursor: pointer; font-weight: 600; }
+.ep-input:focus { outline: none; border-color: var(--fc); background: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--fc) 14%, transparent); }
+.ep-input:disabled { opacity: 1; cursor: default; -webkit-text-fill-color: currentColor; }
+.ep-input.is-out { color: #dc2626; font-weight: 700; background: #fef6f6; }
+.ep-input.is-total { color: #4361ee; font-weight: 800; background: #f1f4ff; }
+.ep-input.is-result { color: #059669; font-weight: 800; font-size: 1rem; background: #ecfdf5; border-color: #a7f3d0; border-left-color: #10b981; }
+select.ep-input.is-on { color: #059669; }
+select.ep-input.is-off { color: #dc2626; }
+.ep-warn { margin-top: 0.25rem; font-size: 0.66rem; font-weight: 700; color: #d97706; }
+.ep-warn.is-red { color: #dc2626; }
+.ep-formula { margin: 0.7rem 0 0; font-size: 0.68rem; color: #94a3b8; }
+.ep-google { display: flex; align-items: center; gap: 0.5rem; min-height: 38px; padding: 0.35rem 0.4rem 0.35rem 0.7rem; box-sizing: border-box; border: 1px solid #e2e8f0; border-radius: 9px; background: #f8fafc; font-size: 0.82rem; color: #1e293b; }
+.ep-google span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ep-google.is-none { color: #94a3b8; }
+.ep-google button { flex-shrink: 0; padding: 0.3rem 0.6rem; border: 1px solid #fecaca; border-radius: 7px; background: #fff; color: #dc2626; font: inherit; font-size: 0.72rem; font-weight: 700; cursor: pointer; box-shadow: none; }
+.ep-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; margin-top: 0.85rem; }
+.ep-opt { display: flex; align-items: flex-start; gap: 0.6rem; margin: 0; padding: 0.7rem 0.8rem; border: 1px solid #e2e8f0; border-radius: 11px; background: #f8fafc; cursor: pointer; text-transform: none; letter-spacing: normal; font-weight: 400; }
+.ep-opt:has(input:checked) { border-color: color-mix(in srgb, var(--primary) 40%, #fff); background: color-mix(in srgb, var(--primary) 5%, #fff); }
+.ep-opt input { width: 18px; height: 18px; margin: 0.1rem 0 0; flex-shrink: 0; accent-color: var(--primary); }
+.ep-opt span { font-size: 0.7rem; color: #64748b; line-height: 1.45; }
+.ep-opt b { display: block; font-size: 0.8rem; color: #0f172a; margin-bottom: 0.15rem; }
+.ep-foot { position: sticky; bottom: 0; z-index: 2; display: flex; justify-content: flex-end; gap: 0.5rem; margin: 0.2rem -1.4rem 0; padding: 0.85rem 1.4rem; background: rgba(255,255,255,0.96); border-top: 1px solid #eef1f5; backdrop-filter: blur(6px); }
+.ep-foot .set-btn { padding: 0.7rem 1.2rem; }
+@media (max-width: 760px) {
+  .ep-grid-3, .ep-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ep-opts { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .modal-content.ep-modal { max-height: calc(100dvh - 2rem); border-radius: 16px; }
+  .ep-head { padding: 0.75rem 0.9rem; gap: 0.65rem; align-items: flex-start; }
+  .ep-head .user-avatar.is-lg { width: 40px; height: 40px; min-width: 40px; font-size: 1rem; }
+  .ep-kicker { display: none; }
+  .ep-head h2 { font-size: 0.92rem; margin: 0; }
+  .ep-meta { gap: 0.35rem; font-size: 0.7rem; }
+  .ep-body { padding: 0.9rem 0.8rem 0; }
+  .ep-foot { margin: 0.2rem -0.8rem 0; padding: 0.75rem 0.8rem; }
+  .ep-foot .set-btn { flex: 1; }
+  .ep-grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .ep-grid-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

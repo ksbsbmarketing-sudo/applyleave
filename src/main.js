@@ -6623,9 +6623,9 @@ function renderDashboard() {
               if (staffObj) {
                   const statusSelect = document.querySelector('#edit-status');
                   const startInput = document.querySelector('#edit-start-date');
-                  const branchSelect = editForm.querySelectorAll('select')[0];
-                  const categorySelect = editForm.querySelectorAll('select')[1];
-                  const roleSelect = editForm.querySelectorAll('select')[2];
+                  const branchSelect = document.querySelector('#edit-branch');
+                  const categorySelect = document.querySelector('#edit-category');
+                  const roleSelect = document.querySelector('#edit-role');
                   const passwordInput = document.querySelector('#edit-password');
                   const phoneInput = document.querySelector('#edit-phone');
                   const applyProrateInput = document.querySelector('#edit-apply-prorate');
@@ -11714,20 +11714,20 @@ function renderModal() {
       && leaveYearOf(r) === window.getCurrentLeaveYear())
     .reduce((acc, r) => acc + parseFloat(r.days || 0), 0);
 
+  // Satu medan borang: label kecil + input, warna aksen melalui --fc. hint = teks bantuan pendek.
+  const _epField = (label, inputHTML, color = '#64748b', hint = '', wide = false) => `
+          <div class="ep-field${wide ? ' is-wide' : ''}" style="--fc:${color};">
+            <label>${label}</label>
+            ${inputHTML}
+            ${hint ? `<small>${hint}</small>` : ''}
+          </div>`;
+
   // Medan "Guna Dalam Sistem" — bergantung pada autoSystemUsage.
   //  • AUTO ON : satu medan Rekod Auto (read-only) dari rekod diluluskan.
   //  • MANUAL  : satu medan editable yang HR isi sendiri.
-  const _sysUsageFieldsHTML = (prefix, autoVal, adjVal) => autoSystemUsage ? `
-          <div style="display: flex; flex-direction: column;">
-            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Guna Dalam Sistem (Rekod Auto)</label>
-            <input type="number" id="${prefix}-sys-used-display" class="neu-inset" disabled value="${autoVal.toFixed(1)}" data-used="${autoVal}" style="border-left: 3px solid #ef4444; color:#ef4444; font-weight:700; opacity:1; cursor:default;">
-            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Auto dari rekod cuti diluluskan (mod manual dimatikan)</span>
-          </div>` : `
-          <div style="display: flex; flex-direction: column;">
-            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #ef4444; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Guna Dalam Sistem (Manual)</label>
-            <input type="number" id="${prefix}-sys-adj-input" class="neu-inset" min="0" step="0.5" value="${adjVal}" oninput="window._recalcLeaveBalance('${prefix}')" style="border-left: 3px solid #ef4444;">
-            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Bilangan hari telah digunakan dalam sistem (isi manual)</span>
-          </div>`;
+  const _sysUsageFieldsHTML = (prefix, autoVal, adjVal) => autoSystemUsage
+    ? _epField('Guna Dalam Sistem', `<input type="number" id="${prefix}-sys-used-display" class="ep-input is-out" disabled value="${autoVal.toFixed(1)}" data-used="${autoVal}">`, '#ef4444', 'Auto dari rekod diluluskan')
+    : _epField('Guna Dalam Sistem (Manual)', `<input type="number" id="${prefix}-sys-adj-input" class="ep-input" min="0" step="0.5" value="${adjVal}" oninput="window._recalcLeaveBalance('${prefix}')">`, '#ef4444', 'Isi manual');
 
   const _modalSysUsedAL   = _modalSysUsed('AL');
   const _modalAlUsedSysAdj = parseFloat(staff.al_used_sys_adj || 0);
@@ -11769,199 +11769,95 @@ function renderModal() {
     const pel = parseFloat(staff[prefix + '_pelarasan'] || 0);
     const bal = Math.max(0, ann - pre - (autoSystemUsage ? sys : sysAdj) - pel);
     return `
-      <div style="margin-top:1.75rem;padding-top:1.5rem;border-top:1px solid rgba(163,177,198,0.15);">
-        <div style="font-size: 0.7rem; text-transform: uppercase; color: ${accent}; font-weight: 700; letter-spacing: 1px; margin-bottom: 1rem;">${title} — Peruntukan & Baki</div>
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.25rem;">
-          <div style="display: flex; flex-direction: column;">
-            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Peruntukan Setahun</label>
-            <input type="number" id="ent-${typeId}" class="neu-inset" min="0" step="0.5" value="${ann}" oninput="window._recalcLeaveBalance('${prefix}')" style="border-left: 3px solid ${accent};">
-          </div>
-          <div style="display: flex; flex-direction: column;">
-            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #0ea5e9; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Guna Sebelum Sistem</label>
-            <input type="number" id="${prefix}-used-pre-input" class="neu-inset" min="0" step="0.5" value="${pre}" oninput="window._recalcLeaveBalance('${prefix}')" style="border-left: 3px solid #0ea5e9;">
-            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Rekod guna sebelum sistem</span>
-          </div>
+      <section class="ep-sec" style="--sc:${accent};">
+        <div class="ep-sec-head"><span class="ep-sec-dot"></span>${title}</div>
+        <div class="ep-grid ep-grid-5">
+          ${_epField('Peruntukan Setahun', `<input type="number" id="ent-${typeId}" class="ep-input" min="0" step="0.5" value="${ann}" oninput="window._recalcLeaveBalance('${prefix}')">`, accent)}
+          ${_epField('Guna Sebelum Sistem', `<input type="number" id="${prefix}-used-pre-input" class="ep-input" min="0" step="0.5" value="${pre}" oninput="window._recalcLeaveBalance('${prefix}')">`, '#0ea5e9')}
           ${_sysUsageFieldsHTML(prefix, sys, sysAdj)}
-          <div style="display: flex; flex-direction: column;">
-            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #f59e0b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Pelarasan HR</label>
-            <input type="number" id="${prefix}-pelarasan-input" class="neu-inset" min="0" step="0.5" value="${pel}" oninput="window._recalcLeaveBalance('${prefix}')" style="border-left: 3px solid #f59e0b;">
-            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Potongan pembetulan HR</span>
-          </div>
-          <div style="display: flex; flex-direction: column; grid-column: span 2;">
-            <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #10b981; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Baki ${balanceLabel} Sebenar</label>
-            <input type="number" id="${prefix}-balance-display" class="neu-inset" disabled value="${bal.toFixed(1)}" style="border-left: 3px solid #10b981; font-weight:800; color:#10b981; opacity:1; cursor:default;">
-            <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Peruntukan − Guna Sebelum − Guna Sistem − Pelarasan HR</span>
-          </div>
+          ${_epField('Pelarasan HR', `<input type="number" id="${prefix}-pelarasan-input" class="ep-input" min="0" step="0.5" value="${pel}" oninput="window._recalcLeaveBalance('${prefix}')">`, '#f59e0b')}
+          ${_epField(`Baki ${balanceLabel}`, `<input type="number" id="${prefix}-balance-display" class="ep-input is-result" disabled value="${bal.toFixed(1)}">`, '#10b981')}
         </div>
-      </div>`;
+      </section>`;
   };
+
+  const _alTotal = (staff.ent_CF !== undefined ? staff.ent_CF : 0) + (staff.ent_AL !== undefined ? staff.ent_AL : window.getEntitlementAL(staff));
+  const _scopedHod = window.isBranchScopedHod(user);
 
   return `
     <div class="modal-overlay" id="modal-backdrop">
-      <div class="glass-card modal-content fade-in" style="padding: 2.5rem; max-height: 90vh; overflow-y: auto;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-            <h2>Kemaskini Profil & Baki Cuti</h2>
-            <button id="close-modal" style="background: transparent; color: var(--text-muted); border: none; cursor: pointer; font-size: 2rem; line-height: 1;">&times;</button>
-        </div>
-        
-        <div style="margin-bottom: 2.5rem; padding: 1rem 1.5rem; border-radius: 12px; background: rgba(59, 130, 246, 0.1); border-left: 4px solid var(--primary); display: flex; align-items: center; gap: 1rem;">
-            ${userAvatar(staff, { large: true })}
-            <div>
-              <strong style="font-size: 1.1rem;">${staff.name}</strong><br>
-              <span style="font-size: 0.85rem; color: var(--text-muted);">IC: ${staff.ic}</span>
+      <div class="glass-card modal-content ep-modal fade-in">
+        <div class="ep-head">
+          ${userAvatar(staff, { large: true })}
+          <div class="ep-head-text">
+            <div class="ep-kicker">Kemaskini Profil &amp; Baki Cuti</div>
+            <h2>${escapeHtml(staff.name || '-')}</h2>
+            <div class="ep-meta">
+              <span>IC: ${escapeHtml(staff.ic || '-')}</span>
+              ${_scopedHod ? '' : `<span class="ep-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><span id="years-badge-text">${serviceDurationText} BERKHIDMAT</span></span>`}
             </div>
+          </div>
+          <button type="button" id="close-modal" class="ep-close" aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
-        
-        <form id="edit-entitlement-form">
-          ${window.isBranchScopedHod(user) ? `
-          <div style="margin-bottom: 2rem; padding: 0.9rem 1.1rem; border-radius: 10px; background: rgba(56,189,248,0.07); border-left: 4px solid #38bdf8;">
-            <span style="font-size:0.78rem;font-weight:700;color:#38bdf8;">Anda boleh kemaskini baki &amp; kelayakan cuti sahaja.</span>
-            <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.25rem;line-height:1.4;">Peranan, cawangan, kategori, status akaun, telefon dan kata laluan diuruskan oleh HR/Admin.</div>
+
+        <form id="edit-entitlement-form" class="ep-body">
+          ${_scopedHod ? `
+          <div class="ep-note">
+            <strong>Anda boleh kemaskini baki &amp; kelayakan cuti sahaja.</strong>
+            Peranan, cawangan, kategori, status akaun, telefon dan kata laluan diuruskan oleh HR/Admin.
           </div>` : `
-          <div style="margin-bottom: 3rem; display: flex; flex-direction: column; gap: 1.5rem;">
-              <div style="display: flex; flex-direction: column;">
-                 <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.5rem;">
-                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px;">Service Start Date</label>
-                     <span style="background: rgba(59, 130, 246, 0.1); color: var(--primary); padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
-                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                         <span id="years-badge-text">${serviceDurationText} BERKHIDMAT</span>
-                     </span>
-                 </div>
-                 <input type="date" id="edit-start-date" oninput="window.calculateYears(this.value)" class="neu-inset" value="${staff.startDate || ''}" style="color-scheme: light;">
-              </div>
-
-              <div style="display: flex; flex-direction: column;">
-                 <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">Assigned Branch</label>
-                 <select class="neu-inset" style="appearance: none; cursor: pointer;">
-                     ${window.staffFormBranches().map(b => `<option value="${b.name}" ${staff.branch === b.name ? 'selected' : ''}>${b.name}</option>`).join('')}
-                 </select>
-              </div>
-
-              <div style="display: flex; flex-direction: column;">
-                 <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">Phone Number (WhatsApp)</label>
-                 <input type="text" id="edit-phone" class="neu-inset" value="${staff.phone || ''}" placeholder="Cth: 60123456789">
-              </div>
-              
-              <div style="display: flex; flex-direction: column;">
-                 <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">Kategori Staff</label>
-                 <select class="neu-inset" style="appearance: none; cursor: pointer; color-scheme: light; font-weight: 600;">
+          <section class="ep-sec" style="--sc:var(--primary);">
+            <div class="ep-sec-head"><span class="ep-sec-dot"></span>Profil &amp; Akaun</div>
+            <div class="ep-grid ep-grid-2">
+              ${_epField('Tarikh Mula Berkhidmat', `<input type="date" id="edit-start-date" class="ep-input" oninput="window.calculateYears(this.value)" value="${staff.startDate || ''}">`)}
+              ${_epField('Cawangan', `<select id="edit-branch" class="ep-input">${window.staffFormBranches().map(b => `<option value="${b.name}" ${staff.branch === b.name ? 'selected' : ''}>${b.name}</option>`).join('')}</select>`)}
+              ${_epField('No. Telefon (WhatsApp)', `<input type="text" id="edit-phone" class="ep-input" value="${escapeHtml(staff.phone || '')}" placeholder="Cth: 60123456789">`)}
+              ${_epField('Kategori Staf', `<select id="edit-category" class="ep-input">
                      ${window.staffConfig.staffCategories.map(cat => `<option value="${cat}" ${staff.category === cat ? 'selected' : ''}>${cat}</option>`).join('')}
                      <option value="Super Admin" ${staff.category === 'Super Admin' ? 'selected' : ''}>Super Admin</option>
-                 </select>
-              </div>
-
-              <div style="display: flex; flex-direction: column;">
-                 <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">System Role</label>
-                 <select class="neu-inset" style="appearance: none; cursor: pointer; color-scheme: light; font-weight: 600;">
-                     ${window.staffFormRoles(Object.keys(window.rbacMatrix)).map(k => `<option value="${k}" ${staff.role === k ? 'selected' : ''}>${window.staffConfig.roleLabels[k] || k}</option>`).join('')}
-                 </select>
-              </div>
-
-              <div style="display: flex; flex-direction: column;">
-                 <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">Account Status</label>
-                 <select id="edit-status" class="neu-inset" style="appearance: none; cursor: pointer; color: ${staff.inactive ? 'var(--danger)' : 'var(--accent)'}; font-weight: 600;">
+                  </select>`)}
+              ${_epField('Peranan Sistem', `<select id="edit-role" class="ep-input">${window.staffFormRoles(Object.keys(window.rbacMatrix)).map(k => `<option value="${k}" ${staff.role === k ? 'selected' : ''}>${window.staffConfig.roleLabels[k] || k}</option>`).join('')}</select>`)}
+              ${_epField('Status Akaun', `<select id="edit-status" class="ep-input ${staff.inactive ? 'is-off' : 'is-on'}" onchange="this.className='ep-input '+(this.value==='inactive'?'is-off':'is-on')">
                      <option value="active" ${!staff.inactive ? 'selected' : ''}>Berkhidmat (Aktif)</option>
                      <option value="inactive" ${staff.inactive ? 'selected' : ''}>Telah Berhenti (Tidak Aktif)</option>
-                 </select>
-              </div>
-
-              <div style="display: flex; flex-direction: column;">
-                 <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">Account Password</label>
-                 <input type="text" id="edit-password" class="neu-inset" value="" placeholder="Biarkan kosong jika tidak menukar kata laluan">
-              </div>
-
-              <div style="display: flex; flex-direction: column;">
-                 <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; letter-spacing: 0.5px;">Akaun Google</label>
-                 ${staff.googleEmail ? `
-                   <div style="display:flex; align-items:center; gap:0.5rem;">
-                     <span style="flex:1;">🔗 ${escapeHtml(staff.googleEmail)}</span>
-                     ${GOOGLE_UNLINK_ROLES.includes(user && user.role) ? `<button type="button" class="neu-btn" onclick="window.hrUnlinkGoogle('${staff.ic}')" style="padding:0.4rem 0.8rem; color:#ef4444; font-size:0.75rem; font-weight:600;">Buang pautan</button>` : ''}
-                   </div>` : `<span style="color: var(--text-muted);">Belum dipautkan</span>`}
-              </div>
-          </div>
-
-          
-          <div style="display: flex; flex-direction: column; background: rgba(59, 130, 246, 0.05); padding: 1rem; border-radius: 8px; border-left: 4px solid var(--accent); margin-top: 1rem;">
-             <label style="display: flex; align-items: flex-start; gap: 0.75rem; cursor: pointer; margin: 0;">
-                <input type="checkbox" id="edit-apply-prorate" ${staff.apply_prorate !== false ? 'checked' : ''} style="margin-top: 0.15rem; width: 1.25rem; height: 1.25rem; accent-color: var(--primary);">
-                <div style="display: flex; flex-direction: column;">
-                    <span style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Gunakan Kiraan Pro-Rata untuk Cuti Tahunan (AL) Sahaja</span>
-                    <span style="font-size: 0.7rem; color: var(--text-muted); line-height: 1.4; margin-top: 0.25rem;">Jika di-tick, baki AL dikira mengikut bulan bekerja (pro-rata). Jika di-untick, staf mendapat baki AL penuh serta-merta. Cuti lain (MC, HL, CME dll) sentiasa penuh tanpa pro-rata.</span>
-                </div>
-             </label>
-          </div>
-
-          <div style="display: flex; flex-direction: column; background: rgba(14, 165, 233, 0.06); padding: 1rem; border-radius: 8px; border-left: 4px solid #0ea5e9; margin-top: 1rem;">
-             <label style="display: flex; align-items: flex-start; gap: 0.75rem; cursor: pointer; margin: 0;">
-                <input type="checkbox" id="edit-leave-as-admin" ${staff.leaveAsAdmin === true ? 'checked' : ''} style="margin-top: 0.15rem; width: 1.25rem; height: 1.25rem; accent-color: #0ea5e9;">
-                <div style="display: flex; flex-direction: column;">
-                    <span style="font-size: 0.85rem; font-weight: 700; color: var(--text);">Layan Seperti Staff Admin untuk Cuti (Sabtu &amp; Ahad Cuti)</span>
-                    <span style="font-size: 0.7rem; color: var(--text-muted); line-height: 1.4; margin-top: 0.25rem;">Untuk Operation Staff yang bekerja Isnin–Jumaat sahaja. Jika di-tick: hari Sabtu/Ahad &amp; cuti umum TIDAK dikira dalam permohonan cuti, dan permohonan dihalakan ke HOD Balok (bukan Team Leader/Supervisor). Kategori kekal "Operation Staff" dalam laporan.</span>
-                </div>
-             </label>
-          </div>`}
-
-          <!-- Seksyen AL: Baki Tahun Lepas + Peruntukan Tahun Ini + Jumlah -->
-          <div style="border-top: 1px solid rgba(163,177,198,0.25); padding-top: 2rem; margin-top: 1.5rem; margin-bottom: 1.5rem;">
-            <div style="font-size: 0.7rem; text-transform: uppercase; color: var(--primary); font-weight: 700; letter-spacing: 1px; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              Cuti Tahunan (AL) — Peruntukan & Baki
+                  </select>`)}
+              ${_epField('Kata Laluan Baharu', `<input type="text" id="edit-password" class="ep-input" value="" placeholder="Kosongkan jika tidak menukar">`)}
+              ${_epField('Akaun Google', staff.googleEmail ? `
+                  <div class="ep-google">
+                    <span>${escapeHtml(staff.googleEmail)}</span>
+                    ${GOOGLE_UNLINK_ROLES.includes(user && user.role) ? `<button type="button" onclick="window.hrUnlinkGoogle('${staff.ic}')">Buang pautan</button>` : ''}
+                  </div>` : `<div class="ep-google is-none">Belum dipautkan</div>`)}
             </div>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
-              <div style="display: flex; flex-direction: column;">
-                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Baki AL Tahun Lepas (Dibawa)</label>
-                <input type="number" id="ent-CF" class="neu-inset" min="0" max="3"
-                  value="${staff.ent_CF !== undefined ? staff.ent_CF : 0}"
-                  oninput="if(this.value>3){this.value=3;} window._updateAlTotal();"
-                  style="border-left: 3px solid #64748b;">
-                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Maksimum 3 hari sahaja</span>
-              </div>
-              <div style="display: flex; flex-direction: column;">
-                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">AL Diperuntukkan Tahun Ini</label>
-                <input type="number" id="ent-AL" class="neu-inset" min="0"
-                  value="${staff.ent_AL !== undefined ? staff.ent_AL : window.getEntitlementAL(staff)}"
-                  oninput="window._updateAlTotal();"
-                  style="border-left: 3px solid var(--primary);">
-              </div>
-              <div style="display: flex; flex-direction: column;">
-                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Jumlah AL Terkini</label>
-                <input type="number" id="al-total-display" class="neu-inset" disabled
-                  value="${(staff.ent_CF !== undefined ? staff.ent_CF : 0) + (staff.ent_AL !== undefined ? staff.ent_AL : window.getEntitlementAL(staff))}"
-                  style="border-left: 3px solid var(--accent); font-weight: 800; color: var(--accent); opacity: 1; cursor: default;">
-                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Baki Tahun Lepas + Peruntukan Tahun Ini</span>
-              </div>
+            <div class="ep-opts">
+              <label class="ep-opt">
+                <input type="checkbox" id="edit-apply-prorate" ${staff.apply_prorate !== false ? 'checked' : ''}>
+                <span><b>Kiraan Pro-Rata untuk AL</b>Baki AL ikut bulan bekerja. Jika tidak ditanda, staf dapat baki AL penuh serta-merta. Cuti lain sentiasa penuh.</span>
+              </label>
+              <label class="ep-opt">
+                <input type="checkbox" id="edit-leave-as-admin" ${staff.leaveAsAdmin === true ? 'checked' : ''}>
+                <span><b>Layan Seperti Staff Admin (Sabtu &amp; Ahad Cuti)</b>Untuk Operation Staff Isnin–Jumaat: hujung minggu &amp; cuti umum tidak dikira, permohonan ke HOD Balok. Kategori kekal dalam laporan.</span>
+              </label>
             </div>
+          </section>`}
 
-            <!-- Baris 2: Potongan & baki sebenar (Formula B) -->
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.25rem; margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px dashed rgba(163,177,198,0.2);">
-              <div style="display: flex; flex-direction: column;">
-                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #0ea5e9; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Guna Sebelum Sistem</label>
-                <input type="number" id="al-used-pre-input" class="neu-inset" min="0" step="0.5"
-                  value="${_modalAlUsedPre}"
-                  oninput="window._recalcLeaveBalance('al')"
-                  style="border-left: 3px solid #0ea5e9;">
-                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Rekod AL yang digunakan sebelum sistem</span>
-              </div>
+          <!-- Seksyen AL: Baki Tahun Lepas + Peruntukan Tahun Ini + Jumlah, kemudian Formula B -->
+          <section class="ep-sec" style="--sc:#4361ee;">
+            <div class="ep-sec-head"><span class="ep-sec-dot"></span>Cuti Tahunan (AL)</div>
+            <div class="ep-grid ep-grid-3">
+              ${_epField('Baki Tahun Lepas (Dibawa)', `<input type="number" id="ent-CF" class="ep-input" min="0" max="3" value="${staff.ent_CF !== undefined ? staff.ent_CF : 0}" oninput="if(this.value>3){this.value=3;} window._updateAlTotal();">`, '#64748b', 'Maksimum 3 hari')}
+              ${_epField('Peruntukan Tahun Ini', `<input type="number" id="ent-AL" class="ep-input" min="0" value="${staff.ent_AL !== undefined ? staff.ent_AL : window.getEntitlementAL(staff)}" oninput="window._updateAlTotal();">`, '#4361ee')}
+              ${_epField('Jumlah AL', `<input type="number" id="al-total-display" class="ep-input is-total" disabled value="${_alTotal}">`, '#4361ee', 'Dibawa + Tahun Ini')}
+            </div>
+            <div class="ep-grid ep-grid-4 ep-divide">
+              ${_epField('Guna Sebelum Sistem', `<input type="number" id="al-used-pre-input" class="ep-input" min="0" step="0.5" value="${_modalAlUsedPre}" oninput="window._recalcLeaveBalance('al')">`, '#0ea5e9')}
               ${_sysUsageFieldsHTML('al', _modalSysUsedAL, _modalAlUsedSysAdj)}
-              <div style="display: flex; flex-direction: column;">
-                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #f59e0b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Pelarasan HR</label>
-                <input type="number" id="al-pelarasan-input" class="neu-inset" min="0" step="0.5"
-                  value="${_modalAlPelarasan}"
-                  oninput="window._recalcLeaveBalance('al')"
-                  style="border-left: 3px solid #f59e0b;">
-                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Potongan pembetulan HR</span>
-              </div>
-              <div style="display: flex; flex-direction: column;">
-                <label style="font-size: 0.75rem; margin-bottom: 0.5rem; color: #10b981; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Baki AL Sebenar</label>
-                <input type="number" id="al-balance-display" class="neu-inset" disabled
-                  value="${_modalAlBalance.toFixed(1)}"
-                  style="border-left: 3px solid #10b981; font-weight: 800; color: #10b981; opacity: 1; cursor: default;">
-                <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.35rem;">Jumlah − Guna Sebelum − Guna Sistem − Pelarasan HR</span>
-                <span id="al-el-overflow-note" style="font-size: 0.68rem; color: #f59e0b; font-weight: 700; margin-top: 0.35rem; display: ${_modalElOverflow > 0 ? 'block' : 'none'};">${_modalElOverflow > 0 ? `− ${_modalElOverflow.toFixed(1)} hari ditolak dari limpahan Cuti Ehsan` : ''}</span>
-                <span id="al-emg-overflow-note" style="font-size: 0.68rem; color: #ef4444; font-weight: 700; margin-top: 0.35rem; display: ${_modalEmgOverflow > 0 ? 'block' : 'none'};">${_modalEmgOverflow > 0 ? `− ${_modalEmgOverflow.toFixed(1)} hari ditolak dari Cuti Kecemasan` : ''}</span>
-              </div>
+              ${_epField('Pelarasan HR', `<input type="number" id="al-pelarasan-input" class="ep-input" min="0" step="0.5" value="${_modalAlPelarasan}" oninput="window._recalcLeaveBalance('al')">`, '#f59e0b')}
+              ${_epField('Baki AL Sebenar', `<input type="number" id="al-balance-display" class="ep-input is-result" disabled value="${_modalAlBalance.toFixed(1)}">
+                <span id="al-el-overflow-note" class="ep-warn" style="display:${_modalElOverflow > 0 ? 'block' : 'none'};">${_modalElOverflow > 0 ? `− ${_modalElOverflow.toFixed(1)} hari ditolak dari limpahan Cuti Ehsan` : ''}</span>
+                <span id="al-emg-overflow-note" class="ep-warn is-red" style="display:${_modalEmgOverflow > 0 ? 'block' : 'none'};">${_modalEmgOverflow > 0 ? `− ${_modalEmgOverflow.toFixed(1)} hari ditolak dari Cuti Kecemasan` : ''}</span>`, '#10b981')}
             </div>
-          </div>
+            <p class="ep-formula">Baki = Jumlah − Guna Sebelum − Guna Sistem − Pelarasan HR</p>
+          </section>
 
           ${_leaveBreakdownHTML('mc', 'MC', 'MC — Cuti Sakit', window.getEntitlementMC(staff), '#10b981')}
           ${_leaveBreakdownHTML('el', 'EL', 'Cuti Ehsan (Kematian Keluarga Terdekat)', 3, '#f59e0b', 'Cuti Ehsan')}
@@ -11969,40 +11865,25 @@ function renderModal() {
             ? _leaveBreakdownHTML('cme', 'CME', 'CME — Cuti Pendidikan Perubatan (Doktor)', window.getEntitlementCME(staff), '#8b5cf6')
             : '' /* CME is doctors-only */}
 
-          <!-- Grid cuti lain (AL/MC/EL ada breakdown sendiri di atas) -->
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem 2rem; border-top: 1px solid rgba(163,177,198,0.15); padding-top: 1.5rem;">
-             <div style="display: flex; flex-direction: column;">
-               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">HL &mdash; Cuti Hospitalisasi</label>
-               <input type="number" id="ent-HL" class="neu-inset" value="${staff.ent_HL !== undefined ? staff.ent_HL : 60}">
+          <!-- Kelayakan cuti lain (AL/MC/EL ada breakdown sendiri di atas) -->
+          <section class="ep-sec" style="--sc:#64748b;">
+            <div class="ep-sec-head"><span class="ep-sec-dot"></span>Kelayakan Cuti Lain</div>
+            <div class="ep-grid ep-grid-5">
+              ${_epField('HL — Hospitalisasi', `<input type="number" id="ent-HL" class="ep-input" value="${staff.ent_HL !== undefined ? staff.ent_HL : 60}">`)}
+              ${_epField('ML — Bersalin', `<input type="number" id="ent-ML" class="ep-input" value="${staff.ent_ML !== undefined ? staff.ent_ML : 98}">`)}
+              ${_epField('PL — Paterniti', `<input type="number" id="ent-PL" class="ep-input" value="${staff.ent_PL !== undefined ? staff.ent_PL : 7}">`)}
+              ${/* EMG, bukan EL: medan ini menetapkan ent_EL_EMG (Cuti Kecemasan). data-used membawa hari EMG
+                   diluluskan tahun ini; _recalcLeaveBalance('al') membacanya untuk tolak hari EMG dari baki AL. */
+                _epField('EL — Kecemasan', `<input type="number" id="ent-EL_EMG" class="ep-input" data-used="${_modalEmgUsed}" oninput="window._recalcLeaveBalance('al')" value="${staff.ent_EL_EMG !== undefined ? staff.ent_EL_EMG : 0}">`)}
+              ${_epField('UPL — Tanpa Gaji', `<input type="number" id="ent-UP" class="ep-input" value="${staff.ent_UP !== undefined ? staff.ent_UP : 0}">`)}
             </div>
-            <div style="display: flex; flex-direction: column;">
-               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">ML &mdash; Cuti Bersalin</label>
-               <input type="number" id="ent-ML" class="neu-inset" value="${staff.ent_ML !== undefined ? staff.ent_ML : 98}">
-            </div>
-            <div style="display: flex; flex-direction: column;">
-               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">PL &mdash; Cuti Paterniti</label>
-               <input type="number" id="ent-PL" class="neu-inset" value="${staff.ent_PL !== undefined ? staff.ent_PL : 7}">
-            </div>
-            <div style="display: flex; flex-direction: column;">
-               <!-- EMG, bukan EL: medan ini menetapkan ent_EL_EMG (Cuti Kecemasan).
-                    Cuti Ehsan (EL) ada blok Formula B tersendiri di atas.
-                    data-used membawa hari EMG diluluskan tahun ini — EMG bukan jenis
-                    Formula B jadi tiada medan guna; _recalcLeaveBalance('al') membacanya
-                    untuk tolak hari EMG dari baki AL. Biar 0 → setiap hari EMG tolak AL. -->
-               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">EL &mdash; Cuti Kecemasan</label>
-               <input type="number" id="ent-EL_EMG" class="neu-inset" data-used="${_modalEmgUsed}" oninput="window._recalcLeaveBalance('al')" value="${staff.ent_EL_EMG !== undefined ? staff.ent_EL_EMG : 0}">
-            </div>
-            <div style="display: flex; flex-direction: column;">
-               <label style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;">UPL &mdash; Tanpa Gaji</label>
-               <input type="number" id="ent-UP" class="neu-inset" value="${staff.ent_UP !== undefined ? staff.ent_UP : 0}">
-            </div>
-          </div>
+          </section>
 
-          
-          <div style="margin-top: 3rem;">
-            <button type="submit" class="btn-primary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 1rem; border-radius: 12px;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                Commit Changes
+          <div class="ep-foot">
+            <button type="button" id="cancel-modal" class="set-btn">Batal</button>
+            <button type="submit" class="set-btn is-primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              Simpan Perubahan
             </button>
           </div>
         </form>
