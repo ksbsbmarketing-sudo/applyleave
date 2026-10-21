@@ -1750,3 +1750,39 @@ input.ph-name:focus { outline: none; border-color: var(--zc); background: #fff; 
   .ph-card { padding: 1rem 0.85rem 0.9rem; }
   .ph-foot .set-btn { flex: 1; }
 }
+
+/* ── Editor Polisi (reuses .wa-wrap / .ph-grid / .ph-del / .wa-step) ── */
+.pe-group { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; margin: 0.4rem 0 -0.4rem; }
+.pe-card { border-top: 3px solid var(--zc); padding: 1.05rem 1.15rem 1rem; }
+.pe-card-head { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.85rem; }
+.pe-card-head > div:not(.pe-card-ico) { flex: 1; min-width: 0; }
+.pe-card-head h3 { margin: 0; font-size: 0.95rem; font-weight: 700; color: #0f172a; }
+.pe-card-head p { margin: 0.1rem 0 0; font-size: 0.72rem; color: #94a3b8; }
+.pe-card-ico { width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--zc); background: color-mix(in srgb, var(--zc) 12%, #fff); }
+.pe-card-ico svg { width: 16px; height: 16px; }
+.pe-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.pe-input {
+  width: 100%; min-width: 0; box-sizing: border-box; padding: 0.45rem 0.65rem; font: inherit; font-size: 0.83rem; color: #0f172a; line-height: 1.5;
+  border: 1px solid #e2e8f0; border-radius: 9px; background: #f8fafc; box-shadow: none; color-scheme: light;
+}
+textarea.pe-input { resize: vertical; display: block; }
+.pe-input:focus { outline: none; border-color: var(--zc); background: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--zc) 15%, transparent); }
+.pe-gloss { display: grid; grid-template-columns: 64px minmax(0, 1fr) 30px; gap: 0.4rem; align-items: center; }
+.pe-code { text-align: center; font-weight: 800; color: var(--zc); }
+.pe-ent { display: grid; grid-template-columns: minmax(0, 1fr) 84px 30px; gap: 0.4rem; align-items: center; }
+.pe-ent.is-single { grid-template-columns: minmax(0, 1fr) 30px; }
+.pe-cols > span:nth-child(2) { text-align: center; }
+.pe-cols { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #94a3b8; padding: 0 0.2rem; }
+.pe-days { text-align: center; font-weight: 700; }
+.pe-rule { display: grid; grid-template-columns: 20px minmax(0, 1fr) 30px; gap: 0.5rem; align-items: start; }
+.pe-rule .wa-step { margin-top: 0.5rem; }
+.pe-rule .ph-del { margin-top: 0.2rem; }
+.pe-add {
+  margin-top: 0.6rem; display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.75rem; font: inherit; font-size: 0.76rem; font-weight: 700;
+  color: var(--zc); background: transparent; border: 1px dashed color-mix(in srgb, var(--zc) 45%, #fff); border-radius: 9px; cursor: pointer; box-shadow: none;
+}
+.pe-add:hover { background: color-mix(in srgb, var(--zc) 7%, #fff); border-style: solid; }
+.pe-add svg { width: 13px; height: 13px; }
+@media (max-width: 600px) {
+  .pe-card { padding: 1rem 0.85rem 0.9rem; }
+}

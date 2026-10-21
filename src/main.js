@@ -10926,121 +10926,114 @@ function renderView() {
         ${managementTab === 'policy_editor' && userPerms.manage_policy ? (() => {
           const pc = window.activePolicy();
           const isCo = window.isSubsidiaryUser(user);
-          const sectionCard = (id, title, icon, color, content) => `
-            <div class="glass-card fade-in" style="padding:0;overflow:hidden;margin-bottom:1.25rem;border-top:3px solid ${color};">
-              <div style="padding:0.9rem 1.1rem;background:rgba(163,177,198,0.04);border-bottom:1px solid rgba(163,177,198,0.12);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
-                <div style="display:flex;align-items:center;gap:0.6rem;">
-                  <span style="font-size:1rem;">${icon}</span>
-                  <span style="font-size:0.92rem;font-weight:700;color:var(--text);">${title}</span>
-                </div>
-                <button id="save-policy-${id}" onclick="window.savePolicySection('${id}')" style="padding:0.4rem 1rem;border-radius:8px;border:1px solid ${color};background:${color}15;color:${color};font-size:0.78rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          const esc = v => escapeHtml(v == null ? '' : String(v));
+          const ico = {
+            notice:   '<path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
+            book:     '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+            calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+            health:   '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+            map:      '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
+            doctor:   '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+            cap:      '<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/>',
+            exit:     '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>'
+          };
+          const svg = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${ico[k]}</svg>`;
+          const delBtn = (onclick) => `<button class="ph-del" onclick="${onclick}" title="Padam" aria-label="Padam"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>`;
+          const addBtn = (onclick, label) => `<button class="pe-add" onclick="${onclick}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>${label}</button>`;
+
+          const sectionCard = (id, title, icon, color, content, sub = '') => `
+            <section class="set-card pe-card" style="--zc:${color};">
+              <div class="pe-card-head">
+                <div class="pe-card-ico">${svg(icon)}</div>
+                <div><h3>${title}</h3>${sub ? `<p>${sub}</p>` : ''}</div>
+                <button id="save-policy-${id}" class="set-btn wa-zone-save" onclick="window.savePolicySection('${id}')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                   Simpan
                 </button>
               </div>
-              <div style="padding:1rem 1.1rem;">${content}</div>
-            </div>`;
+              ${content}
+            </section>`;
 
-          const ruleEditor = (section, color) => `
-            <div style="display:flex;flex-direction:column;gap:0.5rem;">
+          const ruleEditor = (section) => `
+            <div class="pe-list">
               ${(pc[section]||[]).map((rule,i) => `
-                <div style="display:flex;gap:0.5rem;align-items:flex-start;">
-                  <span style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:${color}22;border:1px solid ${color}44;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:800;color:${color};margin-top:0.55rem;">${i+1}</span>
-                  <textarea oninput="window.updatePolicyRule('${section}',${i},this.value)" style="flex:1;padding:0.5rem 0.75rem;border-radius:8px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.82rem;resize:vertical;min-height:52px;line-height:1.5;">${rule}</textarea>
-                  <button onclick="window.deletePolicyRule('${section}',${i})" style="flex-shrink:0;padding:0.3rem 0.6rem;border-radius:7px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.07);color:#ef4444;cursor:pointer;margin-top:0.4rem;font-size:0.8rem;">✕</button>
+                <div class="pe-rule">
+                  <span class="wa-step">${i+1}</span>
+                  <textarea class="pe-input" rows="${Math.min(6, Math.ceil(String(rule || '').length / 60) + 1)}" oninput="window.updatePolicyRule('${section}',${i},this.value)">${esc(rule || '')}</textarea>
+                  ${delBtn(`window.deletePolicyRule('${section}',${i})`)}
                 </div>`).join('')}
-              <button onclick="window.addPolicyRule('${section}')" style="padding:0.4rem 0.9rem;border-radius:8px;border:1px dashed ${color}66;background:transparent;color:${color};font-size:0.78rem;font-weight:600;cursor:pointer;width:fit-content;margin-top:0.25rem;">+ Tambah Peraturan</button>
-            </div>`;
+            </div>
+            ${addBtn(`window.addPolicyRule('${section}')`, 'Tambah Peraturan')}`;
+
+          const entitlementEditor = (sec, cols) => {
+            const rows = pc[sec] || [];
+            const noPeriod = sec === 'entitlementDoktor';
+            return `
+            <div class="pe-list">
+              ${rows.length && !noPeriod ? `<div class="pe-ent pe-cols"><span>${cols[0]}</span><span>${cols[1]}</span><span></span></div>` : ''}
+              ${rows.map((row,i) => `
+                <div class="pe-ent ${noPeriod ? 'is-single' : ''}">
+                  ${noPeriod ? '' : `<input class="pe-input" value="${esc(row.period||'')}" oninput="window.updateEntitlement('${sec}',${i},'period',this.value)" placeholder="Contoh: 1–2 tahun">`}
+                  <input class="pe-input pe-days" value="${esc(row.days||'')}" oninput="window.updateEntitlement('${sec}',${i},'days',this.value)" placeholder="Hari">
+                  ${delBtn(`window.deleteEntitlementRow('${sec}',${i})`)}
+                </div>`).join('')}
+            </div>
+            ${addBtn(`window.addEntitlementRow('${sec}')`, 'Tambah')}`;
+          };
+
+          const entCards = isCo
+            ? [ ['entitlementAL', 'Kelayakan Cuti Tahunan (AL)', 'calendar', '#3b82f6', ['Tempoh', 'Hari']],
+                ['entitlementMC', 'Kelayakan MC', 'health', '#8b5cf6', ['Tempoh berkhidmat', 'Hari MC']] ]
+            : [ ['entitlementPahang', 'Kelayakan AL — Pahang', 'map', '#3b82f6', ['Tempoh', 'Hari']],
+                ['entitlementTerengganu', 'Kelayakan AL — Terengganu', 'map', '#8b5cf6', ['Tempoh', 'Hari']],
+                ['entitlementMC', 'Kelayakan MC', 'health', '#10b981', ['Tempoh berkhidmat', 'Hari MC']],
+                ['entitlementDoktor', 'Kelayakan AL — Doktor', 'doctor', '#ef4444', ['', 'Hari']] ];
+
+          const ruleCards = [
+            ['rulesAL', 'Peraturan Cuti Tahunan (AL)', 'calendar', '#6366f1'],
+            ['rulesMC', 'Peraturan Cuti Sakit (MC)', 'health', '#eab308'],
+            ...(isCo ? [] : [['rulesCME', 'Peraturan Cuti CME', 'cap', '#c084fc']]),
+            ['rulesNotice', 'Notis Berhenti Kerja', 'exit', '#64748b']
+          ];
 
           return `
-          <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.5rem;margin-top:0.5rem;">
-            <div style="width:40px;height:40px;border-radius:10px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-            </div>
-            <div>
-              <h2 style="font-size:1.05rem;font-weight:700;margin:0;">Editor Polisi ${isCo ? (window.printBrandFor(user.branch).name) : 'Syarikat'}</h2>
-              <p style="font-size:0.72rem;color:var(--text-muted);margin:0.15rem 0 0;">Edit kandungan halaman Polisi yang dilihat oleh ${isCo ? 'semua staf syarikat anda sahaja' : 'semua staf'}. Klik <strong>Simpan</strong> selepas setiap bahagian.</p>
-            </div>
-          </div>
-
-          ${sectionCard('notice','Notis Umum','📢','#f59e0b',`
-            <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.6rem;">Mesej/notis yang dipaparkan di bahagian atas halaman Polisi. Kosongkan jika tiada notis.</p>
-            <textarea oninput="window.updatePolicyNotice(this.value)" placeholder="Contoh: Mulai 1 Jan 2026, semua permohonan cuti AL mestilah dikemukakan 7 hari lebih awal..." style="width:100%;padding:0.65rem 0.85rem;border-radius:9px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.85rem;resize:vertical;min-height:80px;box-sizing:border-box;line-height:1.5;">${pc.notice||''}</textarea>
-          `)}
-
-          ${sectionCard('glossary','Senarai Jenis Cuti (Glossary)','📝','#3b82f6',`
-            <div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.75rem;">
-              <div style="display:grid;grid-template-columns:90px 1fr auto;gap:0.5rem;font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);padding:0 0.25rem;">
-                <span>Kod</span><span>Nama Penuh</span><span></span>
+          <div class="wa-wrap fade-in">
+            <div class="wa-head">
+              <div class="set-card-ico ph-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+              <div class="wa-head-text">
+                <h2>Editor Polisi ${isCo ? (window.printBrandFor(user.branch).name) : 'Syarikat'}</h2>
+                <p>Kandungan halaman Polisi untuk ${isCo ? 'staf syarikat anda sahaja' : 'semua staf'} — tekan <strong>Simpan</strong> pada setiap bahagian yang diubah</p>
               </div>
-              ${pc.glossary.map((g,i) => `
-                <div style="display:grid;grid-template-columns:90px 1fr auto;gap:0.5rem;align-items:center;">
-                  <input value="${g.code}" oninput="window.updatePolicyGlossary(${i},'code',this.value)" style="padding:0.45rem 0.6rem;border-radius:7px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.82rem;font-weight:700;text-align:center;">
-                  <input value="${(g.name||'').replace(/"/g,'&quot;')}" oninput="window.updatePolicyGlossary(${i},'name',this.value)" style="padding:0.45rem 0.6rem;border-radius:7px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.82rem;">
-                  <button onclick="window.deletePolicyGlossaryRow(${i})" style="padding:0.3rem 0.6rem;border-radius:7px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.07);color:#ef4444;cursor:pointer;font-size:0.8rem;">✕</button>
-                </div>`).join('')}
             </div>
-            <button onclick="window.addPolicyGlossaryRow()" style="padding:0.4rem 0.9rem;border-radius:8px;border:1px dashed rgba(59,130,246,0.5);background:transparent;color:#3b82f6;font-size:0.78rem;font-weight:600;cursor:pointer;">+ Tambah Jenis Cuti</button>
-          `)}
 
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:${isCo ? '1.25rem' : '0.5rem'};">
-            ${(isCo ? ['entitlementAL','entitlementMC'] : ['entitlementPahang','entitlementTerengganu']).map((sec,si) => {
-              const labels = isCo ? ['Kelayakan Cuti Tahunan (AL)','Kelayakan MC — Mengikut Tempoh Berkhidmat'] : ['Kelayakan AL — Pahang','Kelayakan AL — Terengganu'];
-              const colors = ['#3b82f6','#8b5cf6'];
-              const icons  = isCo ? ['📅','🏥'] : ['🏙️','🌊'];
-              const isDoktor = false;
-              return `<div class="glass-card" style="padding:0;overflow:hidden;border-top:3px solid ${colors[si]};">
-                <div style="padding:0.75rem 0.9rem;background:rgba(163,177,198,0.04);border-bottom:1px solid rgba(163,177,198,0.1);display:flex;align-items:center;justify-content:space-between;gap:0.5rem;">
-                  <span style="font-size:0.82rem;font-weight:700;">${icons[si]} ${labels[si]}</span>
-                  <button id="save-policy-${sec}" onclick="window.savePolicySection('${sec}')" style="padding:0.3rem 0.7rem;border-radius:7px;border:1px solid ${colors[si]};background:${colors[si]}15;color:${colors[si]};font-size:0.72rem;font-weight:700;cursor:pointer;">Simpan</button>
+            <div class="pe-group">Umum</div>
+            <div class="ph-grid">
+              ${sectionCard('notice', 'Notis Umum', 'notice', '#f59e0b', `
+                <textarea class="pe-input" rows="4" oninput="window.updatePolicyNotice(this.value)" placeholder="Contoh: Mulai 1 Jan 2026, semua permohonan cuti AL mestilah dikemukakan 7 hari lebih awal...">${esc(pc.notice||'')}</textarea>
+              `, 'Dipaparkan di atas halaman Polisi · kosongkan jika tiada')}
+              ${sectionCard('glossary', 'Jenis Cuti (Glossary)', 'book', '#3b82f6', `
+                <div class="pe-list">
+                  ${pc.glossary.map((g,i) => `
+                    <div class="pe-gloss">
+                      <input class="pe-input pe-code" value="${esc(g.code||'')}" oninput="window.updatePolicyGlossary(${i},'code',this.value)" placeholder="Kod">
+                      <input class="pe-input" value="${esc(g.name||'')}" oninput="window.updatePolicyGlossary(${i},'name',this.value)" placeholder="Nama penuh">
+                      ${delBtn(`window.deletePolicyGlossaryRow(${i})`)}
+                    </div>`).join('')}
                 </div>
-                <div style="padding:0.75rem 0.9rem;">
-                  <div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.6rem;">
-                    ${isDoktor ? '' : `<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:0.35rem;font-size:0.65rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);padding:0 0.2rem;"><span>Tempoh</span><span>Hari</span><span></span></div>`}
-                    ${(pc[sec]||[]).map((row,i) => `
-                      <div style="display:grid;grid-template-columns:${isDoktor?'1fr auto':'1fr 1fr auto'};gap:0.35rem;align-items:center;">
-                        ${isDoktor ? '' : `<input value="${row.period||''}" oninput="window.updateEntitlement('${sec}',${i},'period',this.value)" style="padding:0.4rem 0.5rem;border-radius:6px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.78rem;">`}
-                        <input value="${row.days||''}" oninput="window.updateEntitlement('${sec}',${i},'days',this.value)" style="padding:0.4rem 0.5rem;border-radius:6px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.78rem;font-weight:700;text-align:center;">
-                        <button onclick="window.deleteEntitlementRow('${sec}',${i})" style="padding:0.25rem 0.45rem;border-radius:6px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.07);color:#ef4444;cursor:pointer;font-size:0.75rem;">✕</button>
-                      </div>`).join('')}
-                  </div>
-                  <button onclick="window.addEntitlementRow('${sec}')" style="padding:0.35rem 0.75rem;border-radius:7px;border:1px dashed ${colors[si]}66;background:transparent;color:${colors[si]};font-size:0.73rem;font-weight:600;cursor:pointer;">+ Tambah</button>
-                </div>
-              </div>`;
-            }).join('')}
+                ${addBtn('window.addPolicyGlossaryRow()', 'Tambah Jenis Cuti')}
+              `, `${pc.glossary.length} jenis cuti`)}
+            </div>
+
+            <div class="pe-group">Kelayakan Cuti</div>
+            <div class="ph-grid">
+              ${entCards.map(([sec, title, icon, color, cols]) => sectionCard(sec, title, icon, color, entitlementEditor(sec, cols))).join('')}
+            </div>
+
+            <div class="pe-group">Peraturan</div>
+            <div class="ph-grid">
+              ${ruleCards.map(([sec, title, icon, color]) => sectionCard(sec, title, icon, color, ruleEditor(sec), `${(pc[sec]||[]).length} peraturan`)).join('')}
+            </div>
           </div>
-
-          ${isCo ? '' : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem;">
-            ${['entitlementMC','entitlementDoktor'].map((sec,si) => {
-              const labels = ['Kelayakan MC — Mengikut Tempoh Berkhidmat','Kelayakan AL — Doktor'];
-              const colors = ['#10b981','#ef4444'];
-              const icons  = ['🏥','🩺'];
-              const isDoktor = sec === 'entitlementDoktor';
-              return `<div class="glass-card" style="padding:0;overflow:hidden;border-top:3px solid ${colors[si]};">
-                <div style="padding:0.75rem 0.9rem;background:rgba(163,177,198,0.04);border-bottom:1px solid rgba(163,177,198,0.1);display:flex;align-items:center;justify-content:space-between;gap:0.5rem;">
-                  <span style="font-size:0.82rem;font-weight:700;">${icons[si]} ${labels[si]}</span>
-                  <button id="save-policy-${sec}" onclick="window.savePolicySection('${sec}')" style="padding:0.3rem 0.7rem;border-radius:7px;border:1px solid ${colors[si]};background:${colors[si]}15;color:${colors[si]};font-size:0.72rem;font-weight:700;cursor:pointer;">Simpan</button>
-                </div>
-                <div style="padding:0.75rem 0.9rem;">
-                  <div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.6rem;">
-                    ${isDoktor ? '' : `<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:0.35rem;font-size:0.65rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);padding:0 0.2rem;"><span>Tempoh Berkhidmat</span><span>Hari MC</span><span></span></div>`}
-                    ${(pc[sec]||[]).map((row,i) => `
-                      <div style="display:grid;grid-template-columns:${isDoktor?'1fr auto':'1fr 1fr auto'};gap:0.35rem;align-items:center;">
-                        ${isDoktor ? '' : `<input value="${row.period||''}" oninput="window.updateEntitlement('${sec}',${i},'period',this.value)" style="padding:0.4rem 0.5rem;border-radius:6px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.78rem;">`}
-                        <input value="${row.days||''}" oninput="window.updateEntitlement('${sec}',${i},'days',this.value)" style="padding:0.4rem 0.5rem;border-radius:6px;border:1px solid rgba(163,177,198,0.3);background:rgba(163,177,198,0.06);color:var(--text);font-size:0.78rem;font-weight:700;text-align:center;">
-                        <button onclick="window.deleteEntitlementRow('${sec}',${i})" style="padding:0.25rem 0.45rem;border-radius:6px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.07);color:#ef4444;cursor:pointer;font-size:0.75rem;">✕</button>
-                      </div>`).join('')}
-                  </div>
-                  <button onclick="window.addEntitlementRow('${sec}')" style="padding:0.35rem 0.75rem;border-radius:7px;border:1px dashed ${colors[si]}66;background:transparent;color:${colors[si]};font-size:0.73rem;font-weight:600;cursor:pointer;">+ Tambah</button>
-                </div>
-              </div>`;
-            }).join('')}
-          </div>`}
-
-          ${sectionCard('rulesAL','Peraturan Cuti Tahunan (AL)','📅','#6366f1', ruleEditor('rulesAL','#6366f1'))}
-          ${sectionCard('rulesMC','Peraturan Cuti Sakit (MC)','🏥','#eab308', ruleEditor('rulesMC','#eab308'))}
-          ${isCo ? '' : sectionCard('rulesCME','Peraturan Cuti CME','🎓','#c084fc', ruleEditor('rulesCME','#c084fc'))}
-          ${sectionCard('rulesNotice','Notis Berhenti Kerja','📄','#94a3b8', ruleEditor('rulesNotice','#94a3b8'))}
           `;
         })() : ''}
 
