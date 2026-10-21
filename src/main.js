@@ -6152,27 +6152,40 @@ window.uploadProfilePhoto = async function(input) {
 };
 
 function renderDashboard() {
+  // Satu senarai menu untuk sidebar (desktop) dan bottom sheet (telefon)
+  const _navRbac = window.effectivePerms(user);
+  const navItems = [
+    { view: 'dashboard',  label: 'Dashboard',     icon: 'layout-dashboard', show: _navRbac.dashboard },
+    { view: 'leave-form', label: 'Borang Cuti',   icon: 'calendar-plus',    show: _navRbac.leave_request },
+    { view: 'calendar',   label: 'Kalendar Cuti', icon: 'calendar-days',    show: window.canSeeLeaveCalendar(user) },
+    { view: 'management', label: 'Management',    icon: 'shield-check',     show: window.canOpenManagement(user) },
+    { view: 'inbox',      label: 'Inbox',         icon: 'inbox',            show: _navRbac.inbox, badge: inboxNotifs.filter(n => !n.read).length },
+    { view: 'policy',     label: 'Polisi',        icon: 'book-open',        show: _navRbac.policy },
+    { view: 'settings',   label: 'Tetapan',       icon: 'settings-2',       show: _navRbac.settings }
+  ].filter(n => n.show);
+
   app.innerHTML = `
     <!-- Sesi berganda kini dikendali oleh auto-logout (handleDuplicateSessionKick), bukan banner. -->
-    <!-- Floating Action Menu - V1.6.8 Stable Fix -->
+    <!-- Menu telefon: butang terapung buka bottom sheet (senarai sama dengan sidebar) -->
     <div class="fab-menu ${mobileMenuOpen ? 'active' : ''}">
-      <button class="fab-main" onclick="window.toggleMobileMenu()">
-        <i data-lucide="menu" width="24" height="24" style="color:#fff;"></i>
+      ${mobileMenuOpen ? `
+      <div class="msheet-backdrop" onclick="window.toggleMobileMenu(false)"></div>
+      <div class="msheet" role="dialog" aria-label="Menu">
+        <div class="msheet-grip"></div>
+        <div class="msheet-user">
+          ${userAvatar(user)}
+          <div><b>${escapeHtml(user.name || '')}</b><span>${escapeHtml(window.staffConfig.roleLabels[user.role] || user.role || '')}</span></div>
+        </div>
+        <div class="msheet-grid">
+          ${navItems.map(n => `<button class="msheet-item ${view === n.view ? 'on' : ''}" onclick="window.setView('${n.view}'); window.toggleMobileMenu(false)">
+            <span class="nav-ico"><i data-lucide="${n.icon}" width="20" height="20"></i>${n.badge > 0 ? `<span class="nav-dot">${n.badge}</span>` : ''}</span>${n.label}
+          </button>`).join('')}
+        </div>
+        <button class="msheet-logout" onclick="window.logout()"><i data-lucide="log-out" width="17" height="17"></i> Log Keluar</button>
+      </div>` : ''}
+      <button class="fab-main" onclick="window.toggleMobileMenu()" aria-label="${mobileMenuOpen ? 'Tutup menu' : 'Buka menu'}">
+        <i data-lucide="${mobileMenuOpen ? 'x' : 'layout-grid'}" width="24" height="24"></i>
       </button>
-      <div class="fab-items">
-        ${(() => {
-          const rbac = window.effectivePerms(user);
-          return `
-            ${rbac.dashboard ? `<div class="fab-item" onclick="window.setView('dashboard'); window.toggleMobileMenu(false)">Dashboard</div>` : ''}
-            ${rbac.leave_request ? `<div class="fab-item" onclick="window.setView('leave-form'); window.toggleMobileMenu(false)">Borang Cuti</div>` : ''}
-            ${window.canSeeLeaveCalendar(user) ? `<div class="fab-item" onclick="window.setView('calendar'); window.toggleMobileMenu(false)">Kalendar Cuti</div>` : ''}
-            ${window.canOpenManagement(user) ? `<div class="fab-item" onclick="window.setView('management'); window.toggleMobileMenu(false)">Management</div>` : ''}
-            ${rbac.inbox ? `<div class="fab-item" onclick="window.setView('inbox'); window.toggleMobileMenu(false)">Inbox${inboxNotifs.filter(n=>!n.read).length > 0 ? ' 🔴' : ''}</div>` : ''}
-            <div class="fab-item" onclick="window.setView('settings'); window.toggleMobileMenu(false)">Settings</div>
-            <div class="fab-item logout" onclick="window.logout()">Log Keluar</div>
-          `;
-        })()}
-      </div>
     </div>
 
     <div class="dashboard-layout fade-in">
@@ -6190,28 +6203,22 @@ function renderDashboard() {
       </header>
       <aside class="sidebar">
         <nav class="nav-menu">
-          ${(() => {
-            const dashboardRbac = window.effectivePerms(user);
-            return `
-              ${dashboardRbac.dashboard ? `<div class="nav-item ${view === 'dashboard' ? 'active' : ''}" onclick="window.setView('dashboard')"><i data-lucide="layout-dashboard" width="18" height="18"></i> Dashboard</div>` : ''}
-              ${dashboardRbac.leave_request ? `<div class="nav-item ${view === 'leave-form' ? 'active' : ''}" onclick="window.setView('leave-form')"><i data-lucide="calendar-plus" width="18" height="18"></i> Borang Cuti</div>` : ''}
-              ${window.canSeeLeaveCalendar(user) ? `<div class="nav-item ${view === 'calendar' ? 'active' : ''}" onclick="window.setView('calendar')"><i data-lucide="calendar-days" width="18" height="18"></i> Kalendar Cuti</div>` : ''}
-              ${window.canOpenManagement(user) ? `<div class="nav-item ${view === 'management' ? 'active' : ''}" onclick="window.setView('management')"><i data-lucide="shield-check" width="18" height="18"></i> Management</div>` : ''}
-              ${dashboardRbac.inbox ? (() => { const inboxUnread = inboxNotifs.filter(n => !n.read).length; return `<div class="nav-item ${view === 'inbox' ? 'active' : ''}" onclick="window.setView('inbox')" style="position:relative;"><i data-lucide="inbox" width="18" height="18"></i> Inbox${inboxUnread > 0 ? `<span style="position:absolute;top:4px;right:6px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:var(--danger);color:#fff;font-size:0.6rem;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1;">${inboxUnread}</span>` : ''}</div>`; })() : ''}
-              ${dashboardRbac.policy ? `<div class="nav-item ${view === 'policy' ? 'active' : ''}" onclick="window.setView('policy')"><i data-lucide="book-open" width="18" height="18"></i> Polisi</div>` : ''}
-              ${dashboardRbac.settings ? `<div class="nav-item ${view === 'settings' ? 'active' : ''}" onclick="window.setView('settings')"><i data-lucide="settings-2" width="18" height="18"></i> Tetapan</div>` : ''}
-            `;
-          })()}
+          <div class="nav-label">Menu</div>
+          ${navItems.map(n => `<div class="nav-item ${view === n.view ? 'active' : ''}" onclick="window.setView('${n.view}')">
+            <span class="nav-ico"><i data-lucide="${n.icon}" width="18" height="18"></i></span>
+            <span class="nav-text">${n.label}</span>
+            ${n.badge > 0 ? `<span class="nav-badge">${n.badge}</span>` : ''}
+          </div>`).join('')}
         </nav>
         <div class="sidebar-footer">
-          <div class="user-pill glass-card">
+          <div class="user-pill nav-user">
             ${userAvatar(user)}
             <div class="user-info">
-              <div class="user-name">${user.name}</div>
-              <div class="user-role">${(user.role || '').toUpperCase()}</div>
+              <div class="user-name">${escapeHtml(user.name || '')}</div>
+              <div class="user-role">${escapeHtml(window.staffConfig.roleLabels[user.role] || (user.role || '').toUpperCase())}</div>
             </div>
           </div>
-          <button id="logout" class="btn-logout">Logout</button>
+          <button id="logout" class="nav-logout"><i data-lucide="log-out" width="16" height="16"></i> Log Keluar</button>
           <p style="font-size:0.68rem;color:var(--text-muted);text-align:center;margin:0.85rem 0 0;letter-spacing:0.3px;line-height:1.6;">© 2026 Klinik Syed Badaruddin Sdn. Bhd.<br>Hak Cipta Terpelihara<br><span style="font-size:0.63rem;opacity:0.8;">Dibangunkan oleh KSBSB IT @ LukhzzIsZa</span></p>
         </div>
       </aside>
