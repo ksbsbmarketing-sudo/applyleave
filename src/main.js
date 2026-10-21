@@ -6163,29 +6163,42 @@ function renderDashboard() {
     { view: 'policy',     label: 'Polisi',        icon: 'book-open',        show: _navRbac.policy },
     { view: 'settings',   label: 'Tetapan',       icon: 'settings-2',       show: _navRbac.settings }
   ].filter(n => n.show);
+  // Telefon: 4 menu utama di bar bawah, selebihnya dalam sheet "Lagi"
+  const _navShort = { 'dashboard': 'Utama', 'leave-form': 'Borang', 'calendar': 'Kalendar', 'management': 'Mgmt', 'inbox': 'Inbox', 'policy': 'Polisi', 'settings': 'Tetapan' };
+  const _navPrimaryOrder = ['dashboard', 'leave-form', 'calendar', 'inbox', 'management', 'policy', 'settings'];
+  const navPrimary = _navPrimaryOrder.map(v => navItems.find(n => n.view === v)).filter(Boolean).slice(0, 4);
+  const navMore = navItems.filter(n => !navPrimary.includes(n));
+  const navMoreActive = navMore.some(n => n.view === view);
 
   app.innerHTML = `
     <!-- Sesi berganda kini dikendali oleh auto-logout (handleDuplicateSessionKick), bukan banner. -->
-    <!-- Menu telefon: butang terapung buka bottom sheet (senarai sama dengan sidebar) -->
+    <!-- Menu telefon: bar tab di bawah + sheet "Lagi" (senarai sama dengan sidebar) -->
     <div class="fab-menu ${mobileMenuOpen ? 'active' : ''}">
       ${mobileMenuOpen ? `
       <div class="msheet-backdrop" onclick="window.toggleMobileMenu(false)"></div>
-      <div class="msheet" role="dialog" aria-label="Menu">
+      <div class="msheet" role="dialog" aria-label="Menu lain">
         <div class="msheet-grip"></div>
         <div class="msheet-user">
           ${userAvatar(user)}
           <div><b>${escapeHtml(user.name || '')}</b><span>${escapeHtml(window.staffConfig.roleLabels[user.role] || user.role || '')}</span></div>
         </div>
-        <div class="msheet-grid">
-          ${navItems.map(n => `<button class="msheet-item ${view === n.view ? 'on' : ''}" onclick="window.setView('${n.view}'); window.toggleMobileMenu(false)">
+        ${navMore.length ? `<div class="msheet-grid">
+          ${navMore.map(n => `<button class="msheet-item ${view === n.view ? 'on' : ''}" onclick="window.setView('${n.view}'); window.toggleMobileMenu(false)">
             <span class="nav-ico"><i data-lucide="${n.icon}" width="20" height="20"></i>${n.badge > 0 ? `<span class="nav-dot">${n.badge}</span>` : ''}</span>${n.label}
           </button>`).join('')}
-        </div>
+        </div>` : ''}
         <button class="msheet-logout" onclick="window.logout()"><i data-lucide="log-out" width="17" height="17"></i> Log Keluar</button>
       </div>` : ''}
-      <button class="fab-main" onclick="window.toggleMobileMenu()" aria-label="${mobileMenuOpen ? 'Tutup menu' : 'Buka menu'}">
-        <i data-lucide="${mobileMenuOpen ? 'x' : 'layout-grid'}" width="24" height="24"></i>
-      </button>
+      <nav class="mtabbar" aria-label="Menu utama">
+        ${navPrimary.map(n => `<button class="mtab ${view === n.view && !mobileMenuOpen ? 'on' : ''}" onclick="window.setView('${n.view}'); window.toggleMobileMenu(false)">
+          <span class="mtab-ico"><i data-lucide="${n.icon}" width="21" height="21"></i>${n.badge > 0 ? `<span class="nav-dot">${n.badge}</span>` : ''}</span>
+          <span class="mtab-label">${_navShort[n.view] || n.label}</span>
+        </button>`).join('')}
+        <button class="mtab ${mobileMenuOpen || navMoreActive ? 'on' : ''}" onclick="window.toggleMobileMenu()">
+          <span class="mtab-ico"><i data-lucide="${mobileMenuOpen ? 'x' : 'ellipsis'}" width="21" height="21"></i>${navMore.some(n => n.badge > 0) ? '<span class="nav-dot is-mini"></span>' : ''}</span>
+          <span class="mtab-label">Lagi</span>
+        </button>
+      </nav>
     </div>
 
     <div class="dashboard-layout fade-in">
