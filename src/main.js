@@ -10926,7 +10926,9 @@ function renderView() {
         ${managementTab === 'policy_editor' && userPerms.manage_policy ? (() => {
           const pc = window.activePolicy();
           const isCo = window.isSubsidiaryUser(user);
-          const esc = v => escapeHtml(v == null ? '' : String(v));
+          // Teks polisi mengandungi HTML (<strong>, &amp;) yang dipaparkan di halaman Polisi.
+          // Escape < dan " sahaja supaya borang tak rosak; & dibiarkan seperti sebelum ini.
+          const esc = v => (v == null ? '' : String(v)).replace(/</g, '&lt;').replace(/"/g, '&quot;');
           const ico = {
             notice:   '<path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
             book:     '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
