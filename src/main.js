@@ -6265,13 +6265,13 @@ function renderDashboard() {
       let storedLeaveType = selectedLeaveType;
       const startDate = leaveStartDate;
       const endDate = leaveEndDate;
-      const reason = leaveForm.querySelector('textarea').value.trim();
+      const reason = leaveForm.querySelector('#leave-reason').value.trim();
       const handover = leaveForm.querySelector('#handover-input')?.value || '';
       // Sebab mesti perkataan sebenar — bukan `""`, `''`, `-` sahaja (src/leaveReason.js).
       const _reasonErr = validateLeaveReason(reason);
       if (_reasonErr) {
         showToast(_reasonErr);
-        leaveForm.querySelector('textarea')?.focus();
+        leaveForm.querySelector('#leave-reason')?.focus();
         return;
       }
       
@@ -7835,71 +7835,50 @@ function renderView() {
 
       return `
         ${canUseTestMode(user) ? renderTestModePanel() : ''}
-        <div class="split-layout fade-in">
+        <div class="split-layout lf-layout fade-in">
           <!-- Left Panel: Form -->
-          <form class="glass-pane form-panel" id="leave-request-form" style="padding:0;overflow:hidden;">
+          <form class="glass-pane form-panel lf-form" id="leave-request-form">
 
             <!-- Form Header -->
-            <div style="background:linear-gradient(135deg,#1e3a5f 0%,#1a2744 100%);padding:1.5rem 2rem;position:relative;overflow:hidden;">
-              <div style="position:absolute;right:-30px;top:-30px;width:120px;height:120px;border-radius:50%;background:rgba(59,130,246,0.12);"></div>
-              <div style="position:absolute;right:30px;bottom:-40px;width:80px;height:80px;border-radius:50%;background:rgba(139,92,246,0.1);"></div>
-              <div style="display:flex;align-items:center;justify-content:space-between;position:relative;">
-                <div style="display:flex;align-items:center;gap:0.85rem;">
-                  <div style="width:40px;height:40px;border-radius:11px;background:rgba(59,130,246,0.25);border:1px solid rgba(59,130,246,0.4);display:flex;align-items:center;justify-content:center;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#93c5fd" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                  </div>
-                  <div>
-                    <h1 style="font-size:1.15rem;font-weight:800;color:#f1f5f9;margin:0;letter-spacing:-0.2px;">Borang Permohonan Cuti${leaveTestMode && canUseTestMode(user) ? ' <span style="font-size:0.7rem;background:#d97706;color:#fff;border-radius:6px;padding:0.15rem 0.5rem;vertical-align:middle;">🧪 TEST</span>' : ''}</h1>
-                    <p style="font-size:0.72rem;color:rgba(148,163,184,0.9);margin:0.15rem 0 0;">New Leave Application</p>
-                  </div>
+            <div class="lf-head">
+              <div class="lf-head-top">
+                <div class="set-card-ico lf-head-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+                <div class="lf-head-text">
+                  <h1>Borang Permohonan Cuti${leaveTestMode && canUseTestMode(user) ? ' <span class="lf-test">🧪 TEST</span>' : ''}</h1>
+                  <p>Isi langkah di bawah, kemudian hantar untuk kelulusan</p>
                 </div>
-                <button type="button" onclick="window.setView('dashboard')" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#94a3b8;padding:0.45rem 0.85rem;cursor:pointer;font-size:0.75rem;font-weight:600;display:flex;align-items:center;gap:0.4rem;">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                <button type="button" class="set-btn lf-back" onclick="window.setView('dashboard')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
                   Kembali
                 </button>
               </div>
               <!-- Staff strip -->
-              <div style="display:flex;align-items:center;gap:0.65rem;margin-top:1.1rem;padding:0.65rem 0.85rem;background:rgba(255,255,255,0.06);border-radius:10px;border:1px solid rgba(255,255,255,0.08);">
-                <div style="width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:0.9rem;flex-shrink:0;">${(user.name||'?')[0].toUpperCase()}</div>
-                <div style="flex:1;min-width:0;">
-                  <div style="font-size:0.85rem;font-weight:700;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${user.name}</div>
-                  <div style="font-size:0.68rem;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${user.branch}</div>
+              <div class="lf-staff">
+                ${userAvatar(user, { small: true })}
+                <div class="lf-staff-text">
+                  <b>${escapeHtml(user.name || '')}</b>
+                  <span>${escapeHtml(user.branch || '')}</span>
                 </div>
-                <span style="background:${selCat.color}22;color:${selCat.color};border:1px solid ${selCat.color}44;border-radius:6px;padding:0.2rem 0.6rem;font-size:0.65rem;font-weight:700;letter-spacing:0.3px;white-space:nowrap;">${(user.role||'').toUpperCase()}</span>
+                <span class="lf-role">${escapeHtml(window.staffConfig.roleLabels[user.role] || user.role || '')}</span>
               </div>
             </div>
 
-            <div style="padding:1.75rem 2rem;">
+            <div class="lf-body">
 
             <!-- SECTION: Jenis Cuti -->
             <div style="margin-bottom:1.5rem;">
-              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
-                <div style="width:4px;height:18px;border-radius:2px;background:linear-gradient(to bottom,#3b82f6,#8b5cf6);"></div>
-                <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">01 — Pilih Jenis Cuti</span>
+              <div class="lf-step-head">
+                <span class="lf-step-n">1</span><span class="lf-step-t">Pilih Jenis Cuti</span>
               </div>
-              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.5rem;">
+              <div class="lf-types">
                 ${filteredCategories.map(cat => {
                   const s = window.getLeaveStats(user, cat.id);
                   const isActive = selectedLeaveType === cat.id;
                   return `
-                  <button type="button" onclick="window.setSelectedLeaveType('${cat.id}')" style="
-                    padding:0.65rem 0.25rem;
-                    border-radius:10px;
-                    border:2px solid ${isActive ? cat.color : 'rgba(163,177,198,0.18)'};
-                    background:${isActive ? cat.color+'18' : 'rgba(163,177,198,0.05)'};
-                    cursor:pointer;
-                    text-align:center;
-                    transition:all 0.18s;
-                    box-shadow:${isActive ? '0 0 0 1px '+cat.color+'30,0 4px 12px '+cat.color+'18' : 'none'};
-                    position:relative;
-                    overflow:hidden;
-                  ">
-                    ${isActive ? `<div style="position:absolute;inset:0;background:${cat.color}08;"></div>` : ''}
-                    <div style="width:26px;height:26px;border-radius:7px;margin:0 auto 0.4rem;background:${isActive ? cat.color : 'rgba(163,177,198,0.15)'};display:flex;align-items:center;justify-content:center;">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${isActive ? '#fff' : '#94a3b8'}" stroke-width="2">${leaveIcons[cat.id] || ''}</svg>
-                    </div>
-                    <div style="font-size:0.58rem;font-weight:800;color:${isActive ? cat.color : 'var(--text)'};line-height:1.2;margin-bottom:0.18rem;">${leaveShort[cat.id] || cat.name.split(' ')[0]}</div>
-                    ${s.ent > 0 ? `<div style="font-size:0.54rem;color:${isActive ? cat.color : 'var(--text-muted)'};font-weight:600;">${s.bal.toFixed(0)}/${s.ent}hr</div>` : ''}
+                  <button type="button" class="lf-type ${isActive ? 'on' : ''}" style="--lc:${cat.color};" onclick="window.setSelectedLeaveType('${cat.id}')">
+                    <span class="lf-type-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${leaveIcons[cat.id] || ''}</svg></span>
+                    <span class="lf-type-name">${leaveShort[cat.id] || cat.name.split(' ')[0]}</span>
+                    ${s.ent > 0 ? `<span class="lf-type-bal">${s.bal.toFixed(0)}/${s.ent} hari</span>` : '<span class="lf-type-bal">Tiada had</span>'}
                   </button>`;
                 }).join('')}
               </div>
@@ -7978,27 +7957,26 @@ function renderView() {
 
             <!-- SECTION: Tarikh Cuti -->
             <div style="margin-bottom:1.5rem;">
-              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
-                <div style="width:4px;height:18px;border-radius:2px;background:linear-gradient(to bottom,#10b981,#06b6d4);"></div>
-                <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">02 — Tarikh Cuti</span>
+              <div class="lf-step-head">
+                <span class="lf-step-n">2</span><span class="lf-step-t">Tarikh Cuti</span>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
                 <div>
-                  <label style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);display:block;margin-bottom:0.4rem;">Tarikh Mula</label>
-                  <input type="date" class="neu-inset" value="${leaveStartDate}" onchange="window.updateLeaveDate('start', this.value)" style="color-scheme:light;font-weight:600;font-size:0.88rem;">
+                  <label class="lf-label">Tarikh Mula</label>
+                  <input type="date" class="lf-input" value="${leaveStartDate}" onchange="window.updateLeaveDate('start', this.value)">
                 </div>
                 <div>
-                  <label style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);display:block;margin-bottom:0.4rem;">Tarikh Tamat</label>
-                  <input type="date" class="neu-inset" value="${leaveEndDate}" onchange="window.updateLeaveDate('end', this.value)" style="color-scheme:light;font-weight:600;font-size:0.88rem;">
+                  <label class="lf-label">Tarikh Tamat</label>
+                  <input type="date" class="lf-input" value="${leaveEndDate}" onchange="window.updateLeaveDate('end', this.value)">
                 </div>
               </div>
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:0.65rem 1rem;border-radius:10px;background:linear-gradient(135deg,rgba(16,185,129,0.07),rgba(59,130,246,0.07));border:1px solid rgba(59,130,246,0.15);">
+              <div class="lf-total">
                 <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.72rem;font-weight:600;color:var(--text-muted);">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                   Jumlah Tempoh Cuti
                 </div>
                 <div style="display:flex;align-items:baseline;gap:0.35rem;">
-                  <span style="font-size:1.5rem;font-weight:800;background:linear-gradient(135deg,#10b981,#3b82f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1;">
+                  <span class="lf-total-n">
                     ${(() => {
                       if (!leaveStartDate || !leaveEndDate) { const t = new Date().toISOString().split('T')[0]; leaveStartDate = t; leaveEndDate = t; }
                       const s = new Date(leaveStartDate), e = new Date(leaveEndDate);
@@ -8023,18 +8001,17 @@ function renderView() {
 
             <!-- SECTION: Maklumat Tambahan -->
             <div style="margin-bottom:1.5rem;">
-              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
-                <div style="width:4px;height:18px;border-radius:2px;background:linear-gradient(to bottom,#8b5cf6,#ec4899);"></div>
-                <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">03 — Maklumat Tambahan</span>
+              <div class="lf-step-head">
+                <span class="lf-step-n">3</span><span class="lf-step-t">Maklumat Tambahan</span>
               </div>
               <div style="display:flex;flex-direction:column;gap:0.85rem;">
                 <div>
-                  <label style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);display:block;margin-bottom:0.4rem;">Sebab Permohonan</label>
-                  <textarea class="neu-inset" placeholder="Nyatakan sebab permohonan cuti (wajib, dengan perkataan — cth. Demam, Urusan keluarga)..." style="height:90px;font-size:0.85rem;resize:vertical;"></textarea>
+                  <label class="lf-label">Sebab Permohonan</label>
+                  <textarea id="leave-reason" class="lf-input" rows="3" placeholder="Nyatakan sebab permohonan cuti (wajib, dengan perkataan — cth. Demam, Urusan keluarga)..."></textarea>
                 </div>
                 <div>
-                  <label style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);display:block;margin-bottom:0.4rem;">Pengganti Tugas (Handover)</label>
-                  <input type="text" id="handover-input" class="neu-inset" placeholder="Nama rakan sekerja yang menggantikan..." style="font-size:0.85rem;">
+                  <label class="lf-label">Pengganti Tugas (Handover)</label>
+                  <input type="text" id="handover-input" class="lf-input" placeholder="Nama rakan sekerja yang menggantikan...">
                 </div>
               </div>
             </div>
@@ -8055,13 +8032,12 @@ function renderView() {
               );
               return `
             <div style="margin-bottom:1.5rem;">
-              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
-                <div style="width:4px;height:18px;border-radius:2px;background:linear-gradient(to bottom,#f43f5e,#fb7185);"></div>
-                <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">04 — Pelulus Peringkat 0 (Team Leader)</span>
-                <span style="font-size:0.62rem;background:rgba(244,63,94,0.12);color:#f43f5e;border:1px solid rgba(244,63,94,0.25);border-radius:5px;padding:0.1rem 0.45rem;font-weight:700;">★ WAJIB</span>
+              <div class="lf-step-head">
+                <span class="lf-step-n">4</span><span class="lf-step-t">Pelulus Peringkat 0 (Team Leader)</span>
+                <span class="lf-req">Wajib</span>
               </div>
               <div style="position:relative;">
-                <select id="tl-select" class="neu-inset" style="appearance:none;padding-right:2.5rem;font-weight:600;color-scheme:light;font-size:0.85rem;border:1.5px solid rgba(244,63,94,0.4);background:rgba(244,63,94,0.03);" onchange="this.style.border='1.5px solid '+(this.value?'rgba(16,185,129,0.4)':'rgba(244,63,94,0.4)');this.style.background=this.value?'rgba(16,185,129,0.03)':'rgba(244,63,94,0.03)'">
+                <select id="tl-select" class="lf-input lf-select is-req" onchange="this.classList.toggle('is-ok', !!this.value)">
                   <option value="">-- Pilih Team Leader (Sokongan Peringkat 0) — WAJIB --</option>
                   ${_tlList.length ? _tlList.map(s => `<option value="${s.ic}">${s.name} (Team Leader)</option>`).join('') : '<option value="" disabled>-- Tiada Team Leader didaftarkan --</option>'}
                 </select>
@@ -8091,13 +8067,12 @@ function renderView() {
               }
               return `
             <div style="margin-bottom:1.5rem;">
-              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
-                <div style="width:4px;height:18px;border-radius:2px;background:linear-gradient(to bottom,#f59e0b,#ef4444);"></div>
-                <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">04 — Pelulus Peringkat 1</span>
-                <span style="font-size:0.62rem;background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.25);border-radius:5px;padding:0.1rem 0.45rem;font-weight:700;">★ WAJIB</span>
+              <div class="lf-step-head">
+                <span class="lf-step-n">4</span><span class="lf-step-t">Pelulus Peringkat 1</span>
+                <span class="lf-req">Wajib</span>
               </div>
               <div style="position:relative;">
-                    <select id="hod-select" class="neu-inset" required style="appearance:none;padding-right:2.5rem;font-weight:600;color-scheme:light;font-size:0.85rem;border:1.5px solid rgba(239,68,68,0.4);background:rgba(239,68,68,0.03);" onchange="this.style.border='1.5px solid '+(this.value?'rgba(16,185,129,0.4)':'rgba(239,68,68,0.4)');this.style.background=this.value?'rgba(16,185,129,0.03)':'rgba(239,68,68,0.03)'">
+                    <select id="hod-select" class="lf-input lf-select is-req" required onchange="this.classList.toggle('is-ok', !!this.value)">
                         <option value="">-- Pilih Pelulus Peringkat 1 (WAJIB) --</option>
                         ${(() => {
                             const approvers = window.getRoutingP1Approvers(user, selectedLeaveType);
@@ -8290,16 +8265,16 @@ function renderView() {
             })()}
 
             <!-- Submit -->
-            <button type="submit" style="width:100%;padding:0.95rem;border-radius:14px;border:none;cursor:pointer;background:linear-gradient(135deg,#3b82f6 0%,#8b5cf6 100%);color:#fff;font-size:0.9rem;font-weight:800;letter-spacing:0.5px;display:flex;justify-content:center;align-items:center;gap:0.6rem;box-shadow:0 8px 24px rgba(59,130,246,0.35);transition:all 0.2s;margin-top:0.5rem;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-              HANTAR PERMOHONAN
+            <button type="submit" class="lf-submit">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              Hantar Permohonan
             </button>
 
             </div><!-- end padding div -->
             </form>
 
           <!-- Right Panel: Summary Widgets -->
-          <div class="info-panel" style="display:flex;flex-direction:column;gap:1.25rem;">
+          <div class="info-panel lf-side">
 
             <!-- Notice: Polisi Notis — sembunyi untuk cuti dikecualikan (MC/Kecemasan/Ehsan — tiada had notis minimum) -->
             ${!isNoticeExempt ? `
