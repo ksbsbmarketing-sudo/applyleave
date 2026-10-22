@@ -5499,6 +5499,7 @@ function renderLogin() {
         <!-- Hak Cipta -->
         <div style="margin-top:1.25rem;text-align:center;">
           <p style="font-size:0.72rem;color:var(--text-muted);letter-spacing:0.3px;margin:0;line-height:1.6;">© 2026 Klinik Syed Badaruddin Sdn. Bhd. · Hak Cipta Terpelihara<br><span style="font-size:0.66rem;opacity:0.8;">Dibangunkan oleh KSBSB IT @ LukhzzIsZa</span></p>
+          <a href="/privacy.html" target="_blank" rel="noopener" style="display:inline-block;margin-top:0.4rem;font-size:0.72rem;color:var(--primary);font-weight:600;text-decoration:underline;">Dasar Privasi</a>
         </div>
       </div>
     </div>
@@ -6253,7 +6254,7 @@ function renderDashboard() {
             </div>
           </div>
           <button id="logout" class="nav-logout"><i data-lucide="log-out" width="16" height="16"></i> Log Keluar</button>
-          <p style="font-size:0.68rem;color:var(--text-muted);text-align:center;margin:0.85rem 0 0;letter-spacing:0.3px;line-height:1.6;">© 2026 Klinik Syed Badaruddin Sdn. Bhd.<br>Hak Cipta Terpelihara<br><span style="font-size:0.63rem;opacity:0.8;">Dibangunkan oleh KSBSB IT @ LukhzzIsZa</span></p>
+          <p style="font-size:0.68rem;color:var(--text-muted);text-align:center;margin:0.85rem 0 0;letter-spacing:0.3px;line-height:1.6;">© 2026 Klinik Syed Badaruddin Sdn. Bhd.<br>Hak Cipta Terpelihara<br><span style="font-size:0.63rem;opacity:0.8;">Dibangunkan oleh KSBSB IT @ LukhzzIsZa</span><br><a href="/privacy.html" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">Dasar Privasi</a></p>
         </div>
       </aside>
 
