@@ -11,6 +11,7 @@ import { findOverlappingLeaves, overlapsOtherLeaves, describeOverlaps,
          findApprovedOverlaps, findOverlapGroups } from './leaveOverlap.js';
 import { normalizePhone, isValidPhone } from './phoneFormat.js';
 import { notifyChannelOf, wantsWhatsApp, isValidEmail, needsNotifySetup } from './notifyPrefs.js';
+import { filterHiddenBranches } from './hiddenBranches.js';
 import { deriveRolePermissions, changedRoles, claimsFor } from './rolePermissions.js';
 import { canEditHolidayState } from './holidayAccess.js';
 import { canSeeAuditLogs, canSeeRegistrations, listenerScope, canSeeWaLogs, STAFF_APPROVER_ROLES } from './listenerScope.js';
@@ -4345,7 +4346,7 @@ function ensureAuditLogListener() {
   auditLogUnsub = onSnapshot(
     query(collection(db, "audit_logs"), orderBy("createdAt", "desc"), limit(AUDIT_LOG_LIMIT)),
     (snapshot) => {
-      systemAuditLogs = snapshot.docs.map(doc => doc.data())
+      systemAuditLogs = filterHiddenBranches(snapshot.docs.map(doc => doc.data()), user)
         .sort((a, b) => auditMillis(b.createdAt) - auditMillis(a.createdAt));
       render();
     },
@@ -4389,7 +4390,7 @@ let registrationUnsub = null;
 function ensureRegistrationListener() {
   if (registrationUnsub || !window.canSeeRegRequests(user)) return;
   registrationUnsub = onSnapshot(subsidiaryScoped('registration_requests', 'branch'), (snapshot) => {
-    registrationRequests = snapshot.docs.map(d => ({ ...d.data(), docId: d.id }))
+    registrationRequests = filterHiddenBranches(snapshot.docs.map(d => ({ ...d.data(), docId: d.id })), user)
       .sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
     render();
   }, (err) => { console.warn('registration_requests listener failed:', err); registrationUnsub = null; });
@@ -4417,8 +4418,10 @@ function ensureLeavesListener() {
       ...doc.data(),
       docId: doc.id
     })).sort((a, b) => b.id - a.id);
-    leaveRecords = _allLeaves.filter(r => !r.isTest);
-    testLeaveRecords = _allLeaves.filter(r => r.isTest);
+    // Cawangan DEMO (akaun ujian) — hanya Admin/Super Admin nampak.
+    const _visibleLeaves = filterHiddenBranches(_allLeaves, user);
+    leaveRecords = _visibleLeaves.filter(r => !r.isTest);
+    testLeaveRecords = _visibleLeaves.filter(r => r.isTest);
     leavesLoaded = true;
     console.log(`Leave records updated from Firestore (${scope}: ${_allLeaves.length})`);
     selfHealPendingLeaveDays();
@@ -4505,10 +4508,11 @@ function ensureStaffListener(forceAll = false) {
 
 function applyStaffDocs(docs) {
     // Susun ikut docId — pertanyaan 'not-in' menyusun ikut cawangan, bukan id.
-    staffList = docs.map(doc => ({
+    // Cawangan DEMO (akaun ujian) — hanya Admin/Super Admin nampak.
+    staffList = filterHiddenBranches(docs.map(doc => ({
       ...doc.data(),
       docId: doc.id
-    })).sort((a, b) => (a.docId < b.docId ? -1 : a.docId > b.docId ? 1 : 0));
+    })), user).sort((a, b) => (a.docId < b.docId ? -1 : a.docId > b.docId ? 1 : 0));
     
     // Safety Seed: Ensure at least one Super Admin exists in the list for dropdowns
     const hasSuper = staffList.some(s => s.role === 'super_admin' || s.ic === 'super-admin' || s.ic === 'Super Admin');
@@ -4679,9 +4683,9 @@ async function initData() {
         setDoc(doc(db, 'branches', id), { name: b.name, state: b.state, daerah: b.daerah || '', manager: 'Admin' });
       });
     } else {
-      branches = snapshot.docs.map(function(d) {
+      branches = filterHiddenBranches(snapshot.docs.map(function(d) {
         return Object.assign({}, d.data(), { docId: d.id });
-      });
+      }), user, 'name');
       // Auto-migrate: isi daerah untuk rekod lama yang tiada daerah
       branches.forEach(function(b) {
         if (!b.daerah && b.docId) {
