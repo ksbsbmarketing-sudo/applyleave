@@ -9482,8 +9482,9 @@ function renderView() {
           const availBranches = [...new Set(staffList.filter(s=>!s.inactive && s.role!=='super_admin').map(s=>s.branch).filter(Boolean))].sort()
             .filter(b => !window.isSubsidiaryHR(user) || window.scopeStateOfBranch(b) === _bvScope);
 
-          // Kira baki cuti untuk setiap staf
-          const keyTypes = ['AL','MC','EL','HL','ML','CME'];
+          // Kira baki cuti untuk setiap staf — semua jenis dari katalog (dulu senarai
+          // tetap 6 jenis: UPL, EL Kecemasan, PL & Cuti Ganti tiada langsung).
+          const keyTypes = leaveCategories.map(c => c.id);
           const staffRows = pool.map(s => {
             const stats = {};
             keyTypes.forEach(t => { stats[t] = window.getLeaveStats(s, t); });
@@ -9601,7 +9602,7 @@ function renderView() {
                     <tr style="background:rgba(163,177,198,0.06);border-bottom:1px solid rgba(163,177,198,0.2);">
                       <th style="padding:0.6rem 1rem;font-weight:700;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);text-align:left;min-width:160px;">Nama</th>
                       <th style="padding:0.6rem 0.75rem;font-weight:700;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);text-align:left;">Peranan</th>
-                      ${keyTypes.map(t=>`<th style="padding:0.6rem 0.75rem;font-weight:700;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);text-align:center;min-width:70px;">${t}</th>`).join('')}
+                      ${keyTypes.map(t=>`<th style="padding:0.6rem 0.75rem;font-weight:700;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);text-align:center;min-width:70px;" title="${leaveTypeName(t)}">${leaveTypeShort(t)}</th>`).join('')}
                     </tr>
                   </thead>
                   <tbody>
@@ -9617,7 +9618,10 @@ function renderView() {
                           const hasEnt = st.ent > 0;
                           const isLow = hasEnt && st.bal <= 3;
                           const isZero = hasEnt && st.bal <= 0;
-                          if (!hasEnt) return `<td style="padding:0.6rem 0.75rem;text-align:center;color:rgba(163,177,198,0.4);font-size:0.7rem;">—</td>`;
+                          // Tiada peruntukan (UPL, EL Kecemasan, Cuti Ganti): tunjuk hari digunakan.
+                          if (!hasEnt) return st.used > 0
+                            ? `<td style="padding:0.6rem 0.75rem;text-align:center;"><div style="font-size:0.82rem;font-weight:800;color:var(--text);">${st.used.toFixed(1)}</div><div style="font-size:0.6rem;color:var(--text-muted);">hari guna</div></td>`
+                            : `<td style="padding:0.6rem 0.75rem;text-align:center;color:rgba(163,177,198,0.4);font-size:0.7rem;">—</td>`;
                           return `<td style="padding:0.6rem 0.75rem;text-align:center;">
                             <div style="font-size:0.82rem;font-weight:800;color:${isZero?'#ef4444':isLow?'#f59e0b':'#10b981'};">${st.bal.toFixed(1)}</div>
                             <div style="font-size:0.6rem;color:var(--text-muted);">${st.used.toFixed(1)}/${st.ent.toFixed(1)}</div>
